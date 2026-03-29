@@ -13,7 +13,7 @@ import {
 import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, Clock, CheckCircle2,
   X, SkipForward, ArrowLeft, Pencil, Trash2, History, Repeat, Repeat2,
-  Eye, Heart, Zap, Trophy
+  Eye, Heart, Zap, Trophy, Sparkles
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import type { PlannerTask, Area, RoutineItem, RoutineLog } from "@shared/schema";
@@ -500,6 +500,7 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
   const area = areas.find(a => a.id === task.areaId);
   const isDone = task.status === "done";
   const isSkipped = task.status === "skipped";
+  const [convertOpen, setConvertOpen] = useState(false);
 
   const updateStatus = useMutation({
     mutationFn: (status: string) => apiRequest("PATCH", `/api/planner-tasks/${task.id}`, { status }),
@@ -604,8 +605,25 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
               <Trash2 className="w-3 h-3" />
             </Button>
           </div>
+
+          {/* Make this a habit — always visible */}
+          <button
+            onClick={() => setConvertOpen(true)}
+            className="shrink-0 mt-0.5 text-primary/60 hover:text-primary transition-colors"
+            title="Make this a habit"
+            data-testid={`task-to-habit-${task.id}`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+          </button>
         </div>
       </CardContent>
+
+      <ConvertToHabitDialog
+        task={task}
+        area={area}
+        open={convertOpen}
+        onOpenChange={setConvertOpen}
+      />
     </Card>
   );
 }
@@ -1148,5 +1166,154 @@ function AreaDetailView({ areaId, areas, onBack }: { areaId: number; areas: Area
         />
       )}
     </div>
+  );
+}
+
+// ============================================================
+// CONVERT TASK TO HABIT DIALOG
+// ============================================================
+const TIME_OF_DAY_CATEGORIES = [
+  { value: "early_morning", label: "Early Morning", range: "12:00 AM – 5:59 AM" },
+  { value: "morning", label: "Morning", range: "6:00 AM – 8:59 AM" },
+  { value: "late_morning", label: "Late Morning", range: "9:00 AM – 11:59 AM" },
+  { value: "afternoon", label: "Afternoon", range: "12:00 PM – 2:59 PM" },
+  { value: "late_afternoon", label: "Late Afternoon", range: "3:00 PM – 5:59 PM" },
+  { value: "evening", label: "Evening", range: "6:00 PM – 11:59 PM" },
+  { value: "waking_hours", label: "Waking Hours", range: "8:00 AM – 7:59 PM" },
+];
+
+function timeToCategory(time: string | null): string {
+  if (!time) return "";
+  const h = parseInt(time.split(":")[0]);
+  if (h < 6) return "early_morning";
+  if (h < 9) return "morning";
+  if (h < 12) return "late_morning";
+  if (h < 15) return "afternoon";
+  if (h < 18) return "late_afternoon";
+  return "evening";
+}
+
+function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
+  task: PlannerTask; area?: Area; open: boolean; onOpenChange: (v: boolean) => void;
+}) {
+  const [action, setAction] = useState(task.goal);
+  const [timeOfDay, setTimeOfDay] = useState(timeToCategory(task.startTime));
+  const [recurrenceJson, setRecurrenceJson] = useState<string | null>(
+    task.recurrence || JSON.stringify({ type: "daily", interval: 1 })
+  );
+  const [because, setBecause] = useState("");
+  const [reward, setReward] = useState("");
+
+  const resetForm = () => {
+    setAction(task.goal);
+    setTimeOfDay(timeToCategory(task.startTime));
+    setRecurrenceJson(task.recurrence || JSON.stringify({ type: "daily", interval: 1 }));
+    setBecause("");
+    setReward("");
+  };
+
+  const create = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/habits", {
+      name: action,
+      areaId: task.areaId || null,
+      timeOfDay: timeOfDay || null,
+      craving: because || null,
+      reward: reward || null,
+      response: action,
+      cue: null,
+      identityId: null,
+      frequency: recurrenceJson || JSON.stringify({ type: "daily", interval: 1 }),
+      targetCount: 1,
+      active: 1,
+      createdAt: new Date().toISOString(),
+    }),
+    onSuccess: () => {
+      onOpenChange(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/habits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/routine-items"] });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (v) resetForm(); onOpenChange(v); }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto max-w-[calc(100vw-2rem)] sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-base flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-primary" />
+            Make This a Habit
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground -mt-1">
+          This will create a habit and a draft routine item you can schedule.
+        </p>
+        <div className="space-y-4 pt-1">
+          {area && (
+            <div>
+              <p className="text-sm font-medium text-muted-foreground mb-1">In the...</p>
+              <div className="text-sm px-3 py-2 rounded-md border bg-muted/50">{area.name}</div>
+            </div>
+          )}
+
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...I am the type of person who...</p>
+            <Input
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+              placeholder="e.g. exercises, meal preps"
+              data-testid="convert-habit-name"
+            />
+          </div>
+
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...in the...</p>
+            <Select value={timeOfDay} onValueChange={setTimeOfDay}>
+              <SelectTrigger data-testid="convert-habit-time">
+                <SelectValue placeholder="Select time of day" />
+              </SelectTrigger>
+              <SelectContent>
+                {TIME_OF_DAY_CATEGORIES.map(t => (
+                  <SelectItem key={t.value} value={t.value}>
+                    {t.label} <span className="text-xs text-muted-foreground ml-1">({t.range})</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <RecurrenceBuilder
+            value={recurrenceJson}
+            onChange={setRecurrenceJson}
+            requireRecurrence
+          />
+
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...because...</p>
+            <Input
+              value={because}
+              onChange={(e) => setBecause(e.target.value)}
+              placeholder="e.g. it's delicious, I have fun"
+            />
+          </div>
+
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...I'll be rewarded by...</p>
+            <Input
+              value={reward}
+              onChange={(e) => setReward(e.target.value)}
+              placeholder="e.g. making my tummy smile"
+            />
+          </div>
+
+          <Button
+            className="w-full"
+            disabled={!action.trim() || create.isPending}
+            onClick={() => create.mutate()}
+            data-testid="button-convert-habit"
+          >
+            {create.isPending ? "Creating..." : "Create Habit & Draft Routine"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
