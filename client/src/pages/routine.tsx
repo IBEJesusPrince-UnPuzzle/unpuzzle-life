@@ -249,18 +249,27 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
   const rowRef = useRef<HTMLDivElement>(null);
   const itemIsDraft = (item as any).isDraft === 1;
 
-  // Draft publish state
-  const [draftTime, setDraftTime] = useState(itemIsDraft ? "" : item.time);
+  // Draft publish state — hour/minute/ampm selects for reliability
+  const [draftHour, setDraftHour] = useState("");
+  const [draftMinute, setDraftMinute] = useState("00");
+  const [draftAmPm, setDraftAmPm] = useState("AM");
   const [draftDuration, setDraftDuration] = useState(String(item.durationMinutes));
   const [draftLocation, setDraftLocation] = useState(item.location || "");
 
   const publishDraft = useMutation({
-    mutationFn: () => apiRequest("PATCH", `/api/routine-items/${item.id}`, {
-      time: draftTime,
-      durationMinutes: parseInt(draftDuration) || 10,
-      location: draftLocation || null,
-      isDraft: 0,
-    }),
+    mutationFn: () => {
+      // Convert hour/minute/ampm to 24h HH:MM
+      let h = parseInt(draftHour);
+      if (draftAmPm === "PM" && h !== 12) h += 12;
+      if (draftAmPm === "AM" && h === 12) h = 0;
+      const time24 = `${String(h).padStart(2, "0")}:${draftMinute}`;
+      return apiRequest("PATCH", `/api/routine-items/${item.id}`, {
+        time: time24,
+        durationMinutes: parseInt(draftDuration) || 10,
+        location: draftLocation.trim(),
+        isDraft: 0,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/routine-items"] });
     },
@@ -430,72 +439,159 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
 
               {/* Draft publish form */}
               {itemIsDraft && (
-                <div className="mt-3 pt-3 border-t border-amber-500/20">
-                  <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-2.5">Add to your routine</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[10px] text-muted-foreground mb-1 block">Time</label>
-                      <Input
-                        type="time"
-                        value={draftTime}
-                        onChange={(e) => setDraftTime(e.target.value)}
-                        className="h-8 text-xs"
-                        data-testid={`draft-time-${item.id}`}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-muted-foreground mb-1 block">Duration</label>
-                      <Select value={draftDuration} onValueChange={setDraftDuration}>
-                        <SelectTrigger className="h-8 text-xs" data-testid={`draft-duration-${item.id}`}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[5, 10, 15, 20, 30, 45, 60, 90, 120, 150, 180].map(m => (
-                            <SelectItem key={m} value={String(m)}>
-                              {m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="col-span-2 sm:col-span-1">
-                      <label className="text-[10px] text-muted-foreground mb-1 block">Location (optional)</label>
-                      <Input
-                        value={draftLocation}
-                        onChange={(e) => setDraftLocation(e.target.value)}
-                        placeholder="e.g. my office"
-                        className="h-8 text-xs"
-                        data-testid={`draft-location-${item.id}`}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 mt-3">
-                    <Button
-                      size="sm"
-                      className="h-7 text-xs gap-1 flex-1"
-                      disabled={!draftTime || publishDraft.isPending}
-                      onClick={() => publishDraft.mutate()}
-                      data-testid={`draft-publish-${item.id}`}
-                    >
-                      <Check className="w-3 h-3" />
-                      Add to Routine
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs text-destructive hover:text-destructive"
-                      onClick={() => deleteDraft.mutate()}
-                      data-testid={`draft-delete-${item.id}`}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </div>
+                <DraftPublishForm
+                  item={item}
+                  draftHour={draftHour}
+                  setDraftHour={setDraftHour}
+                  draftMinute={draftMinute}
+                  setDraftMinute={setDraftMinute}
+                  draftAmPm={draftAmPm}
+                  setDraftAmPm={setDraftAmPm}
+                  draftDuration={draftDuration}
+                  setDraftDuration={setDraftDuration}
+                  draftLocation={draftLocation}
+                  setDraftLocation={setDraftLocation}
+                  onPublish={() => publishDraft.mutate()}
+                  onDelete={() => deleteDraft.mutate()}
+                  isPending={publishDraft.isPending}
+                  canPublish={draftHour !== "" && draftLocation.trim() !== ""}
+                />
               )}
             </div>
           )}
         </CardContent>
       </Card>
     </>
+  );
+}
+
+// ============================================================
+// DRAFT PUBLISH FORM
+// ============================================================
+function DraftPublishForm({
+  item, draftHour, setDraftHour, draftMinute, setDraftMinute,
+  draftAmPm, setDraftAmPm, draftDuration, setDraftDuration,
+  draftLocation, setDraftLocation, onPublish, onDelete, isPending, canPublish,
+}: {
+  item: RoutineItem;
+  draftHour: string; setDraftHour: (v: string) => void;
+  draftMinute: string; setDraftMinute: (v: string) => void;
+  draftAmPm: string; setDraftAmPm: (v: string) => void;
+  draftDuration: string; setDraftDuration: (v: string) => void;
+  draftLocation: string; setDraftLocation: (v: string) => void;
+  onPublish: () => void;
+  onDelete: () => void;
+  isPending: boolean;
+  canPublish: boolean;
+}) {
+  const hours = Array.from({ length: 12 }, (_, i) => i + 1); // 1-12
+  const minutes = ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"];
+
+  return (
+    <div className="mt-3 pt-3 border-t border-amber-500/20">
+      <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-2.5">Add to your routine</p>
+
+      {/* Time: Hour / Minute / AM|PM */}
+      <div className="mb-2">
+        <label className="text-[10px] text-muted-foreground mb-1 block">Time</label>
+        <div className="flex items-center gap-1.5">
+          <Select value={draftHour} onValueChange={setDraftHour}>
+            <SelectTrigger className="h-8 text-xs w-[70px]" data-testid={`draft-hour-${item.id}`}>
+              <SelectValue placeholder="Hr" />
+            </SelectTrigger>
+            <SelectContent>
+              {hours.map(h => (
+                <SelectItem key={h} value={String(h)}>{h}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-sm font-medium text-muted-foreground">:</span>
+          <Select value={draftMinute} onValueChange={setDraftMinute}>
+            <SelectTrigger className="h-8 text-xs w-[70px]" data-testid={`draft-min-${item.id}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {minutes.map(m => (
+                <SelectItem key={m} value={m}>{m}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex rounded-md border overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setDraftAmPm("AM")}
+              className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                draftAmPm === "AM"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-background text-muted-foreground hover:bg-muted"
+              }`}
+              data-testid={`draft-am-${item.id}`}
+            >AM</button>
+            <button
+              type="button"
+              onClick={() => setDraftAmPm("PM")}
+              className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                draftAmPm === "PM"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-background text-muted-foreground hover:bg-muted"
+              }`}
+              data-testid={`draft-pm-${item.id}`}
+            >PM</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Duration + Location */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div>
+          <label className="text-[10px] text-muted-foreground mb-1 block">Duration</label>
+          <Select value={draftDuration} onValueChange={setDraftDuration}>
+            <SelectTrigger className="h-8 text-xs" data-testid={`draft-duration-${item.id}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[5, 10, 15, 20, 30, 45, 60, 90, 120, 150, 180].map(m => (
+                <SelectItem key={m} value={String(m)}>
+                  {m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-[10px] text-muted-foreground mb-1 block">Location</label>
+          <Input
+            value={draftLocation}
+            onChange={(e) => setDraftLocation(e.target.value)}
+            placeholder="e.g. my office"
+            className="h-8 text-xs"
+            data-testid={`draft-location-${item.id}`}
+          />
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          className="h-7 text-xs gap-1 flex-1"
+          disabled={!canPublish || isPending}
+          onClick={onPublish}
+          data-testid={`draft-publish-${item.id}`}
+        >
+          <Check className="w-3 h-3" />
+          Add to Routine
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs text-destructive hover:text-destructive"
+          onClick={onDelete}
+          data-testid={`draft-delete-${item.id}`}
+        >
+          <Trash2 className="w-3 h-3" />
+        </Button>
+      </div>
+    </div>
   );
 }
