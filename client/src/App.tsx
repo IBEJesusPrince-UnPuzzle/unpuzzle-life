@@ -102,8 +102,7 @@ export default function App() {
                 <header className="hidden md:flex items-center gap-2 p-2 border-b shrink-0">
                   <SidebarTrigger data-testid="button-sidebar-toggle" />
                 </header>
-                <header className="md:hidden flex items-center justify-between px-4 py-2.5 border-b shrink-0">
-                  <span className="text-sm font-semibold tracking-tight">Momentum</span>
+                <header className="md:hidden flex items-center gap-3 px-4 py-2.5 border-b shrink-0">
                   <button
                     onClick={() => setIsDark(!isDark)}
                     className="p-1.5 rounded-md text-muted-foreground hover:text-foreground transition-colors"
@@ -111,6 +110,7 @@ export default function App() {
                   >
                     {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                   </button>
+                  <span className="text-sm font-semibold tracking-tight">Momentum</span>
                 </header>
                 <main className="flex-1 overflow-hidden pb-14 md:pb-0">
                   <AppRouter />
