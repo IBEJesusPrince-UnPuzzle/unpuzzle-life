@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,47 +14,35 @@ import {
   Target, Plus, Trash2, CheckCircle2,
 } from "lucide-react";
 import { useState, useMemo } from "react";
-import type { Identity, Habit, HabitLog } from "@shared/schema";
+import type { Identity, Habit, HabitLog, Area } from "@shared/schema";
+import { RecurrenceBuilder, formatRecurrence } from "./planner";
+
+const TIME_OF_DAY_CATEGORIES = [
+  { value: "early_morning", label: "Early Morning", range: "12:00 AM – 5:59 AM" },
+  { value: "morning", label: "Morning", range: "6:00 AM – 8:59 AM" },
+  { value: "late_morning", label: "Late Morning", range: "9:00 AM – 11:59 AM" },
+  { value: "afternoon", label: "Afternoon", range: "12:00 PM – 2:59 PM" },
+  { value: "late_afternoon", label: "Late Afternoon", range: "3:00 PM – 5:59 PM" },
+  { value: "evening", label: "Evening", range: "6:00 PM – 11:59 PM" },
+  { value: "waking_hours", label: "Waking Hours", range: "8:00 AM – 7:59 PM" },
+];
+
+const CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Life", "Getting Things Done"];
 
 function getToday() {
   return new Date().toISOString().split("T")[0];
 }
 
-function getLast7Days() {
-  const days: string[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(d.toISOString().split("T")[0]);
-  }
-  return days;
-}
-
-function getDayLabel(dateStr: string) {
-  const d = new Date(dateStr + "T12:00:00");
-  return d.toLocaleDateString("en-US", { weekday: "short" }).charAt(0);
-}
-
 export default function HabitsPage() {
   const today = getToday();
-  const last7 = getLast7Days();
 
   const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
   const { data: habits = [] } = useQuery<Habit[]>({ queryKey: ["/api/habits"] });
+  const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
   const { data: todayLogs = [] } = useQuery<HabitLog[]>({
     queryKey: ["/api/habit-logs", today],
     queryFn: () => apiRequest("GET", `/api/habit-logs?date=${today}`).then(r => r.json()),
   });
-
-  // Fetch logs for last 7 days for streaks
-  const allLogs = useMemo(() => {
-    const map: Record<string, Set<number>> = {};
-    todayLogs.forEach(l => {
-      if (!map[l.date]) map[l.date] = new Set();
-      map[l.date].add(l.habitId);
-    });
-    return map;
-  }, [todayLogs]);
 
   const activeHabits = habits.filter(h => h.active);
 
@@ -81,18 +69,18 @@ export default function HabitsPage() {
             <CardContent className="p-8 text-center text-muted-foreground">
               <Target className="w-10 h-10 mx-auto mb-3 opacity-30" />
               <p className="text-sm font-medium">No habits yet</p>
-              <p className="text-xs mt-1">Create identity statements first, then attach habits to them.</p>
+              <p className="text-xs mt-1">Build your identity-driven habit systems below.</p>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-2">
             {activeHabits.map((habit) => (
-              <HabitRow key={habit.id} habit={habit} todayLogs={todayLogs} identities={identities} today={today} last7={last7} />
+              <HabitRow key={habit.id} habit={habit} todayLogs={todayLogs} identities={identities} areas={areas} today={today} />
             ))}
           </div>
         )}
 
-        <NewHabitForm identities={identities} />
+        <NewHabitForm areas={areas} />
       </div>
     </div>
   );
@@ -101,12 +89,14 @@ export default function HabitsPage() {
 // ============================================================
 // HABIT ROW
 // ============================================================
-function HabitRow({ habit, todayLogs, identities, today, last7 }: {
-  habit: Habit; todayLogs: HabitLog[]; identities: Identity[]; today: string; last7: string[];
+function HabitRow({ habit, todayLogs, identities, areas, today }: {
+  habit: Habit; todayLogs: HabitLog[]; identities: Identity[]; areas: Area[]; today: string;
 }) {
   const log = todayLogs.find(l => l.habitId === habit.id);
   const isDone = !!log;
   const identity = identities.find(i => i.id === habit.identityId);
+  const area = areas.find(a => a.id === habit.areaId);
+  const timeOfDay = TIME_OF_DAY_CATEGORIES.find(t => t.value === habit.timeOfDay);
 
   const logHabit = useMutation({
     mutationFn: () => apiRequest("POST", "/api/habit-logs", { habitId: habit.id, date: today, count: 1 }),
@@ -149,24 +139,34 @@ function HabitRow({ habit, todayLogs, identities, today, last7 }: {
           </button>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <p className={`text-sm font-medium ${isDone ? "line-through text-muted-foreground" : ""}`}>
                 {habit.name}
               </p>
               <Badge variant="outline" className="text-[10px] h-4 px-1">
-                {habit.frequency.startsWith("weekly:") 
-                  ? `${habit.frequency.split(":")[1].charAt(0).toUpperCase()}${habit.frequency.split(":")[1].slice(1, 3)}`
-                  : habit.frequency}
+                {formatRecurrence(habit.frequency)}
               </Badge>
+              {timeOfDay && (
+                <Badge variant="outline" className="text-[10px] h-4 px-1 text-orange-600 dark:text-orange-400 border-orange-500/30">
+                  {timeOfDay.label}
+                </Badge>
+              )}
             </div>
-            {identity && (
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Identity: {identity.statement}
-              </p>
-            )}
-            {habit.cue && (
-              <p className="text-[11px] text-primary/70 mt-0.5">
-                I'll {habit.cue} → I will {habit.response}
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              {area && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+                  {area.name}
+                </span>
+              )}
+              {identity && (
+                <p className="text-[11px] text-muted-foreground">
+                  Identity: {identity.statement}
+                </p>
+              )}
+            </div>
+            {habit.craving && (
+              <p className="text-[11px] text-muted-foreground/70 mt-0.5 italic">
+                because {habit.craving}
               </p>
             )}
           </div>
@@ -182,34 +182,49 @@ function HabitRow({ habit, todayLogs, identities, today, last7 }: {
 }
 
 // ============================================================
-// NEW HABIT FORM
+// NEW HABIT FORM — Identity Sentence Builder
 // ============================================================
-function NewHabitForm({ identities }: { identities: Identity[] }) {
+function NewHabitForm({ areas }: { areas: Area[] }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [identityId, setIdentityId] = useState<string>("");
-  const [cue, setCue] = useState("");
-  const [response, setResponse] = useState("");
+  const [areaId, setAreaId] = useState<string>("");
+  const [action, setAction] = useState("");
+  const [timeOfDay, setTimeOfDay] = useState<string>("");
+  const [recurrenceJson, setRecurrenceJson] = useState<string | null>(JSON.stringify({ type: "daily", interval: 1 }));
+  const [because, setBecause] = useState("");
   const [reward, setReward] = useState("");
-  const [frequency, setFrequency] = useState("daily");
-  const [weeklyDay, setWeeklyDay] = useState("monday");
+
+  // Group areas by category
+  const groupedAreas = useMemo(() => {
+    const groups: Record<string, Area[]> = {};
+    areas.forEach(a => {
+      const cat = a.category || "Other";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(a);
+    });
+    return groups;
+  }, [areas]);
 
   const create = useMutation({
     mutationFn: () => apiRequest("POST", "/api/habits", {
-      name,
-      identityId: identityId && identityId !== "none" ? Number(identityId) : null,
-      cue: cue || null,
-      response: response || null,
+      name: action,
+      areaId: areaId && areaId !== "none" ? Number(areaId) : null,
+      timeOfDay: timeOfDay || null,
+      craving: because || null,
       reward: reward || null,
-      frequency: frequency === "weekly" ? `weekly:${weeklyDay}` : frequency,
+      response: action,
+      cue: null,
+      identityId: null,
+      frequency: recurrenceJson || JSON.stringify({ type: "daily", interval: 1 }),
       targetCount: 1,
       active: 1,
       createdAt: new Date().toISOString(),
     }),
     onSuccess: () => {
-      setName(""); setIdentityId(""); setCue(""); setResponse(""); setReward("");
-      setFrequency("daily"); setWeeklyDay("monday"); setOpen(false);
+      setAction(""); setAreaId(""); setTimeOfDay(""); setBecause(""); setReward("");
+      setRecurrenceJson(JSON.stringify({ type: "daily", interval: 1 }));
+      setOpen(false);
       queryClient.invalidateQueries({ queryKey: ["/api/habits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks/drafts"] });
     },
   });
 
@@ -220,80 +235,95 @@ function NewHabitForm({ identities }: { identities: Identity[] }) {
           <Plus className="w-4 h-4 mr-1" /> New Habit
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-base">Create a Habit</DialogTitle>
+          <DialogTitle className="text-base">Build Your Habit</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-2">
+          {/* "In the..." */}
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Habit name</label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Morning run" data-testid="input-habit-name" />
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">In the...</p>
+            <Select value={areaId} onValueChange={setAreaId}>
+              <SelectTrigger data-testid="select-habit-area">
+                <SelectValue placeholder="Select an area" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No area</SelectItem>
+                {CATEGORY_ORDER.map(cat => {
+                  const catAreas = groupedAreas[cat];
+                  if (!catAreas) return null;
+                  return catAreas.map(a => (
+                    <SelectItem key={a.id} value={String(a.id)}>
+                      <span className="text-xs text-muted-foreground mr-1">{cat.substring(0, 3)}.</span>
+                      {a.name}
+                    </SelectItem>
+                  ));
+                })}
+              </SelectContent>
+            </Select>
           </div>
 
+          {/* "...I am the type of person who..." */}
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Linked identity</label>
-            <Select value={identityId} onValueChange={setIdentityId}>
-              <SelectTrigger><SelectValue placeholder="Which identity does this reinforce?" /></SelectTrigger>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...I am the type of person who...</p>
+            <Input
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+              placeholder="e.g. exercises, meal preps, eats breakfast, plays with my kids"
+              data-testid="input-habit-name"
+            />
+          </div>
+
+          {/* "...in the..." */}
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...in the...</p>
+            <Select value={timeOfDay} onValueChange={setTimeOfDay}>
+              <SelectTrigger data-testid="select-habit-time">
+                <SelectValue placeholder="Select time of day" />
+              </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                {identities.map(i => (
-                  <SelectItem key={i.id} value={String(i.id)}>...who {i.statement}</SelectItem>
+                {TIME_OF_DAY_CATEGORIES.map(t => (
+                  <SelectItem key={t.value} value={t.value}>
+                    {t.label} <span className="text-xs text-muted-foreground ml-1">({t.range})</span>
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
+          {/* Recurrence */}
+          <RecurrenceBuilder
+            value={recurrenceJson}
+            onChange={setRecurrenceJson}
+            requireRecurrence
+          />
+
+          {/* "...because..." */}
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Frequency</label>
-            <div className="flex gap-2">
-              <Select value={frequency} onValueChange={setFrequency}>
-                <SelectTrigger className={frequency === "weekly" ? "flex-1" : ""}><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="daily">Daily</SelectItem>
-                  <SelectItem value="weekdays">Weekdays</SelectItem>
-                  <SelectItem value="weekend">Weekend</SelectItem>
-                  <SelectItem value="weekly">Weekly</SelectItem>
-                </SelectContent>
-              </Select>
-              {frequency === "weekly" && (
-                <Select value={weeklyDay} onValueChange={setWeeklyDay}>
-                  <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="monday">Monday</SelectItem>
-                    <SelectItem value="tuesday">Tuesday</SelectItem>
-                    <SelectItem value="wednesday">Wednesday</SelectItem>
-                    <SelectItem value="thursday">Thursday</SelectItem>
-                    <SelectItem value="friday">Friday</SelectItem>
-                    <SelectItem value="saturday">Saturday</SelectItem>
-                    <SelectItem value="sunday">Sunday</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...because...</p>
+            <Input
+              value={because}
+              onChange={(e) => setBecause(e.target.value)}
+              placeholder="e.g. it's delicious, I have fun, I don't like the feeling of being rushed"
+            />
           </div>
 
-          <div className="space-y-2 pt-1">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Habit Stack (optional)
-            </p>
-            <div>
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 mb-1">Make it Obvious</p>
-              <Input value={cue} onChange={(e) => setCue(e.target.value)}
-                placeholder="I'll... (e.g. hear my alarm go off)" className="text-sm" />
-            </div>
-            <div>
-              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mb-1">Make it Easy</p>
-              <Input value={response} onChange={(e) => setResponse(e.target.value)}
-                placeholder="I will... (e.g. put on my running shoes)" className="text-sm" />
-            </div>
-            <div>
-              <p className="text-[10px] text-primary mb-1">Make it Satisfying</p>
-              <Input value={reward} onChange={(e) => setReward(e.target.value)}
-                placeholder="and I'll be rewarded by... (e.g. energy for the day)" className="text-sm" />
-            </div>
+          {/* "...I'll be rewarded by..." */}
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...I'll be rewarded by...</p>
+            <Input
+              value={reward}
+              onChange={(e) => setReward(e.target.value)}
+              placeholder="e.g. making my tummy smile, resetting my nervous system, having beautiful memories"
+            />
           </div>
 
-          <Button className="w-full" disabled={!name.trim()} onClick={() => create.mutate()} data-testid="button-save-habit">
+          <Button
+            className="w-full"
+            disabled={!action.trim()}
+            onClick={() => create.mutate()}
+            data-testid="button-save-habit"
+          >
             Create Habit
           </Button>
         </div>

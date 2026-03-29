@@ -11,12 +11,11 @@ import InboxPage from "@/pages/inbox";
 import HorizonsPage from "@/pages/horizons";
 import HabitsPage from "@/pages/habits";
 import ReviewPage from "@/pages/review";
-import RoutinePage from "@/pages/routine";
 import PlannerPage from "@/pages/planner";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
-import { LayoutDashboard, Inbox, Layers, Target, RotateCcw, Moon, Sun, CalendarClock, CalendarDays } from "lucide-react";
+import { LayoutDashboard, Inbox, Layers, Target, RotateCcw, Moon, Sun, CalendarDays } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -27,7 +26,6 @@ function AppRouter() {
       <Route path="/inbox" component={InboxPage} />
       <Route path="/horizons" component={HorizonsPage} />
       <Route path="/habits" component={HabitsPage} />
-      <Route path="/routine" component={RoutinePage} />
       <Route path="/planner" component={PlannerPage} />
       <Route path="/review" component={ReviewPage} />
       <Route component={NotFound} />
@@ -39,7 +37,6 @@ const mobileNavItems = [
   { href: "/", label: "Home", icon: LayoutDashboard },
   { href: "/inbox", label: "Inbox", icon: Inbox, showBadge: true },
   { href: "/habits", label: "Habits", icon: Target },
-  { href: "/routine", label: "Routine", icon: CalendarClock },
   { href: "/planner", label: "Agenda", icon: CalendarDays },
   { href: "/review", label: "Review", icon: RotateCcw },
   { href: "/horizons", label: "Horizons", icon: Layers },

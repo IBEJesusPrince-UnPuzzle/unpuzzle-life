@@ -12,10 +12,11 @@ import {
 } from "@/components/ui/select";
 import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, Clock, CheckCircle2,
-  X, SkipForward, ArrowLeft, Pencil, Trash2, History, Repeat, Repeat2
+  X, SkipForward, ArrowLeft, Pencil, Trash2, History, Repeat, Repeat2,
+  Eye, Heart, Zap, Trophy, FileEdit
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
-import type { PlannerTask, Area } from "@shared/schema";
+import type { PlannerTask, Area, RoutineItem, RoutineLog } from "@shared/schema";
 
 // ============================================================
 // HELPERS
@@ -68,7 +69,7 @@ function getTimePhase(time: string): string {
   const h = parseInt(time.split(":")[0]);
   if (h < 6) return "Early Morning";
   if (h < 9) return "Morning";
-  if (h < 12) return "Midday";
+  if (h < 12) return "Late Morning";
   if (h < 15) return "Afternoon";
   if (h < 18) return "Late Afternoon";
   return "Evening";
@@ -77,7 +78,7 @@ function getTimePhase(time: string): string {
 const phaseColors: Record<string, string> = {
   "Early Morning": "text-indigo-500",
   "Morning": "text-amber-500",
-  "Midday": "text-orange-500",
+  "Late Morning": "text-orange-500",
   "Afternoon": "text-emerald-500",
   "Late Afternoon": "text-cyan-500",
   "Evening": "text-violet-500",
@@ -86,16 +87,16 @@ const phaseColors: Record<string, string> = {
 
 // Recurrence is stored as JSON: {type,interval,days?,weekOfMonth?,dayOfWeek?,dayOfMonth?}
 // Legacy strings ("daily","weekdays","weekend","weekly:day","monthly") are also supported for display
-interface RecurrencePattern {
-  type: "daily" | "weekly" | "monthly";
-  interval: number; // every N days/weeks/months
+export interface RecurrencePattern {
+  type: "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
+  interval: number; // every N days/weeks/months/quarters/years
   days?: string[]; // for weekly: ["monday","friday"]
   weekOfMonth?: number; // 1-5 (5=last) for "3rd Friday" style
   dayOfWeek?: string; // for monthly weekday pattern
   dayOfMonth?: number; // for monthly date pattern
 }
 
-function parseRecurrence(rec: string | null): RecurrencePattern | null {
+export function parseRecurrence(rec: string | null): RecurrencePattern | null {
   if (!rec) return null;
   try {
     const parsed = JSON.parse(rec);
@@ -110,7 +111,7 @@ function parseRecurrence(rec: string | null): RecurrencePattern | null {
   return null;
 }
 
-function formatRecurrence(rec: string | null): string {
+export function formatRecurrence(rec: string | null): string {
   if (!rec) return "";
   const p = parseRecurrence(rec);
   if (!p) return rec;
@@ -137,6 +138,12 @@ function formatRecurrence(rec: string | null): string {
       return p.interval === 1 ? `Monthly (day ${p.dayOfMonth})` : `Every ${p.interval} mo (day ${p.dayOfMonth})`;
     }
     return p.interval === 1 ? "Monthly" : `Every ${p.interval} months`;
+  }
+  if (p.type === "quarterly") {
+    return p.interval === 1 ? "Quarterly" : `Every ${p.interval} quarters`;
+  }
+  if (p.type === "yearly") {
+    return p.interval === 1 ? "Yearly" : `Every ${p.interval} years`;
   }
   return rec;
 }
@@ -267,6 +274,19 @@ function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick: (id: n
     queryFn: () => apiRequest("GET", `/api/planner-tasks?date=${selectedDate}`).then(r => r.json()),
   });
 
+  // Fetch routine items and logs for merging into the timeline
+  const { data: routineItems = [] } = useQuery<RoutineItem[]>({ queryKey: ["/api/routine-items"] });
+  const { data: routineLogs = [] } = useQuery<RoutineLog[]>({
+    queryKey: ["/api/routine-logs", selectedDate],
+    queryFn: () => apiRequest("GET", `/api/routine-logs?date=${selectedDate}`).then(r => r.json()),
+  });
+
+  // Fetch draft tasks
+  const { data: draftTasks = [] } = useQuery<PlannerTask[]>({
+    queryKey: ["/api/planner-tasks/drafts"],
+    queryFn: () => apiRequest("GET", "/api/planner-tasks/drafts").then(r => r.json()),
+  });
+
   // Auto-generate recurring tasks when navigating to a new date
   const [generatedDates, setGeneratedDates] = useState<Set<string>>(new Set());
   useEffect(() => {
@@ -293,15 +313,38 @@ function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick: (id: n
     setSelectedDate(getDateStr(d));
   };
 
+  // Filter out drafts that are already shown in the date query (they have isDraft=1)
+  // Non-draft tasks for timeline display
+  const nonDraftTasks = useMemo(() => tasks.filter(t => !t.isDraft), [tasks]);
+
   // Group tasks by time phase
   const sortedTasks = useMemo(() => {
-    return [...tasks].sort((a, b) => {
+    return [...nonDraftTasks].sort((a, b) => {
       if (!a.startTime && !b.startTime) return 0;
       if (!a.startTime) return 1;
       if (!b.startTime) return -1;
       return a.startTime.localeCompare(b.startTime);
     });
-  }, [tasks]);
+  }, [nonDraftTasks]);
+
+  // Active routine items grouped by time phase
+  const activeRoutineItems = useMemo(() => routineItems.filter(r => r.active), [routineItems]);
+
+  // Group routine items by their time phase
+  const routineByPhase = useMemo(() => {
+    const groups: Record<string, RoutineItem[]> = {};
+    activeRoutineItems.forEach(r => {
+      const phase = getTimePhase(r.time);
+      if (!groups[phase]) groups[phase] = [];
+      groups[phase].push(r);
+    });
+    return groups;
+  }, [activeRoutineItems]);
+
+  // Routine log completion set
+  const routineCompletionSet = useMemo(() => {
+    return new Set(routineLogs.map(l => l.routineItemId));
+  }, [routineLogs]);
 
   const phaseGroups = useMemo(() => {
     const groups: Record<string, PlannerTask[]> = {};
@@ -313,10 +356,17 @@ function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick: (id: n
     return groups;
   }, [sortedTasks]);
 
+  // Merge all phases from both tasks and routine items
+  const allPhases = useMemo(() => {
+    const phaseOrder = ["Early Morning", "Morning", "Late Morning", "Afternoon", "Late Afternoon", "Evening", "Unscheduled"];
+    const phases = new Set([...Object.keys(phaseGroups), ...Object.keys(routineByPhase)]);
+    return phaseOrder.filter(p => phases.has(p));
+  }, [phaseGroups, routineByPhase]);
+
   // Stats
-  const totalTasks = tasks.length;
-  const doneTasks = tasks.filter(t => t.status === "done").length;
-  const totalHours = tasks.reduce((sum, t) => sum + parseFloat(t.hours || "0"), 0);
+  const totalTasks = nonDraftTasks.length;
+  const doneTasks = nonDraftTasks.filter(t => t.status === "done").length;
+  const totalHours = nonDraftTasks.reduce((sum, t) => sum + parseFloat(t.hours || "0"), 0);
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4 overflow-y-auto h-full">
@@ -393,7 +443,7 @@ function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick: (id: n
       )}
 
       {/* Timeline */}
-      {totalTasks === 0 ? (
+      {totalTasks === 0 && allPhases.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
             <CalendarDays className="w-10 h-10 mx-auto mb-3 opacity-30" />
@@ -407,22 +457,53 @@ function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick: (id: n
         </Card>
       ) : (
         <div className="space-y-4">
-          {Object.entries(phaseGroups).map(([phase, phaseTasks]) => (
-            <div key={phase}>
-              <div className="flex items-center gap-2 mb-2">
-                <Clock className={`w-3.5 h-3.5 ${phaseColors[phase] || "text-muted-foreground"}`} />
-                <span className={`text-xs font-medium ${phaseColors[phase] || "text-muted-foreground"}`}>
-                  {phase}
-                </span>
-                <div className="flex-1 h-px bg-border" />
+          {allPhases.map(phase => {
+            const phaseTasks = phaseGroups[phase] || [];
+            const phaseRoutine = routineByPhase[phase] || [];
+            if (phaseTasks.length === 0 && phaseRoutine.length === 0) return null;
+            return (
+              <div key={phase}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className={`w-3.5 h-3.5 ${phaseColors[phase] || "text-muted-foreground"}`} />
+                  <span className={`text-xs font-medium ${phaseColors[phase] || "text-muted-foreground"}`}>
+                    {phase}
+                  </span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+                <div className="space-y-1.5 ml-5">
+                  {phaseTasks.map(task => (
+                    <TaskCard key={task.id} task={task} areas={areas} onAreaClick={onAreaClick} />
+                  ))}
+                  {phaseRoutine.map(item => (
+                    <RoutineItemCard
+                      key={`routine-${item.id}`}
+                      item={item}
+                      areas={areas}
+                      isComplete={routineCompletionSet.has(item.id)}
+                      date={selectedDate}
+                      logId={routineLogs.find(l => l.routineItemId === item.id)?.id}
+                    />
+                  ))}
+                </div>
               </div>
-              <div className="space-y-1.5 ml-5">
-                {phaseTasks.map(task => (
-                  <TaskCard key={task.id} task={task} areas={areas} onAreaClick={onAreaClick} />
-                ))}
-              </div>
-            </div>
-          ))}
+            );
+          })}
+        </div>
+      )}
+
+      {/* Draft Tasks */}
+      {draftTasks.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <FileEdit className="w-3.5 h-3.5 text-amber-500" />
+            <span className="text-xs font-medium text-amber-500">Drafts</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+          <div className="space-y-1.5 ml-5">
+            {draftTasks.map(task => (
+              <TaskCard key={`draft-${task.id}`} task={task} areas={areas} onAreaClick={onAreaClick} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -445,6 +526,7 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
   const area = areas.find(a => a.id === task.areaId);
   const isDone = task.status === "done";
   const isSkipped = task.status === "skipped";
+  const isDraft = task.isDraft === 1;
 
   const updateStatus = useMutation({
     mutationFn: (status: string) => apiRequest("PATCH", `/api/planner-tasks/${task.id}`, { status }),
@@ -488,7 +570,17 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
               <p className={`text-sm font-medium leading-snug ${isDone ? "line-through" : ""}`}>
                 {task.goal}
               </p>
+              {isDraft && (
+                <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px] h-4 px-1.5">
+                  Draft
+                </Badge>
+              )}
             </div>
+            {isDraft && (
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                Set a start date & time to activate
+              </p>
+            )}
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               {task.startTime && (
                 <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
@@ -556,6 +648,96 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
 }
 
 // ============================================================
+// ROUTINE ITEM CARD — Merged routine display in Daily Agenda
+// ============================================================
+
+function RoutineItemCard({ item, areas, isComplete, date, logId }: {
+  item: RoutineItem; areas: Area[]; isComplete: boolean; date: string; logId?: number;
+}) {
+  const area = areas.find(a => a.id === item.areaId);
+  const [expanded, setExpanded] = useState(false);
+
+  const logCompletion = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/routine-logs", {
+      routineItemId: item.id,
+      date,
+      completedAt: new Date().toISOString(),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/routine-logs", date] });
+    },
+  });
+
+  const removeLog = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/routine-logs/${logId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/routine-logs", date] });
+    },
+  });
+
+  return (
+    <Card className={`group transition-all border-l-4 border-l-violet-500/50 ${isComplete ? "opacity-60" : ""}`}>
+      <CardContent className="p-3">
+        <div className="flex items-start gap-2.5">
+          <button
+            onClick={() => isComplete && logId ? removeLog.mutate() : logCompletion.mutate()}
+            className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all shrink-0 mt-0.5 ${
+              isComplete
+                ? "border-violet-500 bg-violet-500"
+                : "border-muted-foreground/30 hover:border-violet-500/50"
+            }`}
+          >
+            {isComplete && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+          </button>
+
+          <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+            <p className={`text-sm font-medium leading-snug ${isComplete ? "line-through" : ""}`}>
+              {item.response}
+            </p>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+                <Clock className="w-3 h-3" />
+                {formatTime12h(item.time)}
+              </span>
+              {area && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+                  {area.name}
+                </span>
+              )}
+              <Badge variant="outline" className="text-[10px] h-4 px-1 text-violet-600 dark:text-violet-400 border-violet-500/30">
+                Routine
+              </Badge>
+            </div>
+            {expanded && (
+              <div className="mt-2 space-y-1 text-[11px]">
+                {item.cue && (
+                  <p className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                    <Eye className="w-3 h-3 shrink-0" /> I'll {item.cue}
+                  </p>
+                )}
+                {item.craving && (
+                  <p className="flex items-center gap-1 text-rose-600 dark:text-rose-400">
+                    <Heart className="w-3 h-3 shrink-0" /> and because {item.craving}
+                  </p>
+                )}
+                <p className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                  <Zap className="w-3 h-3 shrink-0" /> I will {item.response}
+                </p>
+                {item.reward && (
+                  <p className="flex items-center gap-1 text-primary">
+                    <Trophy className="w-3 h-3 shrink-0" /> and I'll be rewarded by {item.reward}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================
 // ADD TASK DIALOG
 // ============================================================
 
@@ -563,9 +745,10 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
 // RECURRENCE BUILDER — Outlook-style
 // ============================================================
 
-function RecurrenceBuilder({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
+export function RecurrenceBuilder({ value, onChange, requireRecurrence }: { value: string | null; onChange: (v: string | null) => void; requireRecurrence?: boolean }) {
   const existing = parseRecurrence(value);
-  const [recType, setRecType] = useState<"none" | "daily" | "weekly" | "monthly">(existing?.type || "none");
+  const defaultType = requireRecurrence ? "daily" : "none";
+  const [recType, setRecType] = useState<"none" | "daily" | "weekly" | "monthly" | "quarterly" | "yearly">(existing?.type || defaultType);
   const [interval, setInterval] = useState(existing?.interval || 1);
   const [weeklyDays, setWeeklyDays] = useState<string[]>(existing?.days || ["monday"]);
   const [monthMode, setMonthMode] = useState<"date" | "weekday">(existing?.weekOfMonth ? "weekday" : "date");
@@ -580,6 +763,10 @@ function RecurrenceBuilder({ value, onChange }: { value: string | null; onChange
       pattern = { type: "daily", interval: intv };
     } else if (type === "weekly") {
       pattern = { type: "weekly", interval: intv, days: wDays.length > 0 ? wDays : ["monday"] };
+    } else if (type === "quarterly") {
+      pattern = { type: "quarterly", interval: intv };
+    } else if (type === "yearly") {
+      pattern = { type: "yearly", interval: intv };
     } else {
       if (mMode === "weekday") {
         pattern = { type: "monthly", interval: intv, weekOfMonth: wom, dayOfWeek: dow };
@@ -606,8 +793,11 @@ function RecurrenceBuilder({ value, onChange }: { value: string | null; onChange
       </label>
 
       {/* Pattern type selector */}
-      <div className="flex gap-1">
-        {(["none", "daily", "weekly", "monthly"] as const).map(t => (
+      <div className="flex gap-1 flex-wrap">
+        {(requireRecurrence
+          ? (["daily", "weekly", "monthly", "quarterly", "yearly"] as const)
+          : (["none", "daily", "weekly", "monthly", "quarterly", "yearly"] as const)
+        ).map(t => (
           <Button key={t} variant={recType === t ? "default" : "outline"} size="sm"
             className="h-7 text-xs px-2.5 flex-1"
             onClick={() => {
@@ -634,7 +824,7 @@ function RecurrenceBuilder({ value, onChange }: { value: string | null; onChange
               </SelectContent>
             </Select>
             <span className="text-xs text-muted-foreground">
-              {recType === "daily" ? (interval === 1 ? "day" : "days") : recType === "weekly" ? (interval === 1 ? "week" : "weeks") : (interval === 1 ? "month" : "months")}
+              {recType === "daily" ? (interval === 1 ? "day" : "days") : recType === "weekly" ? (interval === 1 ? "week" : "weeks") : recType === "quarterly" ? (interval === 1 ? "quarter" : "quarters") : recType === "yearly" ? (interval === 1 ? "year" : "years") : (interval === 1 ? "month" : "months")}
             </span>
           </div>
 

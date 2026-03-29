@@ -100,6 +100,8 @@ export const habits = sqliteTable("habits", {
   targetCount: integer("target_count").notNull().default(1),
   active: integer("active").notNull().default(1),
   createdAt: text("created_at").notNull(),
+  areaId: integer("area_id").references(() => areas.id),
+  timeOfDay: text("time_of_day"), // time-of-day category string
 });
 
 // Daily habit completions
@@ -155,6 +157,9 @@ export const plannerTasks = sqliteTable("planner_tasks", {
   result: text("result"), // outcome notes
   status: text("status").notNull().default("planned"), // planned, done, skipped
   recurrence: text("recurrence"), // null=one-time, "daily", "weekdays", "weekend", "weekly:monday", "monthly"
+  habitId: integer("habit_id").references(() => habits.id),
+  isDraft: integer("is_draft").notNull().default(0), // 1 = draft, 0 = published
+  sourceType: text("source_type"), // "habit" | "manual" | null
 });
 
 // ============================================================

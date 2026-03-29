@@ -167,7 +167,26 @@ export function registerRoutes(server: Server, app: Express) {
   app.post("/api/habits", (req, res) => {
     const parsed = insertHabitSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createHabit(parsed.data));
+    const habit = storage.createHabit(parsed.data);
+
+    // Also create a draft planner task linked to this habit
+    const today = new Date().toISOString().split("T")[0];
+    storage.createPlannerTask({
+      goal: habit.name,
+      areaId: habit.areaId || null,
+      habitId: habit.id,
+      isDraft: 1,
+      sourceType: "habit",
+      status: "planned",
+      date: today,
+      recurrence: habit.frequency,
+      startTime: null,
+      endTime: null,
+      hours: null,
+      result: null,
+    });
+
+    res.json(habit);
   });
   app.patch("/api/habits/:id", (req, res) => {
     const result = storage.updateHabit(Number(req.params.id), req.body);
@@ -315,6 +334,9 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   // PLANNER TASKS
   // ============================================================
+  app.get("/api/planner-tasks/drafts", (_req, res) => {
+    res.json(storage.getDraftTasks());
+  });
   app.get("/api/planner-tasks", (req, res) => {
     const { date, areaId } = req.query;
     if (date) {

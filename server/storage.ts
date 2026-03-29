@@ -111,6 +111,7 @@ export interface IStorage {
   getPlannerTasksByDate(date: string): PlannerTask[];
   getPlannerTasksByArea(areaId: number): PlannerTask[];
   getAllPlannerTasks(): PlannerTask[];
+  getDraftTasks(): PlannerTask[];
   createPlannerTask(data: InsertPlannerTask): PlannerTask;
   updatePlannerTask(id: number, data: Partial<InsertPlannerTask>): PlannerTask | undefined;
   deletePlannerTask(id: number): void;
@@ -340,10 +341,20 @@ export class DatabaseStorage implements IStorage {
   getAllPlannerTasks(): PlannerTask[] {
     return db.select().from(plannerTasks).all();
   }
+  getDraftTasks(): PlannerTask[] {
+    return db.select().from(plannerTasks).where(eq(plannerTasks.isDraft, 1)).all();
+  }
   createPlannerTask(data: InsertPlannerTask): PlannerTask {
     return db.insert(plannerTasks).values(data).returning().get();
   }
   updatePlannerTask(id: number, data: Partial<InsertPlannerTask>): PlannerTask | undefined {
+    // Auto-publish: if startTime is being set and task is a draft, auto-set isDraft to 0
+    if (data.startTime) {
+      const existing = db.select().from(plannerTasks).where(eq(plannerTasks.id, id)).get();
+      if (existing && existing.isDraft === 1) {
+        data.isDraft = 0;
+      }
+    }
     return db.update(plannerTasks).set(data).where(eq(plannerTasks.id, id)).returning().get();
   }
   deletePlannerTask(id: number): void {
