@@ -351,7 +351,7 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
             )}
 
             {/* Content */}
-            <div className="flex-1 min-w-0" onClick={() => setDetailOpen(true)} role="button">
+            <div className="flex-1 min-w-0" onClick={() => itemIsDraft ? setExpanded(!expanded) : setDetailOpen(true)} role="button">
               <div className="flex items-center gap-2">
                 <p className={`text-sm font-medium truncate ${isDone ? "line-through text-muted-foreground" : ""}`}>
                   {mainResponse}
@@ -470,7 +470,177 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
           )}
         </CardContent>
       </Card>
+
+      {/* Edit dialog for published routine items */}
+      {!itemIsDraft && (
+        <EditRoutineDialog
+          item={item}
+          open={detailOpen}
+          onOpenChange={setDetailOpen}
+        />
+      )}
     </>
+  );
+}
+
+// ============================================================
+// EDIT ROUTINE DIALOG (time, duration, location)
+// ============================================================
+function EditRoutineDialog({ item, open, onOpenChange }: {
+  item: RoutineItem; open: boolean; onOpenChange: (v: boolean) => void;
+}) {
+  // Parse current time into 12h format
+  const parseTime = () => {
+    const [h, m] = item.time.split(":");
+    const hour24 = parseInt(h);
+    const ampm = hour24 >= 12 ? "PM" : "AM";
+    const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
+    // Round minute to nearest 5 for the Select options
+    const minNum = parseInt(m);
+    const rounded = Math.round(minNum / 5) * 5;
+    const minute = String(rounded >= 60 ? 55 : rounded).padStart(2, "0");
+    return { hour: String(hour12), minute, ampm };
+  };
+  const parsed = parseTime();
+
+  const [editHour, setEditHour] = useState(parsed.hour);
+  const [editMinute, setEditMinute] = useState(parsed.minute);
+  const [editAmPm, setEditAmPm] = useState(parsed.ampm);
+  const [editDuration, setEditDuration] = useState(String(item.durationMinutes));
+  const [editLocation, setEditLocation] = useState(item.location || "");
+
+  const resetForm = () => {
+    const p = parseTime();
+    setEditHour(p.hour);
+    setEditMinute(p.minute);
+    setEditAmPm(p.ampm);
+    setEditDuration(String(item.durationMinutes));
+    setEditLocation(item.location || "");
+  };
+
+  const hours = Array.from({ length: 12 }, (_, i) => i + 1);
+  const minutes = ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"];
+  const durationPresets = [5, 10, 15, 20, 30, 45, 60, 90, 120, 150, 180];
+  const durationOptions = durationPresets.includes(item.durationMinutes)
+    ? durationPresets
+    : [...durationPresets, item.durationMinutes].sort((a, b) => a - b);
+
+  const updateRoutine = useMutation({
+    mutationFn: () => {
+      let h = parseInt(editHour);
+      if (editAmPm === "PM" && h !== 12) h += 12;
+      if (editAmPm === "AM" && h === 12) h = 0;
+      const time24 = `${String(h).padStart(2, "0")}:${editMinute}`;
+      return apiRequest("PATCH", `/api/routine-items/${item.id}`, {
+        time: time24,
+        durationMinutes: parseInt(editDuration) || 10,
+        location: editLocation.trim() || null,
+      });
+    },
+    onSuccess: () => {
+      onOpenChange(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/routine-items"] });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (v) resetForm(); onOpenChange(v); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-base">Edit Routine Item</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 pt-2">
+          <p className="text-sm text-muted-foreground truncate">{item.response}</p>
+
+          {/* Time */}
+          <div>
+            <label className="text-[10px] text-muted-foreground mb-1 block">Time</label>
+            <div className="flex items-center gap-1.5">
+              <Select value={editHour} onValueChange={setEditHour}>
+                <SelectTrigger className="h-8 text-xs w-[70px]" data-testid={`edit-hour-${item.id}`}>
+                  <SelectValue placeholder="Hr" />
+                </SelectTrigger>
+                <SelectContent>
+                  {hours.map(h => (
+                    <SelectItem key={h} value={String(h)}>{h}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-sm font-medium text-muted-foreground">:</span>
+              <Select value={editMinute} onValueChange={setEditMinute}>
+                <SelectTrigger className="h-8 text-xs w-[70px]" data-testid={`edit-min-${item.id}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {minutes.map(m => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="flex rounded-md border overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setEditAmPm("AM")}
+                  className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    editAmPm === "AM"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                >AM</button>
+                <button
+                  type="button"
+                  onClick={() => setEditAmPm("PM")}
+                  className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    editAmPm === "PM"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                >PM</button>
+              </div>
+            </div>
+          </div>
+
+          {/* Duration + Location */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] text-muted-foreground mb-1 block">Duration</label>
+              <Select value={editDuration} onValueChange={setEditDuration}>
+                <SelectTrigger className="h-8 text-xs" data-testid={`edit-duration-${item.id}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {durationOptions.map(m => (
+                    <SelectItem key={m} value={String(m)}>
+                      {m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground mb-1 block">Location</label>
+              <Input
+                value={editLocation}
+                onChange={(e) => setEditLocation(e.target.value)}
+                placeholder="e.g. my office"
+                className="h-8 text-xs"
+                data-testid={`edit-location-${item.id}`}
+              />
+            </div>
+          </div>
+
+          <Button
+            className="w-full"
+            size="sm"
+            disabled={!editHour || updateRoutine.isPending}
+            onClick={() => updateRoutine.mutate()}
+            data-testid={`edit-save-${item.id}`}
+          >
+            {updateRoutine.isPending ? "Saving..." : "Save Changes"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

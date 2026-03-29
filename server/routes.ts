@@ -202,8 +202,24 @@ export function registerRoutes(server: Server, app: Express) {
     res.json(habit);
   });
   app.patch("/api/habits/:id", (req, res) => {
-    const result = storage.updateHabit(Number(req.params.id), req.body);
+    const habitId = Number(req.params.id);
+    const result = storage.updateHabit(habitId, req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
+
+    // Sync linked routine item — propagate name/craving/reward changes
+    const allRoutineItems = storage.getRoutineItems();
+    const linkedItem = allRoutineItems.find(ri => ri.habitId === habitId);
+    if (linkedItem) {
+      const routineUpdate: Record<string, any> = {};
+      if (req.body.name !== undefined) routineUpdate.response = req.body.name;
+      if (req.body.craving !== undefined) routineUpdate.craving = req.body.craving;
+      if (req.body.reward !== undefined) routineUpdate.reward = req.body.reward;
+      if (req.body.areaId !== undefined) routineUpdate.areaId = req.body.areaId;
+      if (Object.keys(routineUpdate).length > 0) {
+        storage.updateRoutineItem(linkedItem.id, routineUpdate);
+      }
+    }
+
     res.json(result);
   });
   app.delete("/api/habits/:id", (req, res) => {

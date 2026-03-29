@@ -11,7 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Target, Plus, Trash2, CheckCircle2,
+  Target, Plus, Trash2, CheckCircle2, Pencil,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import type { Identity, Habit, HabitLog, Area } from "@shared/schema";
@@ -97,6 +97,7 @@ function HabitRow({ habit, todayLogs, identities, areas, today }: {
   const identity = identities.find(i => i.id === habit.identityId);
   const area = areas.find(a => a.id === habit.areaId);
   const timeOfDay = TIME_OF_DAY_CATEGORIES.find(t => t.value === habit.timeOfDay);
+  const [editOpen, setEditOpen] = useState(false);
 
   const logHabit = useMutation({
     mutationFn: () => apiRequest("POST", "/api/habit-logs", { habitId: habit.id, date: today, count: 1 }),
@@ -123,61 +124,65 @@ function HabitRow({ habit, todayLogs, identities, areas, today }: {
   });
 
   return (
-    <Card className="group">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => isDone ? removeLog.mutate() : logHabit.mutate()}
-            className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${
-              isDone
-                ? "border-primary bg-primary scale-110"
-                : "border-muted-foreground/30 hover:border-primary/50"
-            }`}
-            data-testid={`habit-check-${habit.id}`}
-          >
-            {isDone && <CheckCircle2 className="w-4 h-4 text-primary-foreground" />}
-          </button>
+    <>
+      <Card className="group" role="button" onClick={() => setEditOpen(true)} data-testid={`habit-card-${habit.id}`}>
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={(e) => { e.stopPropagation(); isDone ? removeLog.mutate() : logHabit.mutate(); }}
+              className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${
+                isDone
+                  ? "border-primary bg-primary scale-110"
+                  : "border-muted-foreground/30 hover:border-primary/50"
+              }`}
+              data-testid={`habit-check-${habit.id}`}
+            >
+              {isDone && <CheckCircle2 className="w-4 h-4 text-primary-foreground" />}
+            </button>
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className={`text-sm font-medium ${isDone ? "line-through text-muted-foreground" : ""}`}>
-                {habit.name}
-              </p>
-              <Badge variant="outline" className="text-[10px] h-4 px-1">
-                {formatRecurrence(habit.frequency)}
-              </Badge>
-              {timeOfDay && (
-                <Badge variant="outline" className="text-[10px] h-4 px-1 text-orange-600 dark:text-orange-400 border-orange-500/30">
-                  {timeOfDay.label}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className={`text-sm font-medium ${isDone ? "line-through text-muted-foreground" : ""}`}>
+                  {habit.name}
+                </p>
+                <Badge variant="outline" className="text-[10px] h-4 px-1">
+                  {formatRecurrence(habit.frequency)}
                 </Badge>
-              )}
-            </div>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              {area && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
-                  {area.name}
-                </span>
-              )}
-              {identity && (
-                <p className="text-[11px] text-muted-foreground">
-                  Identity: {identity.statement}
+                {timeOfDay && (
+                  <Badge variant="outline" className="text-[10px] h-4 px-1 text-orange-600 dark:text-orange-400 border-orange-500/30">
+                    {timeOfDay.label}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                {area && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+                    {area.name}
+                  </span>
+                )}
+                {identity && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Identity: {identity.statement}
+                  </p>
+                )}
+              </div>
+              {habit.craving && (
+                <p className="text-[11px] text-muted-foreground/70 mt-0.5 italic">
+                  because {habit.craving}
                 </p>
               )}
             </div>
-            {habit.craving && (
-              <p className="text-[11px] text-muted-foreground/70 mt-0.5 italic">
-                because {habit.craving}
-              </p>
-            )}
-          </div>
 
-          <Button variant="ghost" size="sm" className="text-destructive h-7 opacity-0 group-hover:opacity-100"
-            onClick={() => deleteHabit.mutate()}>
-            <Trash2 className="w-3 h-3" />
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+            <Button variant="ghost" size="sm" className="text-destructive h-7 opacity-0 group-hover:opacity-100"
+              onClick={(e) => { e.stopPropagation(); deleteHabit.mutate(); }}>
+              <Trash2 className="w-3 h-3" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <EditHabitDialog habit={habit} areas={areas} open={editOpen} onOpenChange={setEditOpen} />
+    </>
   );
 }
 
@@ -325,6 +330,153 @@ function NewHabitForm({ areas }: { areas: Area[] }) {
             data-testid="button-save-habit"
           >
             Create Habit
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
+// EDIT HABIT DIALOG
+// ============================================================
+function EditHabitDialog({ habit, areas, open, onOpenChange }: {
+  habit: Habit; areas: Area[]; open: boolean; onOpenChange: (v: boolean) => void;
+}) {
+  const [areaId, setAreaId] = useState(habit.areaId ? String(habit.areaId) : "");
+  const [action, setAction] = useState(habit.name);
+  const [timeOfDay, setTimeOfDay] = useState(habit.timeOfDay || "");
+  const [recurrenceJson, setRecurrenceJson] = useState<string | null>(habit.frequency);
+  const [because, setBecause] = useState(habit.craving || "");
+  const [reward, setReward] = useState(habit.reward || "");
+
+  // Reset form when dialog reopens
+  const resetForm = () => {
+    setAreaId(habit.areaId ? String(habit.areaId) : "");
+    setAction(habit.name);
+    setTimeOfDay(habit.timeOfDay || "");
+    setRecurrenceJson(habit.frequency);
+    setBecause(habit.craving || "");
+    setReward(habit.reward || "");
+  };
+
+  const groupedAreas = useMemo(() => {
+    const groups: Record<string, Area[]> = {};
+    areas.forEach(a => {
+      const cat = a.category || "Other";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(a);
+    });
+    return groups;
+  }, [areas]);
+
+  const update = useMutation({
+    mutationFn: async () => {
+      const data = {
+        name: action,
+        areaId: areaId && areaId !== "none" ? Number(areaId) : null,
+        timeOfDay: timeOfDay || null,
+        craving: because || null,
+        reward: reward || null,
+        response: action,
+        frequency: recurrenceJson || JSON.stringify({ type: "daily", interval: 1 }),
+      };
+      const res = await apiRequest("PATCH", `/api/habits/${habit.id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      onOpenChange(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/habits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/routine-items"] });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (v) resetForm(); onOpenChange(v); }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-base">Edit Habit</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">In the...</p>
+            <Select value={areaId} onValueChange={setAreaId}>
+              <SelectTrigger data-testid="edit-habit-area">
+                <SelectValue placeholder="Select an area" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No area</SelectItem>
+                {CATEGORY_ORDER.map(cat => {
+                  const catAreas = groupedAreas[cat];
+                  if (!catAreas) return null;
+                  return catAreas.map(a => (
+                    <SelectItem key={a.id} value={String(a.id)}>
+                      <span className="text-xs text-muted-foreground mr-1">{cat.substring(0, 3)}.</span>
+                      {a.name}
+                    </SelectItem>
+                  ));
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...I am the type of person who...</p>
+            <Input
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+              placeholder="e.g. exercises, meal preps"
+              data-testid="edit-habit-name"
+            />
+          </div>
+
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...in the...</p>
+            <Select value={timeOfDay} onValueChange={setTimeOfDay}>
+              <SelectTrigger data-testid="edit-habit-time">
+                <SelectValue placeholder="Select time of day" />
+              </SelectTrigger>
+              <SelectContent>
+                {TIME_OF_DAY_CATEGORIES.map(t => (
+                  <SelectItem key={t.value} value={t.value}>
+                    {t.label} <span className="text-xs text-muted-foreground ml-1">({t.range})</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <RecurrenceBuilder
+            value={recurrenceJson}
+            onChange={setRecurrenceJson}
+            requireRecurrence
+          />
+
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...because...</p>
+            <Input
+              value={because}
+              onChange={(e) => setBecause(e.target.value)}
+              placeholder="e.g. it's delicious, I have fun"
+            />
+          </div>
+
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...I'll be rewarded by...</p>
+            <Input
+              value={reward}
+              onChange={(e) => setReward(e.target.value)}
+              placeholder="e.g. making my tummy smile"
+            />
+          </div>
+
+          <Button
+            className="w-full"
+            disabled={!action.trim() || update.isPending}
+            onClick={() => update.mutate()}
+            data-testid="button-update-habit"
+          >
+            {update.isPending ? "Saving..." : "Save Changes"}
           </Button>
         </div>
       </DialogContent>
