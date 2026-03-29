@@ -545,19 +545,19 @@ function EditRoutineDialog({ item, open, onOpenChange }: {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (v) resetForm(); onOpenChange(v); }}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-sm">
         <DialogHeader>
           <DialogTitle className="text-base">Edit Routine Item</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 pt-2">
-          <p className="text-sm text-muted-foreground truncate">{item.response}</p>
+        <div className="space-y-3 pt-2 min-w-0">
+          <p className="text-sm text-muted-foreground line-clamp-2 break-words">{item.response}</p>
 
           {/* Time */}
           <div>
             <label className="text-[10px] text-muted-foreground mb-1 block">Time</label>
             <div className="flex items-center gap-1.5">
               <Select value={editHour} onValueChange={setEditHour}>
-                <SelectTrigger className="h-8 text-xs w-[70px]" data-testid={`edit-hour-${item.id}`}>
+                <SelectTrigger className="h-8 text-xs w-16 shrink-0" data-testid={`edit-hour-${item.id}`}>
                   <SelectValue placeholder="Hr" />
                 </SelectTrigger>
                 <SelectContent>
@@ -566,9 +566,9 @@ function EditRoutineDialog({ item, open, onOpenChange }: {
                   ))}
                 </SelectContent>
               </Select>
-              <span className="text-sm font-medium text-muted-foreground">:</span>
+              <span className="text-sm font-medium text-muted-foreground shrink-0">:</span>
               <Select value={editMinute} onValueChange={setEditMinute}>
-                <SelectTrigger className="h-8 text-xs w-[70px]" data-testid={`edit-min-${item.id}`}>
+                <SelectTrigger className="h-8 text-xs w-16 shrink-0" data-testid={`edit-min-${item.id}`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -577,11 +577,11 @@ function EditRoutineDialog({ item, open, onOpenChange }: {
                   ))}
                 </SelectContent>
               </Select>
-              <div className="flex rounded-md border overflow-hidden">
+              <div className="flex rounded-md border overflow-hidden shrink-0">
                 <button
                   type="button"
                   onClick={() => setEditAmPm("AM")}
-                  className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  className={`px-2 py-1 text-[11px] font-medium transition-colors ${
                     editAmPm === "AM"
                       ? "bg-primary text-primary-foreground"
                       : "bg-background text-muted-foreground hover:bg-muted"
@@ -590,7 +590,7 @@ function EditRoutineDialog({ item, open, onOpenChange }: {
                 <button
                   type="button"
                   onClick={() => setEditAmPm("PM")}
-                  className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  className={`px-2 py-1 text-[11px] font-medium transition-colors ${
                     editAmPm === "PM"
                       ? "bg-primary text-primary-foreground"
                       : "bg-background text-muted-foreground hover:bg-muted"
@@ -601,7 +601,7 @@ function EditRoutineDialog({ item, open, onOpenChange }: {
           </div>
 
           {/* Duration + Location */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2 min-w-0">
             <div>
               <label className="text-[10px] text-muted-foreground mb-1 block">Duration</label>
               <Select value={editDuration} onValueChange={setEditDuration}>
