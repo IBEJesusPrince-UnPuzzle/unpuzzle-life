@@ -13,6 +13,10 @@ import HabitsPage from "@/pages/habits";
 import ReviewPage from "@/pages/review";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
+import { useLocation, Link } from "wouter";
+import { LayoutDashboard, Inbox, Layers, Target, RotateCcw, Moon, Sun } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 function AppRouter() {
   return (
@@ -24,6 +28,52 @@ function AppRouter() {
       <Route path="/review" component={ReviewPage} />
       <Route component={NotFound} />
     </Switch>
+  );
+}
+
+const mobileNavItems = [
+  { href: "/", label: "Home", icon: LayoutDashboard },
+  { href: "/inbox", label: "Inbox", icon: Inbox, showBadge: true },
+  { href: "/horizons", label: "Horizons", icon: Layers },
+  { href: "/habits", label: "Habits", icon: Target },
+  { href: "/review", label: "Review", icon: RotateCcw },
+];
+
+function MobileNav() {
+  const [location] = useLocation();
+  const { data: stats } = useQuery<{ inboxCount: number }>({
+    queryKey: ["/api/stats"],
+    queryFn: () => apiRequest("GET", "/api/stats").then(r => r.json()),
+  });
+
+  return (
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border safe-area-bottom">
+      <div className="flex items-center justify-around h-14">
+        {mobileNavItems.map(({ href, label, icon: Icon, showBadge }) => {
+          const isActive = href === "/" ? location === "/" : location.startsWith(href);
+          return (
+            <Link key={href} href={href}>
+              <button
+                className={`flex flex-col items-center justify-center gap-0.5 w-full h-full px-2 transition-colors ${
+                  isActive ? "text-primary" : "text-muted-foreground"
+                }`}
+                data-testid={`mobile-nav-${label.toLowerCase()}`}
+              >
+                <span className="relative">
+                  <Icon className="w-5 h-5" />
+                  {showBadge && stats?.inboxCount ? (
+                    <span className="absolute -top-1.5 -right-2.5 bg-primary text-primary-foreground text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+                      {stats.inboxCount}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="text-[10px] font-medium">{label}</span>
+              </button>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
   );
 }
 
@@ -49,12 +99,23 @@ export default function App() {
             <div className="flex h-screen w-full">
               <AppSidebar isDark={isDark} toggleTheme={() => setIsDark(!isDark)} />
               <div className="flex flex-col flex-1 min-w-0">
-                <header className="flex items-center gap-2 p-2 border-b shrink-0">
+                <header className="hidden md:flex items-center gap-2 p-2 border-b shrink-0">
                   <SidebarTrigger data-testid="button-sidebar-toggle" />
                 </header>
-                <main className="flex-1 overflow-hidden">
+                <header className="md:hidden flex items-center justify-between px-4 py-2.5 border-b shrink-0">
+                  <span className="text-sm font-semibold tracking-tight">Momentum</span>
+                  <button
+                    onClick={() => setIsDark(!isDark)}
+                    className="p-1.5 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+                    data-testid="mobile-theme-toggle"
+                  >
+                    {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                  </button>
+                </header>
+                <main className="flex-1 overflow-hidden pb-14 md:pb-0">
                   <AppRouter />
                 </main>
+                <MobileNav />
               </div>
             </div>
           </SidebarProvider>

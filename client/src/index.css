@@ -220,3 +220,18 @@
     inset: -1px;
   }
 }
+
+/* Mobile bottom nav safe area */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Hide sidebar completely on mobile */
+@media (max-width: 767px) {
+  [data-sidebar="sidebar"] {
+    display: none !important;
+  }
+  [data-sidebar="rail"] {
+    display: none !important;
+  }
+}
