@@ -11,10 +11,12 @@ import InboxPage from "@/pages/inbox";
 import HorizonsPage from "@/pages/horizons";
 import HabitsPage from "@/pages/habits";
 import ReviewPage from "@/pages/review";
+import RoutinePage from "@/pages/routine";
+import PlannerPage from "@/pages/planner";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
-import { LayoutDashboard, Inbox, Layers, Target, RotateCcw, Moon, Sun } from "lucide-react";
+import { LayoutDashboard, Inbox, Layers, Target, RotateCcw, Moon, Sun, CalendarClock, CalendarDays } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -25,6 +27,8 @@ function AppRouter() {
       <Route path="/inbox" component={InboxPage} />
       <Route path="/horizons" component={HorizonsPage} />
       <Route path="/habits" component={HabitsPage} />
+      <Route path="/routine" component={RoutinePage} />
+      <Route path="/planner" component={PlannerPage} />
       <Route path="/review" component={ReviewPage} />
       <Route component={NotFound} />
     </Switch>
@@ -36,6 +40,8 @@ const mobileNavItems = [
   { href: "/inbox", label: "Inbox", icon: Inbox, showBadge: true },
   { href: "/horizons", label: "Horizons", icon: Layers },
   { href: "/habits", label: "Habits", icon: Target },
+  { href: "/routine", label: "Routine", icon: CalendarClock },
+  { href: "/planner", label: "Planner", icon: CalendarDays },
   { href: "/review", label: "Review", icon: RotateCcw },
 ];
 
@@ -54,7 +60,7 @@ function MobileNav({ isDark, toggleTheme }: { isDark: boolean; toggleTheme: () =
           return (
             <Link key={href} href={href}>
               <button
-                className={`flex flex-col items-center justify-center gap-0.5 w-full h-full px-2 transition-colors ${
+                className={`flex flex-col items-center justify-center gap-0.5 w-full h-full px-1 transition-colors ${
                   isActive ? "text-primary" : "text-muted-foreground"
                 }`}
                 data-testid={`mobile-nav-${label.toLowerCase()}`}
@@ -67,18 +73,18 @@ function MobileNav({ isDark, toggleTheme }: { isDark: boolean; toggleTheme: () =
                     </span>
                   ) : null}
                 </span>
-                <span className="text-[10px] font-medium">{label}</span>
+                <span className="text-[9px] font-medium leading-none">{label}</span>
               </button>
             </Link>
           );
         })}
         <button
           onClick={toggleTheme}
-          className="flex flex-col items-center justify-center gap-0.5 w-full h-full px-2 text-muted-foreground transition-colors"
+          className="flex flex-col items-center justify-center gap-0.5 w-full h-full px-1 text-muted-foreground transition-colors"
           data-testid="mobile-theme-toggle"
         >
           {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-          <span className="text-[10px] font-medium">{isDark ? "Light" : "Dark"}</span>
+          <span className="text-[9px] font-medium leading-none">{isDark ? "Light" : "Dark"}</span>
         </button>
       </div>
     </nav>

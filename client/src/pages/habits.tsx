@@ -243,7 +243,11 @@ function HabitRow({ habit, todayLogs, identities, today, last7 }: {
               <p className={`text-sm font-medium ${isDone ? "line-through text-muted-foreground" : ""}`}>
                 {habit.name}
               </p>
-              <Badge variant="outline" className="text-[10px] h-4 px-1">{habit.frequency}</Badge>
+              <Badge variant="outline" className="text-[10px] h-4 px-1">
+                {habit.frequency.startsWith("weekly:") 
+                  ? `${habit.frequency.split(":")[1].charAt(0).toUpperCase()}${habit.frequency.split(":")[1].slice(1, 3)}`
+                  : habit.frequency}
+              </Badge>
             </div>
             {identity && (
               <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -252,7 +256,7 @@ function HabitRow({ habit, todayLogs, identities, today, last7 }: {
             )}
             {habit.cue && (
               <p className="text-[11px] text-primary/70 mt-0.5">
-                {habit.cue.toLowerCase().startsWith('when') ? habit.cue : `When ${habit.cue}`} → {habit.response}
+                I'll {habit.cue} → I will {habit.response}
               </p>
             )}
           </div>
@@ -278,6 +282,7 @@ function NewHabitForm({ identities }: { identities: Identity[] }) {
   const [response, setResponse] = useState("");
   const [reward, setReward] = useState("");
   const [frequency, setFrequency] = useState("daily");
+  const [weeklyDay, setWeeklyDay] = useState("monday");
 
   const create = useMutation({
     mutationFn: () => apiRequest("POST", "/api/habits", {
@@ -286,14 +291,14 @@ function NewHabitForm({ identities }: { identities: Identity[] }) {
       cue: cue || null,
       response: response || null,
       reward: reward || null,
-      frequency,
+      frequency: frequency === "weekly" ? `weekly:${weeklyDay}` : frequency,
       targetCount: 1,
       active: 1,
       createdAt: new Date().toISOString(),
     }),
     onSuccess: () => {
       setName(""); setIdentityId(""); setCue(""); setResponse(""); setReward("");
-      setFrequency("daily"); setOpen(false);
+      setFrequency("daily"); setWeeklyDay("monday"); setOpen(false);
       queryClient.invalidateQueries({ queryKey: ["/api/habits"] });
     },
   });
@@ -330,26 +335,52 @@ function NewHabitForm({ identities }: { identities: Identity[] }) {
 
           <div>
             <label className="text-sm font-medium mb-1.5 block">Frequency</label>
-            <Select value={frequency} onValueChange={setFrequency}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="daily">Daily</SelectItem>
-                <SelectItem value="weekdays">Weekdays</SelectItem>
-                <SelectItem value="weekly">Weekly</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <Select value={frequency} onValueChange={setFrequency}>
+                <SelectTrigger className={frequency === "weekly" ? "flex-1" : ""}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekdays">Weekdays</SelectItem>
+                  <SelectItem value="weekend">Weekend</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                </SelectContent>
+              </Select>
+              {frequency === "weekly" && (
+                <Select value={weeklyDay} onValueChange={setWeeklyDay}>
+                  <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="monday">Monday</SelectItem>
+                    <SelectItem value="tuesday">Tuesday</SelectItem>
+                    <SelectItem value="wednesday">Wednesday</SelectItem>
+                    <SelectItem value="thursday">Thursday</SelectItem>
+                    <SelectItem value="friday">Friday</SelectItem>
+                    <SelectItem value="saturday">Saturday</SelectItem>
+                    <SelectItem value="sunday">Sunday</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
           </div>
 
           <div className="space-y-2 pt-1">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Habit Stack (optional)
             </p>
-            <Input value={cue} onChange={(e) => setCue(e.target.value)}
-              placeholder="Cue: When I... (e.g. finish my morning coffee)" className="text-sm" />
-            <Input value={response} onChange={(e) => setResponse(e.target.value)}
-              placeholder="Response: I will... (e.g. put on my running shoes)" className="text-sm" />
-            <Input value={reward} onChange={(e) => setReward(e.target.value)}
-              placeholder="Reward: Which gives me... (e.g. energy for the day)" className="text-sm" />
+            <div>
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 mb-1">Make it Obvious</p>
+              <Input value={cue} onChange={(e) => setCue(e.target.value)}
+                placeholder="I'll... (e.g. hear my alarm go off)" className="text-sm" />
+            </div>
+            <div>
+              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mb-1">Make it Easy</p>
+              <Input value={response} onChange={(e) => setResponse(e.target.value)}
+                placeholder="I will... (e.g. put on my running shoes)" className="text-sm" />
+            </div>
+            <div>
+              <p className="text-[10px] text-primary mb-1">Make it Satisfying</p>
+              <Input value={reward} onChange={(e) => setReward(e.target.value)}
+                placeholder="and I'll be rewarded by... (e.g. energy for the day)" className="text-sm" />
+            </div>
           </div>
 
           <Button className="w-full" disabled={!name.trim()} onClick={() => create.mutate()} data-testid="button-save-habit">

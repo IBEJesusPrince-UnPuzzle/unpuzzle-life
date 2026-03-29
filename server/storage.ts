@@ -4,6 +4,7 @@ import { eq, and, desc, asc } from "drizzle-orm";
 import {
   purposes, visions, goals, areas, projects, actions,
   identities, habits, habitLogs, inboxItems, weeklyReviews,
+  routineItems, routineLogs, plannerTasks,
   type Purpose, type InsertPurpose,
   type Vision, type InsertVision,
   type Goal, type InsertGoal,
@@ -15,6 +16,9 @@ import {
   type HabitLog, type InsertHabitLog,
   type InboxItem, type InsertInboxItem,
   type WeeklyReview, type InsertWeeklyReview,
+  type RoutineItem, type InsertRoutineItem,
+  type RoutineLog, type InsertRoutineLog,
+  type PlannerTask, type InsertPlannerTask,
 } from "@shared/schema";
 
 const sqlite = new Database("data.db");
@@ -87,6 +91,25 @@ export interface IStorage {
   getWeeklyReviews(): WeeklyReview[];
   createWeeklyReview(data: InsertWeeklyReview): WeeklyReview;
   updateWeeklyReview(id: number, data: Partial<InsertWeeklyReview>): WeeklyReview | undefined;
+
+  // Routine Items
+  getRoutineItems(): RoutineItem[];
+  createRoutineItem(data: InsertRoutineItem): RoutineItem;
+  updateRoutineItem(id: number, data: Partial<InsertRoutineItem>): RoutineItem | undefined;
+  deleteRoutineItem(id: number): void;
+
+  // Routine Logs
+  getRoutineLogsByDate(date: string): RoutineLog[];
+  createRoutineLog(data: InsertRoutineLog): RoutineLog;
+  deleteRoutineLog(id: number): void;
+
+  // Planner Tasks
+  getPlannerTasksByDate(date: string): PlannerTask[];
+  getPlannerTasksByArea(areaId: number): PlannerTask[];
+  getAllPlannerTasks(): PlannerTask[];
+  createPlannerTask(data: InsertPlannerTask): PlannerTask;
+  updatePlannerTask(id: number, data: Partial<InsertPlannerTask>): PlannerTask | undefined;
+  deletePlannerTask(id: number): void;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -242,6 +265,52 @@ export class DatabaseStorage implements IStorage {
   }
   updateWeeklyReview(id: number, data: Partial<InsertWeeklyReview>): WeeklyReview | undefined {
     return db.update(weeklyReviews).set(data).where(eq(weeklyReviews.id, id)).returning().get();
+  }
+
+  // Routine Items
+  getRoutineItems(): RoutineItem[] {
+    return db.select().from(routineItems).orderBy(asc(routineItems.sortOrder)).all();
+  }
+  createRoutineItem(data: InsertRoutineItem): RoutineItem {
+    return db.insert(routineItems).values(data).returning().get();
+  }
+  updateRoutineItem(id: number, data: Partial<InsertRoutineItem>): RoutineItem | undefined {
+    return db.update(routineItems).set(data).where(eq(routineItems.id, id)).returning().get();
+  }
+  deleteRoutineItem(id: number): void {
+    db.delete(routineLogs).where(eq(routineLogs.routineItemId, id)).run();
+    db.delete(routineItems).where(eq(routineItems.id, id)).run();
+  }
+
+  // Routine Logs
+  getRoutineLogsByDate(date: string): RoutineLog[] {
+    return db.select().from(routineLogs).where(eq(routineLogs.date, date)).all();
+  }
+  createRoutineLog(data: InsertRoutineLog): RoutineLog {
+    return db.insert(routineLogs).values(data).returning().get();
+  }
+  deleteRoutineLog(id: number): void {
+    db.delete(routineLogs).where(eq(routineLogs.id, id)).run();
+  }
+
+  // Planner Tasks
+  getPlannerTasksByDate(date: string): PlannerTask[] {
+    return db.select().from(plannerTasks).where(eq(plannerTasks.date, date)).all();
+  }
+  getPlannerTasksByArea(areaId: number): PlannerTask[] {
+    return db.select().from(plannerTasks).where(eq(plannerTasks.areaId, areaId)).orderBy(desc(plannerTasks.date)).all();
+  }
+  getAllPlannerTasks(): PlannerTask[] {
+    return db.select().from(plannerTasks).all();
+  }
+  createPlannerTask(data: InsertPlannerTask): PlannerTask {
+    return db.insert(plannerTasks).values(data).returning().get();
+  }
+  updatePlannerTask(id: number, data: Partial<InsertPlannerTask>): PlannerTask | undefined {
+    return db.update(plannerTasks).set(data).where(eq(plannerTasks.id, id)).returning().get();
+  }
+  deletePlannerTask(id: number): void {
+    db.delete(plannerTasks).where(eq(plannerTasks.id, id)).run();
   }
 }
 

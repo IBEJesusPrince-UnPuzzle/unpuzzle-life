@@ -1,0 +1,342 @@
+[
+  {
+    "order": 0,
+    "time": "03:30",
+    "durationMinutes": 10,
+    "location": "my bed",
+    "cue": "hear my signature alarm clock | or | simply wake up",
+    "craving": "it's my time to shine \ud83c\udf1e again because my mornings are all about IBE \ud83d\ude0c...let's start off by stretching that IBE Body \ud83e\uddd8\ud83c\udffd\u200d\u2640\ufe0fin \ud83d\udecf",
+    "response": "stretch & kegel",
+    "reward": "Getting my body and center in motion for my morning routine"
+  },
+  {
+    "order": 1,
+    "time": "03:40",
+    "durationMinutes": 20,
+    "location": "my bathroom",
+    "cue": "think about relasing the old, and capturing the new | think about setting the tone for my day",
+    "craving": "I need to use the restroom before weighing myself plus daily weigh-ins are like a tempature gage in the \"ice cube on a table\" example | habit and discipline is the way by which my desired life becomes my actual life so I effortlessly",
+    "response": "review and solidify my DPT whilst using the restroom, then weigh myself and log the weight in my body measurements tracker",
+    "reward": "being clear on doing what needs to be done | Detoxing my body to get a more accurate reading on my weight and seeing the small degree changes that'll eventually lead to a major breakthrough"
+  },
+  {
+    "order": 2,
+    "time": "04:00",
+    "durationMinutes": 20,
+    "location": "my kitchen / my laundry room",
+    "cue": "think about fueling my upcoming cardio workout",
+    "craving": "my lemon water detoxes and lubricates my body for my morning routine and | cardiovascular training on an empty stomach, prior to weightlifting, can create deficiencies during my training process and | having my hydration and fuel for my workout helps my endurance",
+    "response": "start my oatmeal, drink my lemon water with supplements | then head downstairs to start a load | Mon: Yellow/Brown then Dark, | Tues: Blue then Red/Pink/Purple, | Wed: White then Light/Grey, | Thur: Underwear, | Fri: Delicate then Athletic | eat my pre-workout oatmeal while making my protein drink and pulling my protein bar",
+    "reward": "Lubricating my body for my morning workout, Properly fueling my body for the cardiovascular training, and ensuring I have clean clothes"
+  },
+  {
+    "order": 3,
+    "time": "04:20",
+    "durationMinutes": 15,
+    "location": "my bathroom",
+    "cue": "think about getting ready for my workout",
+    "craving": "I use my favorite toothpaste/toothbrush and reciting my affirmations corrects my belief system so that my subconscious matches my consciousness",
+    "response": "brush my teeth, wash my face, and recite my affirmations in the mirror",
+    "reward": "Removing impurities from my mouth, face, and mind so I can focus during my morning workout"
+  },
+  {
+    "order": 4,
+    "time": "04:35",
+    "durationMinutes": 5,
+    "location": "my bedroom",
+    "cue": "hear my signature workout alarm clock",
+    "craving": "looking good is akin to feeling good",
+    "response": "get dressed in my sexy fit & fresh uniform to move my body",
+    "reward": "Looking and feeling good for my morning workout"
+  },
+  {
+    "order": 5,
+    "time": "04:40",
+    "durationMinutes": 15,
+    "location": "my car",
+    "cue": "tie up my workout shoes",
+    "craving": "when I see my fine self in my mirror I appreciate what being disciplined does for me",
+    "response": "grab my protein drink & bar, headphones, gym bag, and keys then head to the gym",
+    "reward": "Being ready to dive into my morning workout on time so no need to rush!!!\ud83d\ude01"
+  },
+  {
+    "order": 6,
+    "time": "04:55",
+    "durationMinutes": 150,
+    "location": "my gym",
+    "cue": "see the gym door",
+    "craving": "everday I move my body, I show how grateful I am of how it moves, develops, and grows",
+    "response": "exercise my body & mind | Day 1: Mobility, Cycle, Baking Buns | Day 2: Mobility, Cycle, Baking Buns | Day 3: Mobility, Cycle, Baking Buns | Day 4: Rest | Day 5: Mobility, Cycle, Baking Buns | Day 6: Mobility, Cycle, Baking Buns | Day 7: Mobility, Cycle, Baking Buns",
+    "reward": "Activating my strength in new ways for the first time and building on the gains from the previous day"
+  },
+  {
+    "order": 7,
+    "time": "07:25",
+    "durationMinutes": 5,
+    "location": "my car",
+    "cue": "think about restoring my skin, hair, and body at home | & | hear my signature Kid's alarm clock",
+    "craving": "workout recovery is just as important as the workout | & | they are starting their day",
+    "response": "grab my protein drink & bar, headphones, gym bag, and keys then head home | I'll greet them a great moring wake up call to help them get centered like me \ud83d\ude0c",
+    "reward": "Keeping on a tight schedule that allows me to breakdown THEN build-up my body | & | Starting their mornings with love and helping them enjoy another day of their life"
+  },
+  {
+    "order": 8,
+    "time": "07:30",
+    "durationMinutes": 15,
+    "location": "my bedroom / my kitchen / hall bathroom",
+    "cue": "think about how quickly I need to rebuild and recover the muscles I just broke down",
+    "craving": "workout recovery is just as important as the workout",
+    "response": "start my post-workout meal, boil the 2 big pots of water, clean the tub, setup my ceiling light, get undressed, put dirty clothes in correct basket, and then finish post-workout meal",
+    "reward": "Setting up my workout recovery, removing soiled clothes, and restoring my nutrition"
+  },
+  {
+    "order": 9,
+    "time": "07:45",
+    "durationMinutes": 20,
+    "location": "my bathroom",
+    "cue": "discard post-workout meal trash",
+    "craving": "I excreted impurities out my skin and scalp while working out so I need to remove the impurities asap to keep my skin and scalp healthy before my Epsom Salt soak",
+    "response": "take a shower and wash/rinse hair",
+    "reward": "Having clean skin for my Epsom Salt soak"
+  },
+  {
+    "order": 10,
+    "time": "08:05",
+    "durationMinutes": 45,
+    "location": "my hall bathroom",
+    "cue": "think about soaking these tired muscles | realize, as I'm soaking, of the deliberate power I have over my life and my day",
+    "craving": "my relaxing bath alleviates muscle soreness, reduce inflammation, and promote relaxation | I am perfect, empowered, meant, and desired to be here",
+    "response": "stop up the tub, start running the cold water, pour both pots of boiling water in the tub, pour 2 cups of Epsom Salt in the tub, start ceiling lights, ease on in and soak on each side for 10 mins, then unstop tub, and do a final rinse off | center the herb, temp, lighting, angle, and position around myself so I can do the necessary work to document my progress and program (recalling my waking dreams, thinking and speaking out loud through the playback",
+    "reward": "Having hair, scalp, and skin primed for my restorative regimen | Escaping into my most safest place (so I get the navigation back to me by reviewing myself in all 5 places, UnPuzzle Life, I get into the frequency of peace and tranquility then I recieve. So, after sifting though my findings, I appreciate what I have, imagine what I want, and recieve my replishment | I've never stopped being a pioneer. I just was too sick and unhealthy to settle in the new found land. But I judged myself because I hadn't reached permamnent peace & tranquility yet. | My question to myself: How could I fall past pain and deep into suffeing when I know what I know and have overcome whtat I have? | My answer to myself: I made the wrong choice in who I had in my enviorment. I didn't stay cognizant to how environment drives expereince. If only I had did \"My Best\" in choosing the right people in my enviornment, I would have permanent peace and tranquility by now. | The reality: \"My Best\" in choosing the right people had less to do with the wisdom, from prior breakthroughs, and more to do with me having inner resolve. Inner resolve is the steadfast commitment and internal fortitude to persist in your goals or values, especially when faced with adversity, turmoil, or systemic obstacles. It acts as a psychological anchor, providing the \"flexible steadiness\" needed to remain focused while the \"tides of the times rise and fall\". So, instead of just looking back at my prior breakthroughs and saying oh yeah I can get through this current one because I got through this or that in the past, I needed inner resolve in the current moment so that my pain didn't turn into suffering. You see pain is inevitable, but suffering is optional. Pain is inevitable because it is characteristic of life, while suffering is optional because it is a reaction to pain. Suffering comes only after pain has been experienced in life but once suffering is established it no longer needs pain to keep it going or growing. Pain is dependent on life while suffering can become self-sufficient. You seeCLICK | Pain is a person\u2019s experience of emotional or psychological discomfort. So, it\u2019s the experience they went through CLICK | Suffering is their interpretation and emotional response to that discomfort. So, it\u2019s the interpretation of the experience. And guess what, there are no rules or laws to that interpretation because CLICK | suffering can be influenced by factors such as personal beliefs, coping mechanisms, support systems, and individual resilience. | Ok, so we established the difference, now what\u2019s the problem exactly and how do we solve it? CLICK FOR NEXT SLIDE | As I expereince pain, \"My Best\" will change but the saving grace to avoid  on a highlight reel of my prior breakthroughs, I'm better off basing it in how I can internally resolve what I'm going through in real time | The backstory: I was looking at suffering like a valley near the base of a mountain and permamnent peace and tranquility at the peak of that moutain. I thought every breakthrough was like gaining a foothold on a higher rock for my climb up the mountain. So as I climbed, I thought the days of suffering were far behind me. I made it to the top of that mountain then realized I had to jump off that motherfucker to save myself. As I was falling from my emergency jump, I realized that mountain wasn't neccessary, it was a choice. Life is a journey and there are many paths you can choose to follow and each of those paths have different terrains you'll encounter. Other examples are valleys, hills, plains, deserts, plateaus, canyons, and even different bodies of water. Each type has unique features that influence your experience. So, the path I chose contained a mountain. And even though I made it to the top, my journey didn't stop there because, in reality, there is no top or end. There's just when life ends. Until  life ends, your journey will keep on going. | The reality cont'd: \"My Best' is actually referred to as inner resolve which  is \"My Best\", not prior breakthroughs like some highlight reel. I'm better off basing it in how I can internally resolve what I'm going through in real time. As I mentioned before, so long as your life continues, so does your journey no matter what you've accomplished. Since the journey continues, pain is ineviatable but suffering remains a sizeable option. Inner resolve is what opts you out of suffering."
+  },
+  {
+    "order": 11,
+    "time": "08:50",
+    "durationMinutes": 10,
+    "location": "my bedroom",
+    "cue": "hang my towel up to dry",
+    "craving": "the shower removed impurities, but it also removed the protections from my last regimen so I need to restore it to keep my skin healthy",
+    "response": "apply butt cream, face cream, face sunscreen, foot & crevice cream, body cocoa butter, and hair oil while stretch posing",
+    "reward": "Having hair, scalp, and skin protected from pollutants and dirt"
+  },
+  {
+    "order": 12,
+    "time": "09:00",
+    "durationMinutes": 5,
+    "location": "my bedroom",
+    "cue": "stop posing",
+    "craving": "it's just the right amount of sexy to keep me visually aware and proud of my physical appearance",
+    "response": "get dressed with leggings to accentuate my lower curves and crop top / Dryfit top to accentuate my upper curves",
+    "reward": "Getting dressed in a fit & sexy way to keep me visually aware and proud of my physical appearance"
+  },
+  {
+    "order": 13,
+    "time": "09:05",
+    "durationMinutes": 5,
+    "location": "my house",
+    "cue": "see my clean clothes dwindle down a bit",
+    "craving": "my laundry needs to dry & I need to wash my next load",
+    "response": "move washed laundry to dryer, | Mon: then Dark, | Tues: then Red/Pink/Purple, | Wed: then Light/Grey, | Thur: still washing | Fri: then Athletic",
+    "reward": "Keeping my clothes ready for my day"
+  },
+  {
+    "order": 14,
+    "time": "09:10",
+    "durationMinutes": 155,
+    "location": "my office",
+    "cue": "think about getting my workday started",
+    "craving": "getting myself together before solutioning is excellence \ud83d\ude0c",
+    "response": "check my calendar, and block off meeting preparation time and find where I can fit Laundry Folding in my Workday",
+    "reward": "Being a considerate person and casting another vote for being the best at what I do"
+  },
+  {
+    "order": 15,
+    "time": "11:45",
+    "durationMinutes": 30,
+    "location": "my office",
+    "cue": "cast another vote for being on top of my shit by touching all businesses",
+    "craving": "staying on top of everything is my system of clarity",
+    "response": "check & write down each business's next steps",
+    "reward": "Being prepared for what's to come with my projects"
+  },
+  {
+    "order": 16,
+    "time": "12:15",
+    "durationMinutes": 30,
+    "location": "my kitchen",
+    "cue": "hear my signature lunch alarm clock",
+    "craving": "eating a healthy lunch at the same time each day helps my bodily systems function optimally because they're operating on abundance not scarcity",
+    "response": "fix and consume lunch",
+    "reward": "Casting a vote for bodily systems to work optimally"
+  },
+  {
+    "order": 17,
+    "time": "12:45",
+    "durationMinutes": 15,
+    "location": "my office corner",
+    "cue": "think about setting the tone for Thee Sweetest Taboo, posting my meditation video and or recording a Good Afternoon Word of the Day",
+    "craving": "this is my way of sharing my daily bread with the people I get to reach",
+    "response": "post my video and word of the day to Theesweetesttaboo.com and connected socials",
+    "reward": "helping the people I get to reach shift from fear and suffering to love and pleasure"
+  },
+  {
+    "order": 18,
+    "time": "13:00",
+    "durationMinutes": 40,
+    "location": "my office",
+    "cue": "focus on reducing my mail clutter",
+    "craving": "I need to do this daily in order to keep clutter down and stay on top of my business | + my laundry needs to dry & I need to make the washer available for others",
+    "response": "make BH calls & | run my mailing system: | CTA/INFO | RECYCLE | SHRED | + pull 1st load out and move 2nd load into dryer",
+    "reward": "Keeping a tidy mail area, being aware of any mailed CTA/INFO, and making BH calls"
+  },
+  {
+    "order": 19,
+    "time": "13:40",
+    "durationMinutes": 125,
+    "location": "my office",
+    "cue": "focus back on work",
+    "craving": "this work not only funds our lifestyle, it develops my expertise and increases my income producing level",
+    "response": "work on business for 2 uninterrupted hours",
+    "reward": "Securing the labor that produces our fruits"
+  },
+  {
+    "order": 20,
+    "time": "15:45",
+    "durationMinutes": 30,
+    "location": "my car",
+    "cue": "hear the alarm to pick-up the kids",
+    "craving": "building our brain muscle is something we do everyday",
+    "response": "pick up the kids from school and find out their day was and 1-2 things they learned or found exciting",
+    "reward": "Being actively engaged in their growth and development"
+  },
+  {
+    "order": 21,
+    "time": "16:15",
+    "durationMinutes": 30,
+    "location": "my office",
+    "cue": "focus on wrapping up my work day | they will be thinking of their afterschool snack",
+    "craving": "timekeeping piles up on me when it isn't a daily effort and staying on top of everything is my system of clarity | their afternoon snack fuels them for their homework",
+    "response": "log HRDL Time and list tomorrow's to-dos | they will enjoy their snack a little bit of screen time",
+    "reward": "Staying on top of timekeeping and being prepared for what's to come with my clients and projects for the next day | getting to enjoy a good meal and a fun activity"
+  },
+  {
+    "order": 22,
+    "time": "16:45",
+    "durationMinutes": 60,
+    "location": "my office/applicable building",
+    "cue": "focus on my \"chore of the day\" | they will focus on their homework",
+    "craving": "I won't rise to my goal of keeping a clean & tidy house, I will fall to my clean & tidy systems which this is exactly that | homework reinforces what they are learning",
+    "response": "Mon: DC My Bath/Bedroom | Tue: DC Kitchenette | Wed: DC Laundry Room | Thur: Run Errands | Friday: D&P Storage Areas | they will sit at their desk, stimulant free, and complete their homework",
+    "reward": "Keeping a clean & tidy house | Staying on top of their studies so they can enjoy learning"
+  },
+  {
+    "order": 23,
+    "time": "17:45",
+    "durationMinutes": 180,
+    "location": "applicable area",
+    "cue": "focus on family time",
+    "craving": "family time is an awesome time to enjoy ours together and make wonderful memories",
+    "response": "(Sun & Thurs spend time meal prepping) eat dinner anywhere between 6-8PM & attend extracurricular activities, game night, or movie night | 8pm complete nightly family chores",
+    "reward": "Having a great meal and time with my family | keep a clean and tidy house"
+  },
+  {
+    "order": 24,
+    "time": "20:45",
+    "durationMinutes": 5,
+    "location": "kid's bathroom",
+    "cue": "focus on the Kid's night time routine",
+    "craving": "brushing at night is more effective at stopping plaque and germs from forming cavities when compared to brushing at morning",
+    "response": "ensure kids brush their teeth",
+    "reward": "Keeping my Kid's mouth healthy and pain-free"
+  },
+  {
+    "order": 25,
+    "time": "20:50",
+    "durationMinutes": 20,
+    "location": "kid's bathroom",
+    "cue": "see the shower",
+    "craving": "after a long day of school and play, there are impurities on their skin and clothes",
+    "response": "ensure kids get undressed & washed up",
+    "reward": "Removing impurities from my little one's skin"
+  },
+  {
+    "order": 26,
+    "time": "21:10",
+    "durationMinutes": 5,
+    "location": "kid's bathroom/laundry room/kid's room",
+    "cue": "see their dirty clothes",
+    "craving": "they need to keep laundry together and the shower removed impurities, but it also removed the protections from their last mositurizing so they need to restore it",
+    "response": "ensure kids put away dirty clothes, mositurize & spray body, then get dressed",
+    "reward": "Keeping a tidy laundry area and having the Kid's hair, scalp, and skin protected from pollutants and dirt"
+  },
+  {
+    "order": 27,
+    "time": "21:15",
+    "durationMinutes": 15,
+    "location": "kid's room",
+    "cue": "focus on getting them in the bed",
+    "craving": "a nice snuggly routine that they can depend on ensures they will stick to it and get the rest they need",
+    "response": "tuck kids into bed and read a bedtime story",
+    "reward": "Having Kid's snuggly tucked in their beds and drifting off to dreamland"
+  },
+  {
+    "order": 28,
+    "time": "21:30",
+    "durationMinutes": 5,
+    "location": "my office",
+    "cue": "focus on my night time routine",
+    "craving": "brushing at night is more effective at stopping plaque and germs from forming cavities when compared to brushing at morning",
+    "response": "brush teeth then get undressed",
+    "reward": "Keeping my mouth healthy and pain-free"
+  },
+  {
+    "order": 29,
+    "time": "21:35",
+    "durationMinutes": 10,
+    "location": "my office/my office bathroom",
+    "cue": "see my dirty clothes",
+    "craving": "after a long day, there are impurities on my skin and clothes that I don't want to sleep in",
+    "response": "put my dirty clothes away then take a quick evening wash/exfoliation",
+    "reward": "Removing impurities from my skin so I sleep well"
+  },
+  {
+    "order": 30,
+    "time": "21:45",
+    "durationMinutes": 10,
+    "location": "my office",
+    "cue": "hang my towel up to dry",
+    "craving": "the shower removed impurities, but it also removed the protections from my last regimen so I need to restore it to keep my skin healthy",
+    "response": "apply eyelash/brow castor oil, butt cream, face cream, body cocoa butter, and crevice cream while stretch posing",
+    "reward": "Having skin protected from pollutants and dirt"
+  },
+  {
+    "order": 31,
+    "time": "21:55",
+    "durationMinutes": 5,
+    "location": "my office",
+    "cue": "stop posing",
+    "craving": "it's just the right amount of sexy to keep me visually aware and proud of my physical appearance",
+    "response": "get dressed with nite gown to accentuate my curves and tie up my hair",
+    "reward": "Getting dressed in a relaxing & sexy way that keeps me visually aware and proud of my physical appearance"
+  },
+  {
+    "order": 32,
+    "time": "22:00",
+    "durationMinutes": 3,
+    "location": "my kitchen / my laundry room / my bedroom",
+    "cue": "focus on setting my morning environment",
+    "craving": "my lemon water detoxes and lubricate my body for my morning routine",
+    "response": "grab lemon water, start a load of laundry, then place water on nightstand",
+    "reward": "Setting my environment to support my healthy habit"
+  },
+  {
+    "order": 33,
+    "time": "22:03",
+    "durationMinutes": 7,
+    "location": "my bedroom",
+    "cue": "focus on getting into bed",
+    "craving": "I deserve to rest this beautiful body and mind of mine after the great efforts and contributions I made today",
+    "response": "slide into bed, say my nightly prayers, and drift off to dreamland",
+    "reward": "Getting the rest I deserve and require, and having my desired life becoming my actual life by habit so I effortlessly live out my desires"
+  }
+]

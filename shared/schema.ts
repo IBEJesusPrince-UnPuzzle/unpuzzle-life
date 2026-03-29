@@ -40,6 +40,7 @@ export const areas = sqliteTable("areas", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   description: text("description"),
+  category: text("category"), // group: UnPuzzle, Chores, Routines, Life, Getting Things Done
   icon: text("icon"), // lucide icon name
   sortOrder: integer("sort_order").notNull().default(0),
 });
@@ -111,6 +112,52 @@ export const habitLogs = sqliteTable("habit_logs", {
 });
 
 // ============================================================
+// DAILY ROUTINE (Habit-stacked 24-hour schedule)
+// ============================================================
+
+export const routineItems = sqliteTable("routine_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sortOrder: integer("sort_order").notNull().default(0),
+  time: text("time").notNull(), // HH:MM format
+  durationMinutes: integer("duration_minutes").notNull().default(10),
+  location: text("location"),
+  cue: text("cue"), // "I'll..." (Make it Obvious)
+  craving: text("craving"), // "and because..." (Make it Attractive)
+  response: text("response").notNull(), // "I will..." (Make it Easy)
+  reward: text("reward"), // "and I'll be rewarded by..." (Make it Satisfying)
+  areaId: integer("area_id").references(() => areas.id),
+  habitId: integer("habit_id").references(() => habits.id),
+  dayVariant: text("day_variant"), // JSON: day-specific overrides e.g. {"Mon": "Dark", "Tue": "Colors"}
+  active: integer("active").notNull().default(1),
+});
+
+// Daily routine completion logs
+export const routineLogs = sqliteTable("routine_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  routineItemId: integer("routine_item_id").notNull().references(() => routineItems.id),
+  date: text("date").notNull(), // YYYY-MM-DD
+  completedAt: text("completed_at"),
+  note: text("note"),
+});
+
+// ============================================================
+// DAILY PLANNER TRACKER (DPT)
+// ============================================================
+
+export const plannerTasks = sqliteTable("planner_tasks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  date: text("date").notNull(), // YYYY-MM-DD
+  areaId: integer("area_id").references(() => areas.id),
+  goal: text("goal").notNull(), // What to do
+  startTime: text("start_time"), // HH:MM format
+  endTime: text("end_time"), // HH:MM format
+  hours: text("hours"), // decimal hours as string
+  result: text("result"), // outcome notes
+  status: text("status").notNull().default("planned"), // planned, done, skipped
+  recurrence: text("recurrence"), // null=one-time, "daily", "weekdays", "weekend", "weekly:monday", "monthly"
+});
+
+// ============================================================
 // GTD INBOX (Capture everything)
 // ============================================================
 
@@ -154,6 +201,9 @@ export const insertHabitSchema = createInsertSchema(habits).omit({ id: true });
 export const insertHabitLogSchema = createInsertSchema(habitLogs).omit({ id: true });
 export const insertInboxItemSchema = createInsertSchema(inboxItems).omit({ id: true });
 export const insertWeeklyReviewSchema = createInsertSchema(weeklyReviews).omit({ id: true });
+export const insertRoutineItemSchema = createInsertSchema(routineItems).omit({ id: true });
+export const insertRoutineLogSchema = createInsertSchema(routineLogs).omit({ id: true });
+export const insertPlannerTaskSchema = createInsertSchema(plannerTasks).omit({ id: true });
 
 export type Purpose = typeof purposes.$inferSelect;
 export type InsertPurpose = z.infer<typeof insertPurposeSchema>;
@@ -177,3 +227,9 @@ export type InboxItem = typeof inboxItems.$inferSelect;
 export type InsertInboxItem = z.infer<typeof insertInboxItemSchema>;
 export type WeeklyReview = typeof weeklyReviews.$inferSelect;
 export type InsertWeeklyReview = z.infer<typeof insertWeeklyReviewSchema>;
+export type RoutineItem = typeof routineItems.$inferSelect;
+export type InsertRoutineItem = z.infer<typeof insertRoutineItemSchema>;
+export type RoutineLog = typeof routineLogs.$inferSelect;
+export type InsertRoutineLog = z.infer<typeof insertRoutineLogSchema>;
+export type PlannerTask = typeof plannerTasks.$inferSelect;
+export type InsertPlannerTask = z.infer<typeof insertPlannerTaskSchema>;

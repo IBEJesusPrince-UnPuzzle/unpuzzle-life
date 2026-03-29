@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Inbox, Layers, Target, RotateCcw,
-  Sun, Moon, Flame
+  Sun, Moon, Flame, CalendarClock, CalendarDays
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -17,6 +17,8 @@ const navItems = [
   { title: "Inbox", url: "/inbox", icon: Inbox },
   { title: "Horizons", url: "/horizons", icon: Layers },
   { title: "Habits", url: "/habits", icon: Target },
+  { title: "Routine", url: "/routine", icon: CalendarClock },
+  { title: "Planner", url: "/planner", icon: CalendarDays },
   { title: "Weekly Review", url: "/review", icon: RotateCcw },
 ];
 

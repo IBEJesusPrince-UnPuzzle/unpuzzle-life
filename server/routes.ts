@@ -6,6 +6,8 @@ import {
   insertAreaSchema, insertProjectSchema, insertActionSchema,
   insertIdentitySchema, insertHabitSchema, insertHabitLogSchema,
   insertInboxItemSchema, insertWeeklyReviewSchema,
+  insertRoutineItemSchema, insertRoutineLogSchema,
+  insertPlannerTaskSchema,
 } from "@shared/schema";
 
 export function registerRoutes(server: Server, app: Express) {
@@ -236,6 +238,205 @@ export function registerRoutes(server: Server, app: Express) {
     const result = storage.updateWeeklyReview(Number(req.params.id), req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
+  });
+
+  // ============================================================
+  // ROUTINE ITEMS
+  // ============================================================
+  app.get("/api/routine-items", (_req, res) => {
+    res.json(storage.getRoutineItems());
+  });
+  app.post("/api/routine-items", (req, res) => {
+    const parsed = insertRoutineItemSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createRoutineItem(parsed.data));
+  });
+  app.patch("/api/routine-items/:id", (req, res) => {
+    const result = storage.updateRoutineItem(Number(req.params.id), req.body);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/routine-items/:id", (req, res) => {
+    storage.deleteRoutineItem(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // ROUTINE LOGS
+  // ============================================================
+  app.get("/api/routine-logs", (req, res) => {
+    const { date } = req.query;
+    if (date) {
+      res.json(storage.getRoutineLogsByDate(date as string));
+    } else {
+      res.json([]);
+    }
+  });
+  app.post("/api/routine-logs", (req, res) => {
+    const parsed = insertRoutineLogSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createRoutineLog(parsed.data));
+  });
+  app.delete("/api/routine-logs/:id", (req, res) => {
+    storage.deleteRoutineLog(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // Seed routine from JSON file
+  app.post("/api/routine-items/seed", (req, res) => {
+    const items = req.body;
+    if (!Array.isArray(items)) return res.status(400).json({ error: "Expected array" });
+    const created = items.map((item: any) => {
+      const parsed = insertRoutineItemSchema.safeParse(item);
+      if (!parsed.success) return null;
+      return storage.createRoutineItem(parsed.data);
+    }).filter(Boolean);
+    res.json({ created: created.length });
+  });
+
+  // ============================================================
+  // PLANNER TASKS
+  // ============================================================
+  app.get("/api/planner-tasks", (req, res) => {
+    const { date, areaId } = req.query;
+    if (date) {
+      res.json(storage.getPlannerTasksByDate(date as string));
+    } else if (areaId) {
+      res.json(storage.getPlannerTasksByArea(Number(areaId)));
+    } else {
+      res.json([]);
+    }
+  });
+  app.post("/api/planner-tasks", (req, res) => {
+    const parsed = insertPlannerTaskSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createPlannerTask(parsed.data));
+  });
+
+  // Generate recurring task instances for a date range
+  app.post("/api/planner-tasks/generate-recurring", (req, res) => {
+    const { startDate, endDate } = req.body;
+    if (!startDate || !endDate) return res.status(400).json({ error: "startDate and endDate required" });
+    const allTasks = storage.getAllPlannerTasks();
+    const templates = allTasks.filter(t => t.recurrence);
+    let created = 0;
+    const start = new Date(startDate + "T12:00:00");
+    const end = new Date(endDate + "T12:00:00");
+    const DAY_NAMES = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+
+    // Helper: get the Nth weekday occurrence in a month (1-based, 5=last)
+    function getNthWeekdayOfMonth(year: number, month: number, dayIndex: number, nth: number): number | null {
+      const first = new Date(year, month, 1);
+      const last = new Date(year, month + 1, 0);
+      const dates: number[] = [];
+      for (let d = first.getDate(); d <= last.getDate(); d++) {
+        const test = new Date(year, month, d);
+        if (test.getDay() === dayIndex) dates.push(d);
+      }
+      if (nth === 5) return dates[dates.length - 1] || null; // Last
+      return dates[nth - 1] || null;
+    }
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().split("T")[0];
+      const dow = d.getDay();
+      const dayName = DAY_NAMES[dow];
+      const existingForDate = storage.getPlannerTasksByDate(dateStr);
+
+      for (const tpl of templates) {
+        const rec = tpl.recurrence!;
+        let matches = false;
+
+        // Try parsing as JSON pattern first
+        let pattern: any = null;
+        try { pattern = JSON.parse(rec); } catch {}
+
+        if (pattern && pattern.type) {
+          const origDate = new Date(tpl.date + "T12:00:00");
+          const daysDiff = Math.floor((d.getTime() - origDate.getTime()) / 86400000);
+
+          if (pattern.type === "daily") {
+            matches = daysDiff >= 0 && daysDiff % pattern.interval === 0;
+          } else if (pattern.type === "weekly") {
+            const weeksDiff = Math.floor(daysDiff / 7);
+            const sameWeekCycle = daysDiff >= 0 && weeksDiff % pattern.interval === 0;
+            const days: string[] = pattern.days || [];
+            matches = sameWeekCycle && days.includes(dayName);
+            // For interval > 1 we need to check if this week aligns
+            if (pattern.interval > 1) {
+              // Calculate week offset from original date
+              const origWeekStart = new Date(origDate);
+              origWeekStart.setDate(origWeekStart.getDate() - origWeekStart.getDay());
+              const curWeekStart = new Date(d);
+              curWeekStart.setDate(curWeekStart.getDate() - curWeekStart.getDay());
+              const weeksBetween = Math.round((curWeekStart.getTime() - origWeekStart.getTime()) / (7 * 86400000));
+              matches = weeksBetween >= 0 && weeksBetween % pattern.interval === 0 && days.includes(dayName);
+            }
+          } else if (pattern.type === "monthly") {
+            // Check if this month aligns with interval
+            const monthsDiff = (d.getFullYear() - origDate.getFullYear()) * 12 + d.getMonth() - origDate.getMonth();
+            const monthAligned = monthsDiff >= 0 && monthsDiff % (pattern.interval || 1) === 0;
+            if (monthAligned) {
+              if (pattern.weekOfMonth && pattern.dayOfWeek) {
+                // "3rd Friday" style
+                const targetDayIndex = DAY_NAMES.indexOf(pattern.dayOfWeek);
+                const targetDate = getNthWeekdayOfMonth(d.getFullYear(), d.getMonth(), targetDayIndex, pattern.weekOfMonth);
+                matches = targetDate === d.getDate();
+              } else if (pattern.dayOfMonth) {
+                matches = d.getDate() === pattern.dayOfMonth;
+              }
+            }
+          }
+        } else {
+          // Legacy string formats
+          if (rec === "daily") matches = true;
+          else if (rec === "weekdays") matches = dow >= 1 && dow <= 5;
+          else if (rec === "weekend") matches = dow === 0 || dow === 6;
+          else if (rec.startsWith("weekly:")) matches = dayName === rec.split(":")[1];
+          else if (rec === "monthly") {
+            const origDay = parseInt(tpl.date.split("-")[2]);
+            matches = d.getDate() === origDay;
+          }
+        }
+
+        if (!matches) continue;
+        const dup = existingForDate.find(e => e.goal === tpl.goal && e.areaId === tpl.areaId);
+        if (dup) continue;
+        storage.createPlannerTask({
+          date: dateStr,
+          areaId: tpl.areaId,
+          goal: tpl.goal,
+          startTime: tpl.startTime,
+          endTime: tpl.endTime,
+          hours: tpl.hours,
+          status: "planned",
+          recurrence: tpl.recurrence,
+        });
+        created++;
+      }
+    }
+    res.json({ created });
+  });
+  app.patch("/api/planner-tasks/:id", (req, res) => {
+    const result = storage.updatePlannerTask(Number(req.params.id), req.body);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/planner-tasks/:id", (req, res) => {
+    storage.deletePlannerTask(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // Seed areas from DPT
+  app.post("/api/areas/seed", (req, res) => {
+    const items = req.body;
+    if (!Array.isArray(items)) return res.status(400).json({ error: "Expected array" });
+    const created = items.map((item: any) => {
+      const parsed = insertAreaSchema.safeParse(item);
+      if (!parsed.success) return null;
+      return storage.createArea(parsed.data);
+    }).filter(Boolean);
+    res.json({ created: created.length });
   });
 
   // ============================================================
