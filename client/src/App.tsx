@@ -39,7 +39,7 @@ const mobileNavItems = [
   { href: "/review", label: "Review", icon: RotateCcw },
 ];
 
-function MobileNav() {
+function MobileNav({ isDark, toggleTheme }: { isDark: boolean; toggleTheme: () => void }) {
   const [location] = useLocation();
   const { data: stats } = useQuery<{ inboxCount: number }>({
     queryKey: ["/api/stats"],
@@ -72,6 +72,14 @@ function MobileNav() {
             </Link>
           );
         })}
+        <button
+          onClick={toggleTheme}
+          className="flex flex-col items-center justify-center gap-0.5 w-full h-full px-2 text-muted-foreground transition-colors"
+          data-testid="mobile-theme-toggle"
+        >
+          {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          <span className="text-[10px] font-medium">{isDark ? "Light" : "Dark"}</span>
+        </button>
       </div>
     </nav>
   );
@@ -102,20 +110,11 @@ export default function App() {
                 <header className="hidden md:flex items-center gap-2 p-2 border-b shrink-0">
                   <SidebarTrigger data-testid="button-sidebar-toggle" />
                 </header>
-                <header className="md:hidden flex items-center gap-3 px-4 py-2.5 border-b shrink-0">
-                  <button
-                    onClick={() => setIsDark(!isDark)}
-                    className="p-1.5 rounded-md text-muted-foreground hover:text-foreground transition-colors"
-                    data-testid="mobile-theme-toggle"
-                  >
-                    {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                  </button>
-                  <span className="text-sm font-semibold tracking-tight">Momentum</span>
-                </header>
+
                 <main className="flex-1 overflow-hidden pb-14 md:pb-0">
                   <AppRouter />
                 </main>
-                <MobileNav />
+                <MobileNav isDark={isDark} toggleTheme={() => setIsDark(!isDark)} />
               </div>
             </div>
           </SidebarProvider>
