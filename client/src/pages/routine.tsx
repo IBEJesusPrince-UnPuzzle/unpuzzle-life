@@ -6,9 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   Clock, MapPin, CheckCircle2, ChevronDown, ChevronRight,
-  Sparkles, ArrowRight, Eye, Zap, Heart, Trophy, FileEdit
+  Sparkles, ArrowRight, Eye, Zap, Heart, Trophy, FileEdit, Check, Trash2
 } from "lucide-react";
 import { useState, useMemo, useRef, useEffect } from "react";
 import type { RoutineItem, RoutineLog, Area } from "@shared/schema";
@@ -243,6 +247,31 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
   const [expanded, setExpanded] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
+  const itemIsDraft = (item as any).isDraft === 1;
+
+  // Draft publish state
+  const [draftTime, setDraftTime] = useState(itemIsDraft ? "" : item.time);
+  const [draftDuration, setDraftDuration] = useState(String(item.durationMinutes));
+  const [draftLocation, setDraftLocation] = useState(item.location || "");
+
+  const publishDraft = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/routine-items/${item.id}`, {
+      time: draftTime,
+      durationMinutes: parseInt(draftDuration) || 10,
+      location: draftLocation || null,
+      isDraft: 0,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/routine-items"] });
+    },
+  });
+
+  const deleteDraft = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/routine-items/${item.id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/routine-items"] });
+    },
+  });
 
   const logMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/routine-logs", {
@@ -267,7 +296,6 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
   const mainResponse = responseParts[0];
 
   const area = item.areaId ? areas.find(a => a.id === item.areaId) : null;
-  const itemIsDraft = (item as any).isDraft === 1;
 
   return (
     <>
@@ -399,6 +427,71 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
                   </div>
                 )}
               </div>
+
+              {/* Draft publish form */}
+              {itemIsDraft && (
+                <div className="mt-3 pt-3 border-t border-amber-500/20">
+                  <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-2.5">Add to your routine</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-1 block">Time</label>
+                      <Input
+                        type="time"
+                        value={draftTime}
+                        onChange={(e) => setDraftTime(e.target.value)}
+                        className="h-8 text-xs"
+                        data-testid={`draft-time-${item.id}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-1 block">Duration</label>
+                      <Select value={draftDuration} onValueChange={setDraftDuration}>
+                        <SelectTrigger className="h-8 text-xs" data-testid={`draft-duration-${item.id}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[5, 10, 15, 20, 30, 45, 60, 90, 120, 150, 180].map(m => (
+                            <SelectItem key={m} value={String(m)}>
+                              {m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-2 sm:col-span-1">
+                      <label className="text-[10px] text-muted-foreground mb-1 block">Location (optional)</label>
+                      <Input
+                        value={draftLocation}
+                        onChange={(e) => setDraftLocation(e.target.value)}
+                        placeholder="e.g. my office"
+                        className="h-8 text-xs"
+                        data-testid={`draft-location-${item.id}`}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-3">
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs gap-1 flex-1"
+                      disabled={!draftTime || publishDraft.isPending}
+                      onClick={() => publishDraft.mutate()}
+                      data-testid={`draft-publish-${item.id}`}
+                    >
+                      <Check className="w-3 h-3" />
+                      Add to Routine
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs text-destructive hover:text-destructive"
+                      onClick={() => deleteDraft.mutate()}
+                      data-testid={`draft-delete-${item.id}`}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
