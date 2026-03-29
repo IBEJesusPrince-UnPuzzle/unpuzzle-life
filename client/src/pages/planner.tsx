@@ -13,7 +13,7 @@ import {
 import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, Clock, CheckCircle2,
   X, SkipForward, ArrowLeft, Pencil, Trash2, History, Repeat, Repeat2,
-  Eye, Heart, Zap, Trophy, FileEdit
+  Eye, Heart, Zap, Trophy
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import type { PlannerTask, Area, RoutineItem, RoutineLog } from "@shared/schema";
@@ -281,12 +281,6 @@ function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick: (id: n
     queryFn: () => apiRequest("GET", `/api/routine-logs?date=${selectedDate}`).then(r => r.json()),
   });
 
-  // Fetch draft tasks
-  const { data: draftTasks = [] } = useQuery<PlannerTask[]>({
-    queryKey: ["/api/planner-tasks/drafts"],
-    queryFn: () => apiRequest("GET", "/api/planner-tasks/drafts").then(r => r.json()),
-  });
-
   // Auto-generate recurring tasks when navigating to a new date
   const [generatedDates, setGeneratedDates] = useState<Set<string>>(new Set());
   useEffect(() => {
@@ -313,22 +307,18 @@ function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick: (id: n
     setSelectedDate(getDateStr(d));
   };
 
-  // Filter out drafts that are already shown in the date query (they have isDraft=1)
-  // Non-draft tasks for timeline display
-  const nonDraftTasks = useMemo(() => tasks.filter(t => !t.isDraft), [tasks]);
-
   // Group tasks by time phase
   const sortedTasks = useMemo(() => {
-    return [...nonDraftTasks].sort((a, b) => {
+    return [...tasks].sort((a, b) => {
       if (!a.startTime && !b.startTime) return 0;
       if (!a.startTime) return 1;
       if (!b.startTime) return -1;
       return a.startTime.localeCompare(b.startTime);
     });
-  }, [nonDraftTasks]);
+  }, [tasks]);
 
-  // Active routine items grouped by time phase
-  const activeRoutineItems = useMemo(() => routineItems.filter(r => r.active), [routineItems]);
+  // Active non-draft routine items grouped by time phase (drafts stay on Routine page)
+  const activeRoutineItems = useMemo(() => routineItems.filter(r => r.active && !(r as any).isDraft), [routineItems]);
 
   // Group routine items by their time phase
   const routineByPhase = useMemo(() => {
@@ -364,9 +354,9 @@ function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick: (id: n
   }, [phaseGroups, routineByPhase]);
 
   // Stats
-  const totalTasks = nonDraftTasks.length;
-  const doneTasks = nonDraftTasks.filter(t => t.status === "done").length;
-  const totalHours = nonDraftTasks.reduce((sum, t) => sum + parseFloat(t.hours || "0"), 0);
+  const totalTasks = tasks.length;
+  const doneTasks = tasks.filter(t => t.status === "done").length;
+  const totalHours = tasks.reduce((sum, t) => sum + parseFloat(t.hours || "0"), 0);
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4 overflow-y-auto h-full">
@@ -491,22 +481,6 @@ function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick: (id: n
         </div>
       )}
 
-      {/* Draft Tasks */}
-      {draftTasks.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <FileEdit className="w-3.5 h-3.5 text-amber-500" />
-            <span className="text-xs font-medium text-amber-500">Drafts</span>
-            <div className="flex-1 h-px bg-border" />
-          </div>
-          <div className="space-y-1.5 ml-5">
-            {draftTasks.map(task => (
-              <TaskCard key={`draft-${task.id}`} task={task} areas={areas} onAreaClick={onAreaClick} />
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Add Task Dialog */}
       <AddTaskDialog
         open={showAddDialog}
@@ -526,7 +500,6 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
   const area = areas.find(a => a.id === task.areaId);
   const isDone = task.status === "done";
   const isSkipped = task.status === "skipped";
-  const isDraft = task.isDraft === 1;
 
   const updateStatus = useMutation({
     mutationFn: (status: string) => apiRequest("PATCH", `/api/planner-tasks/${task.id}`, { status }),
@@ -570,17 +543,7 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
               <p className={`text-sm font-medium leading-snug ${isDone ? "line-through" : ""}`}>
                 {task.goal}
               </p>
-              {isDraft && (
-                <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px] h-4 px-1.5">
-                  Draft
-                </Badge>
-              )}
             </div>
-            {isDraft && (
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
-                Set a start date & time to activate
-              </p>
-            )}
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               {task.startTime && (
                 <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">

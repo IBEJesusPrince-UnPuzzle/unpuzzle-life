@@ -169,21 +169,34 @@ export function registerRoutes(server: Server, app: Express) {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
     const habit = storage.createHabit(parsed.data);
 
-    // Also create a draft planner task linked to this habit
-    const today = new Date().toISOString().split("T")[0];
-    storage.createPlannerTask({
-      goal: habit.name,
+    // Create a draft routine item linked to this habit
+    // Map timeOfDay to a default placeholder time for grouping
+    const timeOfDayMap: Record<string, string> = {
+      early_morning: "03:00",
+      morning: "07:00",
+      late_morning: "10:00",
+      afternoon: "13:00",
+      late_afternoon: "16:00",
+      evening: "20:00",
+      waking_hours: "12:00",
+    };
+    const placeholderTime = timeOfDayMap[habit.timeOfDay || ""] || "12:00";
+
+    storage.createRoutineItem({
+      sortOrder: 0,
+      time: placeholderTime,
+      durationMinutes: 10,
+      location: null,
+      cue: null,
+      craving: habit.craving || null,
+      response: habit.name,
+      reward: habit.reward || null,
       areaId: habit.areaId || null,
       habitId: habit.id,
+      dayVariant: null,
+      active: 1,
       isDraft: 1,
-      sourceType: "habit",
-      status: "planned",
-      date: today,
-      recurrence: habit.frequency,
-      startTime: null,
-      endTime: null,
-      hours: null,
-      result: null,
+      timeOfDay: habit.timeOfDay || null,
     });
 
     res.json(habit);

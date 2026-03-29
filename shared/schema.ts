@@ -131,6 +131,8 @@ export const routineItems = sqliteTable("routine_items", {
   habitId: integer("habit_id").references(() => habits.id),
   dayVariant: text("day_variant"), // JSON: day-specific overrides e.g. {"Mon": "Dark", "Tue": "Colors"}
   active: integer("active").notNull().default(1),
+  isDraft: integer("is_draft").notNull().default(0), // 1 = draft (needs time), 0 = published
+  timeOfDay: text("time_of_day"), // time-of-day category from habit creation
 });
 
 // Daily routine completion logs

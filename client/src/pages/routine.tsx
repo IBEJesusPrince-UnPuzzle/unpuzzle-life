@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Clock, MapPin, CheckCircle2, ChevronDown, ChevronRight,
-  Sparkles, ArrowRight, Eye, Zap, Heart, Trophy
+  Sparkles, ArrowRight, Eye, Zap, Heart, Trophy, FileEdit
 } from "lucide-react";
 import { useState, useMemo, useRef, useEffect } from "react";
 import type { RoutineItem, RoutineLog, Area } from "@shared/schema";
@@ -36,13 +36,13 @@ function getTimePhase(time: string): { label: string; icon: typeof Clock; color:
   const hour = parseInt(time.split(":")[0]);
   if (hour < 6) return { label: "Early Morning", icon: Sparkles, color: "text-violet-500 dark:text-violet-400" };
   if (hour < 9) return { label: "Morning", icon: Zap, color: "text-amber-500 dark:text-amber-400" };
-  if (hour < 12) return { label: "Midday", icon: Eye, color: "text-primary" };
+  if (hour < 12) return { label: "Late Morning", icon: Eye, color: "text-primary" };
   if (hour < 15) return { label: "Afternoon", icon: Heart, color: "text-emerald-500 dark:text-emerald-400" };
   if (hour < 18) return { label: "Late Afternoon", icon: ArrowRight, color: "text-blue-500 dark:text-blue-400" };
   return { label: "Evening", icon: Trophy, color: "text-indigo-500 dark:text-indigo-400" };
 }
 
-// Group items by time phase
+// Group items by time phase — drafts sorted first within each phase
 function groupByPhase(items: RoutineItem[]): { phase: string; icon: typeof Clock; color: string; items: RoutineItem[] }[] {
   const groups: Map<string, { icon: typeof Clock; color: string; items: RoutineItem[] }> = new Map();
   items.forEach(item => {
@@ -50,7 +50,16 @@ function groupByPhase(items: RoutineItem[]): { phase: string; icon: typeof Clock
     if (!groups.has(label)) groups.set(label, { icon, color, items: [] });
     groups.get(label)!.items.push(item);
   });
-  return Array.from(groups.entries()).map(([phase, data]) => ({ phase, ...data }));
+  // Sort each group: drafts first, then by time
+  return Array.from(groups.entries()).map(([phase, data]) => {
+    data.items.sort((a, b) => {
+      const aDraft = (a as any).isDraft === 1 ? 0 : 1;
+      const bDraft = (b as any).isDraft === 1 ? 0 : 1;
+      if (aDraft !== bDraft) return aDraft - bDraft;
+      return a.time.localeCompare(b.time);
+    });
+    return { phase, ...data };
+  });
 }
 
 // Calculate current time position
@@ -80,17 +89,19 @@ export default function RoutinePage() {
   const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
 
   const activeItems = items.filter(i => i.active);
+  const nonDraftItems = activeItems.filter(i => !(i as any).isDraft);
   const completedIds = useMemo(() => new Set(logs.map(l => l.routineItemId)), [logs]);
-  const completedCount = activeItems.filter(i => completedIds.has(i.id)).length;
-  const currentIdx = getCurrentProgress(activeItems);
+  const completedCount = nonDraftItems.filter(i => completedIds.has(i.id)).length;
+  const currentIdx = getCurrentProgress(nonDraftItems);
   const phases = useMemo(() => groupByPhase(activeItems), [activeItems]);
+  const draftCount = activeItems.filter(i => (i as any).isDraft === 1).length;
 
   // Total day duration
   const totalMinutes = activeItems.reduce((sum, i) => sum + i.durationMinutes, 0);
   const totalHours = Math.floor(totalMinutes / 60);
   const totalMins = totalMinutes % 60;
 
-  const progressPct = activeItems.length > 0 ? Math.round((completedCount / activeItems.length) * 100) : 0;
+  const progressPct = nonDraftItems.length > 0 ? Math.round((completedCount / nonDraftItems.length) * 100) : 0;
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-5 overflow-y-auto h-full">
@@ -108,7 +119,12 @@ export default function RoutinePage() {
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <span className="text-2xl font-bold tabular-nums">{completedCount}</span>
-              <span className="text-sm text-muted-foreground">/ {activeItems.length} blocks</span>
+              <span className="text-sm text-muted-foreground">/ {nonDraftItems.length} blocks</span>
+              {draftCount > 0 && (
+                <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px] h-4 px-1.5">
+                  {draftCount} draft{draftCount > 1 ? "s" : ""}
+                </Badge>
+              )}
             </div>
             <div className="text-right">
               <span className="text-sm font-medium">{progressPct}%</span>
@@ -251,33 +267,42 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
   const mainResponse = responseParts[0];
 
   const area = item.areaId ? areas.find(a => a.id === item.areaId) : null;
+  const itemIsDraft = (item as any).isDraft === 1;
 
   return (
     <>
       <Card
         ref={rowRef}
         className={`transition-all group ${
-          isCurrent ? "ring-1 ring-primary/40 bg-primary/[0.04]" : ""
+          itemIsDraft
+            ? "border-amber-500/30 bg-amber-500/[0.04]"
+            : isCurrent ? "ring-1 ring-primary/40 bg-primary/[0.04]" : ""
         } ${isDone ? "opacity-60" : ""}`}
         data-testid={`routine-item-${item.id}`}
       >
         <CardContent className="p-0">
           {/* Main row */}
           <div className="flex items-center gap-2.5 p-3 sm:p-3.5">
-            {/* Check circle */}
-            <button
-              onClick={() => isDone ? unlogMutation.mutate() : logMutation.mutate()}
-              className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${
-                isDone
-                  ? "border-primary bg-primary"
-                  : isCurrent
-                    ? "border-primary/60 hover:border-primary"
-                    : "border-muted-foreground/25 hover:border-primary/40"
-              }`}
-              data-testid={`routine-check-${item.id}`}
-            >
-              {isDone && <CheckCircle2 className="w-3.5 h-3.5 text-primary-foreground" />}
-            </button>
+            {/* Check circle — disabled for drafts */}
+            {itemIsDraft ? (
+              <div className="w-7 h-7 rounded-full border-2 border-amber-500/40 flex items-center justify-center shrink-0">
+                <FileEdit className="w-3.5 h-3.5 text-amber-500" />
+              </div>
+            ) : (
+              <button
+                onClick={() => isDone ? unlogMutation.mutate() : logMutation.mutate()}
+                className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${
+                  isDone
+                    ? "border-primary bg-primary"
+                    : isCurrent
+                      ? "border-primary/60 hover:border-primary"
+                      : "border-muted-foreground/25 hover:border-primary/40"
+                }`}
+                data-testid={`routine-check-${item.id}`}
+              >
+                {isDone && <CheckCircle2 className="w-3.5 h-3.5 text-primary-foreground" />}
+              </button>
+            )}
 
             {/* Content */}
             <div className="flex-1 min-w-0" onClick={() => setDetailOpen(true)} role="button">
@@ -285,22 +310,33 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
                 <p className={`text-sm font-medium truncate ${isDone ? "line-through text-muted-foreground" : ""}`}>
                   {mainResponse}
                 </p>
-              </div>
-              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
-                  <Clock className="w-3 h-3" />
-                  {formatTime(item.time)}
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  {formatDuration(item.durationMinutes)}
-                </span>
-                {item.location && (
-                  <span className="text-[11px] text-muted-foreground flex items-center gap-0.5 truncate max-w-[120px] sm:max-w-[180px]">
-                    <MapPin className="w-3 h-3 shrink-0" />
-                    {item.location}
-                  </span>
+                {itemIsDraft && (
+                  <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px] h-4 px-1.5 shrink-0">
+                    Draft
+                  </Badge>
                 )}
               </div>
+              {itemIsDraft ? (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                  Set an exact time to add to your routine
+                </p>
+              ) : (
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+                    <Clock className="w-3 h-3" />
+                    {formatTime(item.time)}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {formatDuration(item.durationMinutes)}
+                  </span>
+                  {item.location && (
+                    <span className="text-[11px] text-muted-foreground flex items-center gap-0.5 truncate max-w-[120px] sm:max-w-[180px]">
+                      <MapPin className="w-3 h-3 shrink-0" />
+                      {item.location}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Expand indicator */}
