@@ -322,7 +322,7 @@ function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick: (id: n
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4 overflow-y-auto h-full">
       {/* Header */}
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Daily Planner</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Daily Agenda</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           Plan, track, and review your tasks across all areas of life.
         </p>

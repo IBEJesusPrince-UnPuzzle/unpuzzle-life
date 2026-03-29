@@ -3,7 +3,6 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
@@ -12,11 +11,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Fingerprint, Target, Plus, Trash2, CheckCircle2, Flame,
-  TrendingUp, Calendar
+  Target, Plus, Trash2, CheckCircle2,
 } from "lucide-react";
 import { useState, useMemo } from "react";
-import type { Identity, Habit, HabitLog, Area, Vision } from "@shared/schema";
+import type { Identity, Habit, HabitLog } from "@shared/schema";
 
 function getToday() {
   return new Date().toISOString().split("T")[0];
@@ -43,8 +41,6 @@ export default function HabitsPage() {
 
   const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
   const { data: habits = [] } = useQuery<Habit[]>({ queryKey: ["/api/habits"] });
-  const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
-  const { data: visions = [] } = useQuery<Vision[]>({ queryKey: ["/api/visions"] });
   const { data: todayLogs = [] } = useQuery<HabitLog[]>({
     queryKey: ["/api/habit-logs", today],
     queryFn: () => apiRequest("GET", `/api/habit-logs?date=${today}`).then(r => r.json()),
@@ -70,9 +66,6 @@ export default function HabitsPage() {
           "Every action you take is a vote for the type of person you wish to become."
         </p>
       </div>
-
-      {/* Identity Statements */}
-      <IdentitySection identities={identities} areas={areas} visions={visions} />
 
       {/* Habit Tracker */}
       <div className="space-y-4">
@@ -101,89 +94,6 @@ export default function HabitsPage() {
 
         <NewHabitForm identities={identities} />
       </div>
-    </div>
-  );
-}
-
-// ============================================================
-// IDENTITY SECTION
-// ============================================================
-function IdentitySection({ identities, areas, visions }: { identities: Identity[]; areas: Area[]; visions: Vision[] }) {
-  const [statement, setStatement] = useState("");
-  const [areaId, setAreaId] = useState<string>("");
-
-  const create = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/identities", {
-      statement,
-      areaId: areaId && areaId !== "none" ? Number(areaId) : null,
-      createdAt: new Date().toISOString(),
-    }),
-    onSuccess: () => {
-      setStatement(""); setAreaId("");
-      queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
-    },
-  });
-
-  const deleteIdentity = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/identities/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/identities"] }),
-  });
-
-  return (
-    <div className="space-y-3">
-      <h2 className="text-sm font-medium flex items-center gap-2">
-        <Fingerprint className="w-4 h-4 text-primary" /> Identity Statements
-      </h2>
-
-      {identities.length > 0 && (
-        <div className="grid sm:grid-cols-2 gap-2">
-          {identities.map((id) => (
-            <Card key={id.id} className="bg-primary/[0.03]">
-              <CardContent className="p-3 flex justify-between items-start">
-                <div>
-                  <p className="text-sm font-medium" data-testid={`identity-${id.id}`}>
-                    "I am the type of person who {id.statement}"
-                  </p>
-                  {id.areaId && (
-                    <Badge variant="outline" className="text-[10px] h-4 px-1 mt-1.5">
-                      {areas.find(a => a.id === id.areaId)?.name}
-                    </Badge>
-                  )}
-                </div>
-                <Button variant="ghost" size="sm" className="text-destructive h-6 w-6 p-0"
-                  onClick={() => deleteIdentity.mutate(id.id)}>
-                  <Trash2 className="w-3 h-3" />
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      <Card className="border-dashed">
-        <CardContent className="p-3 flex gap-2 items-end">
-          <div className="flex-1 space-y-2">
-            <p className="text-xs text-muted-foreground">I am the type of person who...</p>
-            <Input
-              placeholder="exercises every day, reads before bed..."
-              value={statement}
-              onChange={(e) => setStatement(e.target.value)}
-              className="text-sm"
-              data-testid="input-identity"
-            />
-          </div>
-          <Select value={areaId} onValueChange={setAreaId}>
-            <SelectTrigger className="w-32"><SelectValue placeholder="Area" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No area</SelectItem>
-              {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Button size="sm" onClick={() => create.mutate()} disabled={!statement.trim()} data-testid="button-add-identity">
-            <Plus className="w-3 h-3 mr-1" /> Add
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   );
 }

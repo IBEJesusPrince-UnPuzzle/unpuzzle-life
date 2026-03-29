@@ -38,11 +38,11 @@ function AppRouter() {
 const mobileNavItems = [
   { href: "/", label: "Home", icon: LayoutDashboard },
   { href: "/inbox", label: "Inbox", icon: Inbox, showBadge: true },
-  { href: "/horizons", label: "Horizons", icon: Layers },
   { href: "/habits", label: "Habits", icon: Target },
   { href: "/routine", label: "Routine", icon: CalendarClock },
-  { href: "/planner", label: "Planner", icon: CalendarDays },
+  { href: "/planner", label: "Agenda", icon: CalendarDays },
   { href: "/review", label: "Review", icon: RotateCcw },
+  { href: "/horizons", label: "Horizons", icon: Layers },
 ];
 
 function MobileNav({ isDark, toggleTheme }: { isDark: boolean; toggleTheme: () => void }) {

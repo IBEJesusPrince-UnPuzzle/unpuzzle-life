@@ -166,7 +166,10 @@ export const inboxItems = sqliteTable("inbox_items", {
   content: text("content").notNull(),
   notes: text("notes"),
   processed: integer("processed").notNull().default(0),
-  processedAs: text("processed_as"), // action, project, reference, someday, trash
+  processedAs: text("processed_as"), // task, project, reference, someday, trash
+  deletedAt: text("deleted_at"),
+  referenceAreaId: integer("reference_area_id").references(() => areas.id),
+  referenceProjectId: integer("reference_project_id").references(() => projects.id),
   createdAt: text("created_at").notNull(),
 });
 

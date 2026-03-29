@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, and, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc, isNull, gte } from "drizzle-orm";
 import {
   purposes, visions, goals, areas, projects, actions,
   identities, habits, habitLogs, inboxItems, weeklyReviews,
@@ -83,9 +83,13 @@ export interface IStorage {
 
   // Inbox
   getInboxItems(): InboxItem[];
+  getTrashedInboxItems(): InboxItem[];
   createInboxItem(data: InsertInboxItem): InboxItem;
   updateInboxItem(id: number, data: Partial<InsertInboxItem>): InboxItem | undefined;
+  softDeleteInboxItem(id: number): InboxItem | undefined;
+  restoreInboxItem(id: number): InboxItem | undefined;
   deleteInboxItem(id: number): void;
+  getOrCreateSomedayProject(): Project;
 
   // Weekly Reviews
   getWeeklyReviews(): WeeklyReview[];
@@ -244,7 +248,15 @@ export class DatabaseStorage implements IStorage {
 
   // Inbox
   getInboxItems(): InboxItem[] {
-    return db.select().from(inboxItems).orderBy(desc(inboxItems.createdAt)).all();
+    return db.select().from(inboxItems).where(isNull(inboxItems.deletedAt)).orderBy(desc(inboxItems.createdAt)).all();
+  }
+  getTrashedInboxItems(): InboxItem[] {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    return db.select().from(inboxItems)
+      .where(and(
+        gte(inboxItems.deletedAt, sevenDaysAgo),
+      ))
+      .orderBy(desc(inboxItems.deletedAt)).all();
   }
   createInboxItem(data: InsertInboxItem): InboxItem {
     return db.insert(inboxItems).values(data).returning().get();
@@ -252,8 +264,33 @@ export class DatabaseStorage implements IStorage {
   updateInboxItem(id: number, data: Partial<InsertInboxItem>): InboxItem | undefined {
     return db.update(inboxItems).set(data).where(eq(inboxItems.id, id)).returning().get();
   }
+  softDeleteInboxItem(id: number): InboxItem | undefined {
+    return db.update(inboxItems).set({
+      deletedAt: new Date().toISOString(),
+      processed: 1,
+      processedAs: "trash",
+    }).where(eq(inboxItems.id, id)).returning().get();
+  }
+  restoreInboxItem(id: number): InboxItem | undefined {
+    return db.update(inboxItems).set({
+      deletedAt: null,
+      processed: 0,
+      processedAs: null,
+    }).where(eq(inboxItems.id, id)).returning().get();
+  }
   deleteInboxItem(id: number): void {
     db.delete(inboxItems).where(eq(inboxItems.id, id)).run();
+  }
+  getOrCreateSomedayProject(): Project {
+    const existing = db.select().from(projects)
+      .where(eq(projects.title, "Someday/Maybe")).get();
+    if (existing) return existing;
+    return db.insert(projects).values({
+      title: "Someday/Maybe",
+      description: "Items to revisit when the time is right",
+      status: "someday",
+      createdAt: new Date().toISOString(),
+    }).returning().get();
   }
 
   // Weekly Reviews

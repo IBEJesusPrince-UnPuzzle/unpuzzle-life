@@ -15,11 +15,11 @@ import { apiRequest } from "@/lib/queryClient";
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Inbox", url: "/inbox", icon: Inbox },
-  { title: "Horizons", url: "/horizons", icon: Layers },
   { title: "Habits", url: "/habits", icon: Target },
   { title: "Routine", url: "/routine", icon: CalendarClock },
-  { title: "Planner", url: "/planner", icon: CalendarDays },
+  { title: "Agenda", url: "/planner", icon: CalendarDays },
   { title: "Weekly Review", url: "/review", icon: RotateCcw },
+  { title: "Horizons", url: "/horizons", icon: Layers },
 ];
 
 export function AppSidebar({ isDark, toggleTheme }: { isDark: boolean; toggleTheme: () => void }) {

@@ -1,24 +1,21 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Compass, Eye, Target, FolderOpen, Zap, Plus, Trash2, CheckCircle2,
-  ChevronDown, ChevronRight, Pencil
+  Compass, Eye, Target, FolderOpen, Plus, Trash2, CheckCircle2,
+  Fingerprint, CalendarDays, ArrowRight
 } from "lucide-react";
 import { useState } from "react";
-import type { Purpose, Vision, Goal, Area, Project, Action } from "@shared/schema";
+import { Link } from "wouter";
+import type { Purpose, Vision, Goal, Area, Project, Identity } from "@shared/schema";
 
 function HorizonBadge({ level, label }: { level: number; label: string }) {
   const colors: Record<number, string> = {
@@ -44,7 +41,7 @@ export default function HorizonsPage() {
   const { data: goals = [] } = useQuery<Goal[]>({ queryKey: ["/api/goals"] });
   const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
   const { data: projects = [] } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
-  const { data: actions = [] } = useQuery<Action[]>({ queryKey: ["/api/actions"] });
+  const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
@@ -56,43 +53,42 @@ export default function HorizonsPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-6 w-full">
+        <TabsList className="grid grid-cols-7 w-full">
           <TabsTrigger value="purpose" className="text-xs" data-testid="tab-purpose">Purpose</TabsTrigger>
           <TabsTrigger value="vision" className="text-xs" data-testid="tab-vision">Vision</TabsTrigger>
-          <TabsTrigger value="goals" className="text-xs" data-testid="tab-goals">Goals</TabsTrigger>
           <TabsTrigger value="areas" className="text-xs" data-testid="tab-areas">Areas</TabsTrigger>
+          <TabsTrigger value="identity" className="text-xs" data-testid="tab-identity">Identity</TabsTrigger>
+          <TabsTrigger value="goals" className="text-xs" data-testid="tab-goals">Goals</TabsTrigger>
           <TabsTrigger value="projects" className="text-xs" data-testid="tab-projects">Projects</TabsTrigger>
-          <TabsTrigger value="actions" className="text-xs" data-testid="tab-actions">Actions</TabsTrigger>
+          <TabsTrigger value="agenda" className="text-xs" data-testid="tab-agenda">Agenda</TabsTrigger>
         </TabsList>
 
-        {/* H5: Purpose */}
         <TabsContent value="purpose" className="mt-4">
           <PurposeSection purposes={purposes} />
         </TabsContent>
 
-        {/* H4: Vision */}
         <TabsContent value="vision" className="mt-4">
           <VisionSection visions={visions} />
         </TabsContent>
 
-        {/* H3: Goals */}
-        <TabsContent value="goals" className="mt-4">
-          <GoalSection goals={goals} visions={visions} />
-        </TabsContent>
-
-        {/* H2: Areas */}
         <TabsContent value="areas" className="mt-4">
           <AreaSection areas={areas} />
         </TabsContent>
 
-        {/* H1: Projects */}
+        <TabsContent value="identity" className="mt-4">
+          <IdentitySection identities={identities} areas={areas} />
+        </TabsContent>
+
+        <TabsContent value="goals" className="mt-4">
+          <GoalSection goals={goals} visions={visions} />
+        </TabsContent>
+
         <TabsContent value="projects" className="mt-4">
           <ProjectSection projects={projects} areas={areas} goals={goals} />
         </TabsContent>
 
-        {/* H0: Actions */}
-        <TabsContent value="actions" className="mt-4">
-          <ActionSection actions={actions} projects={projects} />
+        <TabsContent value="agenda" className="mt-4">
+          <AgendaSection />
         </TabsContent>
       </Tabs>
     </div>
@@ -252,6 +248,149 @@ function VisionSection({ visions }: { visions: Vision[] }) {
 }
 
 // ============================================================
+// AREAS
+// ============================================================
+function AreaSection({ areas }: { areas: Area[] }) {
+  const [name, setName] = useState("");
+  const [desc, setDesc] = useState("");
+
+  const create = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/areas", {
+      name, description: desc || null, sortOrder: areas.length,
+    }),
+    onSuccess: () => {
+      setName(""); setDesc("");
+      queryClient.invalidateQueries({ queryKey: ["/api/areas"] });
+    },
+  });
+
+  const deleteArea = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/areas/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/areas"] }),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 mb-2">
+        <HorizonBadge level={2} label="Areas of Focus" />
+        <span className="text-xs text-muted-foreground">What roles and responsibilities do I maintain?</span>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3">
+        {areas.map((a) => (
+          <Card key={a.id}>
+            <CardContent className="p-4 flex justify-between items-start">
+              <div>
+                <p className="font-medium text-sm">{a.name}</p>
+                {a.description && <p className="text-xs text-muted-foreground mt-1">{a.description}</p>}
+              </div>
+              <Button variant="ghost" size="sm" className="text-destructive h-7" onClick={() => deleteArea.mutate(a.id)}>
+                <Trash2 className="w-3 h-3" />
+              </Button>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="border-dashed">
+        <CardContent className="p-4 space-y-3">
+          <Input placeholder="Area name (e.g. Health, Finances, Career...)" value={name} onChange={(e) => setName(e.target.value)} data-testid="input-area" />
+          <Input placeholder="Brief description (optional)" value={desc} onChange={(e) => setDesc(e.target.value)} />
+          <Button size="sm" onClick={() => create.mutate()} disabled={!name.trim()} data-testid="button-add-area">
+            <Plus className="w-3 h-3 mr-1" /> Add Area
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================
+// IDENTITY (moved from habits page)
+// ============================================================
+function IdentitySection({ identities, areas }: { identities: Identity[]; areas: Area[] }) {
+  const [statement, setStatement] = useState("");
+  const [areaId, setAreaId] = useState<string>("");
+
+  const create = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/identities", {
+      statement,
+      areaId: areaId && areaId !== "none" ? Number(areaId) : null,
+      createdAt: new Date().toISOString(),
+    }),
+    onSuccess: () => {
+      setStatement(""); setAreaId("");
+      queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
+    },
+  });
+
+  const deleteIdentity = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/identities/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/identities"] }),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Fingerprint className="w-4 h-4 text-primary" />
+        <span className="text-sm font-medium">Identity Statements</span>
+        <span className="text-xs text-muted-foreground">"I am the type of person who..."</span>
+      </div>
+
+      {identities.length > 0 && (
+        <div className="grid sm:grid-cols-2 gap-2">
+          {identities.map((id) => (
+            <Card key={id.id} className="bg-primary/[0.03]">
+              <CardContent className="p-3 flex justify-between items-start">
+                <div>
+                  <p className="text-sm font-medium" data-testid={`identity-${id.id}`}>
+                    "I am the type of person who {id.statement}"
+                  </p>
+                  {id.areaId && (
+                    <Badge variant="outline" className="text-[10px] h-4 px-1 mt-1.5">
+                      {areas.find(a => a.id === id.areaId)?.name}
+                    </Badge>
+                  )}
+                </div>
+                <Button variant="ghost" size="sm" className="text-destructive h-6 w-6 p-0"
+                  onClick={() => deleteIdentity.mutate(id.id)}>
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Card className="border-dashed">
+        <CardContent className="p-3 flex gap-2 items-end">
+          <div className="flex-1 space-y-2">
+            <p className="text-xs text-muted-foreground">I am the type of person who...</p>
+            <Input
+              placeholder="exercises every day, reads before bed..."
+              value={statement}
+              onChange={(e) => setStatement(e.target.value)}
+              className="text-sm"
+              data-testid="input-identity"
+            />
+          </div>
+          <Select value={areaId} onValueChange={setAreaId}>
+            <SelectTrigger className="w-32"><SelectValue placeholder="Area" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No area</SelectItem>
+              {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button size="sm" onClick={() => create.mutate()} disabled={!statement.trim()} data-testid="button-add-identity">
+            <Plus className="w-3 h-3 mr-1" /> Add
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================
 // GOALS
 // ============================================================
 function GoalSection({ goals, visions }: { goals: Goal[]; visions: Vision[] }) {
@@ -328,64 +467,6 @@ function GoalSection({ goals, visions }: { goals: Goal[]; visions: Vision[] }) {
 }
 
 // ============================================================
-// AREAS
-// ============================================================
-function AreaSection({ areas }: { areas: Area[] }) {
-  const [name, setName] = useState("");
-  const [desc, setDesc] = useState("");
-
-  const create = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/areas", {
-      name, description: desc || null, sortOrder: areas.length,
-    }),
-    onSuccess: () => {
-      setName(""); setDesc("");
-      queryClient.invalidateQueries({ queryKey: ["/api/areas"] });
-    },
-  });
-
-  const deleteArea = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/areas/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/areas"] }),
-  });
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 mb-2">
-        <HorizonBadge level={2} label="Areas of Focus" />
-        <span className="text-xs text-muted-foreground">What roles and responsibilities do I maintain?</span>
-      </div>
-
-      <div className="grid sm:grid-cols-2 gap-3">
-        {areas.map((a) => (
-          <Card key={a.id}>
-            <CardContent className="p-4 flex justify-between items-start">
-              <div>
-                <p className="font-medium text-sm">{a.name}</p>
-                {a.description && <p className="text-xs text-muted-foreground mt-1">{a.description}</p>}
-              </div>
-              <Button variant="ghost" size="sm" className="text-destructive h-7" onClick={() => deleteArea.mutate(a.id)}>
-                <Trash2 className="w-3 h-3" />
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <Card className="border-dashed">
-        <CardContent className="p-4 space-y-3">
-          <Input placeholder="Area name (e.g. Health, Finances, Career...)" value={name} onChange={(e) => setName(e.target.value)} data-testid="input-area" />
-          <Input placeholder="Brief description (optional)" value={desc} onChange={(e) => setDesc(e.target.value)} />
-          <Button size="sm" onClick={() => create.mutate()} disabled={!name.trim()} data-testid="button-add-area">
-            <Plus className="w-3 h-3 mr-1" /> Add Area
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ============================================================
 // PROJECTS
 // ============================================================
 function ProjectSection({ projects, areas, goals }: { projects: Project[]; areas: Area[]; goals: Goal[] }) {
@@ -394,7 +475,6 @@ function ProjectSection({ projects, areas, goals }: { projects: Project[]; areas
   const [goalId, setGoalId] = useState<string>("");
 
   const active = projects.filter(p => p.status === "active");
-  const completed = projects.filter(p => p.status === "completed");
   const someday = projects.filter(p => p.status === "someday");
 
   const create = useMutation({
@@ -511,117 +591,30 @@ function ProjectSection({ projects, areas, goals }: { projects: Project[]; areas
 }
 
 // ============================================================
-// ACTIONS
+// AGENDA (links to Daily Agenda page)
 // ============================================================
-function ActionSection({ actions, projects }: { actions: Action[]; projects: Project[] }) {
-  const [title, setTitle] = useState("");
-  const [projectId, setProjectId] = useState<string>("");
-  const [context, setContext] = useState<string>("");
-
-  const pending = actions.filter(a => !a.completed);
-  const done = actions.filter(a => a.completed);
-
-  const create = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/actions", {
-      title, projectId: projectId && projectId !== "none" ? Number(projectId) : null,
-      context: context || null, createdAt: new Date().toISOString(),
-    }),
-    onSuccess: () => {
-      setTitle(""); setProjectId(""); setContext("");
-      queryClient.invalidateQueries({ queryKey: ["/api/actions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-    },
-  });
-
-  const toggle = useMutation({
-    mutationFn: (a: Action) => apiRequest("PATCH", `/api/actions/${a.id}`, {
-      completed: a.completed ? 0 : 1,
-      completedAt: a.completed ? null : new Date().toISOString(),
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/actions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-    },
-  });
-
-  const deleteAction = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/actions/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/actions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-    },
-  });
-
+function AgendaSection() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-2">
-        <HorizonBadge level={0} label="Next Actions" />
-        <span className="text-xs text-muted-foreground">The very next physical thing I can do.</span>
+        <CalendarDays className="w-4 h-4 text-primary" />
+        <span className="text-sm font-medium">Daily Agenda</span>
+        <span className="text-xs text-muted-foreground">Your daily plan and task tracker.</span>
       </div>
 
-      {pending.map((a) => (
-        <div key={a.id} className="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-accent transition-colors group">
-          <Checkbox checked={false} onCheckedChange={() => toggle.mutate(a)} />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm">{a.title}</p>
-            <div className="flex gap-1.5 mt-0.5">
-              {a.context && <Badge variant="secondary" className="text-[10px] h-4 px-1">{a.context}</Badge>}
-              {a.projectId && (
-                <Badge variant="outline" className="text-[10px] h-4 px-1">
-                  {projects.find(p => p.id === a.projectId)?.title}
-                </Badge>
-              )}
-            </div>
-          </div>
-          <Button variant="ghost" size="sm" className="text-destructive h-7 opacity-0 group-hover:opacity-100"
-            onClick={() => deleteAction.mutate(a.id)}>
-            <Trash2 className="w-3 h-3" />
-          </Button>
-        </div>
-      ))}
-
-      <Card className="border-dashed">
-        <CardContent className="p-4 space-y-3">
-          <Input placeholder="Next action..." value={title} onChange={(e) => setTitle(e.target.value)} data-testid="input-action" />
-          <div className="flex gap-2">
-            <Select value={projectId} onValueChange={setProjectId}>
-              <SelectTrigger className="flex-1"><SelectValue placeholder="Project (optional)" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No project</SelectItem>
-                {projects.filter(p => p.status === "active").map(p =>
-                  <SelectItem key={p.id} value={String(p.id)}>{p.title}</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-            <Select value={context} onValueChange={setContext}>
-              <SelectTrigger className="w-36"><SelectValue placeholder="Context" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No context</SelectItem>
-                <SelectItem value="@home">@home</SelectItem>
-                <SelectItem value="@work">@work</SelectItem>
-                <SelectItem value="@phone">@phone</SelectItem>
-                <SelectItem value="@computer">@computer</SelectItem>
-                <SelectItem value="@errands">@errands</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <Button size="sm" onClick={() => create.mutate()} disabled={!title.trim()} data-testid="button-add-action">
-            <Plus className="w-3 h-3 mr-1" /> Add Action
-          </Button>
+      <Card>
+        <CardContent className="p-6 text-center space-y-3">
+          <CalendarDays className="w-10 h-10 mx-auto text-primary/40" />
+          <p className="text-sm text-muted-foreground">
+            Plan your day, track tasks across all areas, and review what you've accomplished.
+          </p>
+          <Link href="/planner">
+            <Button variant="outline" className="gap-2">
+              Open Daily Agenda <ArrowRight className="w-4 h-4" />
+            </Button>
+          </Link>
         </CardContent>
       </Card>
-
-      {done.length > 0 && (
-        <div className="pt-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Completed ({done.length})</p>
-          {done.slice(0, 5).map((a) => (
-            <div key={a.id} className="flex items-center gap-3 px-3 py-1.5 text-muted-foreground">
-              <Checkbox checked={true} onCheckedChange={() => toggle.mutate(a)} />
-              <span className="text-sm line-through">{a.title}</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

@@ -208,6 +208,9 @@ export function registerRoutes(server: Server, app: Express) {
   app.get("/api/inbox", (_req, res) => {
     res.json(storage.getInboxItems());
   });
+  app.get("/api/inbox/trashed", (_req, res) => {
+    res.json(storage.getTrashedInboxItems());
+  });
   app.post("/api/inbox", (req, res) => {
     const parsed = insertInboxItemSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
@@ -218,9 +221,24 @@ export function registerRoutes(server: Server, app: Express) {
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
+  app.post("/api/inbox/:id/soft-delete", (req, res) => {
+    const result = storage.softDeleteInboxItem(Number(req.params.id));
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.post("/api/inbox/:id/restore", (req, res) => {
+    const result = storage.restoreInboxItem(Number(req.params.id));
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
   app.delete("/api/inbox/:id", (req, res) => {
     storage.deleteInboxItem(Number(req.params.id));
     res.json({ ok: true });
+  });
+
+  // Someday/Maybe project (auto-create)
+  app.get("/api/someday-project", (_req, res) => {
+    res.json(storage.getOrCreateSomedayProject());
   });
 
   // ============================================================
