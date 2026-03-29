@@ -1,0 +1,362 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Fingerprint, Target, Plus, Trash2, CheckCircle2, Flame,
+  TrendingUp, Calendar
+} from "lucide-react";
+import { useState, useMemo } from "react";
+import type { Identity, Habit, HabitLog, Area, Vision } from "@shared/schema";
+
+function getToday() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function getLast7Days() {
+  const days: string[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push(d.toISOString().split("T")[0]);
+  }
+  return days;
+}
+
+function getDayLabel(dateStr: string) {
+  const d = new Date(dateStr + "T12:00:00");
+  return d.toLocaleDateString("en-US", { weekday: "short" }).charAt(0);
+}
+
+export default function HabitsPage() {
+  const today = getToday();
+  const last7 = getLast7Days();
+
+  const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
+  const { data: habits = [] } = useQuery<Habit[]>({ queryKey: ["/api/habits"] });
+  const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
+  const { data: visions = [] } = useQuery<Vision[]>({ queryKey: ["/api/visions"] });
+  const { data: todayLogs = [] } = useQuery<HabitLog[]>({
+    queryKey: ["/api/habit-logs", today],
+    queryFn: () => apiRequest("GET", `/api/habit-logs?date=${today}`).then(r => r.json()),
+  });
+
+  // Fetch logs for last 7 days for streaks
+  const allLogs = useMemo(() => {
+    const map: Record<string, Set<number>> = {};
+    todayLogs.forEach(l => {
+      if (!map[l.date]) map[l.date] = new Set();
+      map[l.date].add(l.habitId);
+    });
+    return map;
+  }, [todayLogs]);
+
+  const activeHabits = habits.filter(h => h.active);
+
+  return (
+    <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight">Identity & Habits</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          "Every action you take is a vote for the type of person you wish to become."
+        </p>
+      </div>
+
+      {/* Identity Statements */}
+      <IdentitySection identities={identities} areas={areas} visions={visions} />
+
+      {/* Habit Tracker */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium">Habit Systems</h2>
+          <Badge variant="secondary" className="text-xs">
+            {todayLogs.length}/{activeHabits.length} today
+          </Badge>
+        </div>
+
+        {activeHabits.length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center text-muted-foreground">
+              <Target className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium">No habits yet</p>
+              <p className="text-xs mt-1">Create identity statements first, then attach habits to them.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {activeHabits.map((habit) => (
+              <HabitRow key={habit.id} habit={habit} todayLogs={todayLogs} identities={identities} today={today} last7={last7} />
+            ))}
+          </div>
+        )}
+
+        <NewHabitForm identities={identities} />
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// IDENTITY SECTION
+// ============================================================
+function IdentitySection({ identities, areas, visions }: { identities: Identity[]; areas: Area[]; visions: Vision[] }) {
+  const [statement, setStatement] = useState("");
+  const [areaId, setAreaId] = useState<string>("");
+
+  const create = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/identities", {
+      statement,
+      areaId: areaId && areaId !== "none" ? Number(areaId) : null,
+      createdAt: new Date().toISOString(),
+    }),
+    onSuccess: () => {
+      setStatement(""); setAreaId("");
+      queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
+    },
+  });
+
+  const deleteIdentity = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/identities/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/identities"] }),
+  });
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-sm font-medium flex items-center gap-2">
+        <Fingerprint className="w-4 h-4 text-primary" /> Identity Statements
+      </h2>
+
+      {identities.length > 0 && (
+        <div className="grid sm:grid-cols-2 gap-2">
+          {identities.map((id) => (
+            <Card key={id.id} className="bg-primary/[0.03]">
+              <CardContent className="p-3 flex justify-between items-start">
+                <div>
+                  <p className="text-sm font-medium" data-testid={`identity-${id.id}`}>
+                    "I am the type of person who {id.statement}"
+                  </p>
+                  {id.areaId && (
+                    <Badge variant="outline" className="text-[10px] h-4 px-1 mt-1.5">
+                      {areas.find(a => a.id === id.areaId)?.name}
+                    </Badge>
+                  )}
+                </div>
+                <Button variant="ghost" size="sm" className="text-destructive h-6 w-6 p-0"
+                  onClick={() => deleteIdentity.mutate(id.id)}>
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Card className="border-dashed">
+        <CardContent className="p-3 flex gap-2 items-end">
+          <div className="flex-1 space-y-2">
+            <p className="text-xs text-muted-foreground">I am the type of person who...</p>
+            <Input
+              placeholder="exercises every day, reads before bed..."
+              value={statement}
+              onChange={(e) => setStatement(e.target.value)}
+              className="text-sm"
+              data-testid="input-identity"
+            />
+          </div>
+          <Select value={areaId} onValueChange={setAreaId}>
+            <SelectTrigger className="w-32"><SelectValue placeholder="Area" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No area</SelectItem>
+              {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button size="sm" onClick={() => create.mutate()} disabled={!statement.trim()} data-testid="button-add-identity">
+            <Plus className="w-3 h-3 mr-1" /> Add
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================
+// HABIT ROW
+// ============================================================
+function HabitRow({ habit, todayLogs, identities, today, last7 }: {
+  habit: Habit; todayLogs: HabitLog[]; identities: Identity[]; today: string; last7: string[];
+}) {
+  const log = todayLogs.find(l => l.habitId === habit.id);
+  const isDone = !!log;
+  const identity = identities.find(i => i.id === habit.identityId);
+
+  const logHabit = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/habit-logs", { habitId: habit.id, date: today, count: 1 }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/habit-logs", today] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+    },
+  });
+
+  const removeLog = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/habit-logs/${log!.id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/habit-logs", today] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+    },
+  });
+
+  const deleteHabit = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/habits/${habit.id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/habits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+    },
+  });
+
+  return (
+    <Card className="group">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => isDone ? removeLog.mutate() : logHabit.mutate()}
+            className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${
+              isDone
+                ? "border-primary bg-primary scale-110"
+                : "border-muted-foreground/30 hover:border-primary/50"
+            }`}
+            data-testid={`habit-check-${habit.id}`}
+          >
+            {isDone && <CheckCircle2 className="w-4 h-4 text-primary-foreground" />}
+          </button>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className={`text-sm font-medium ${isDone ? "line-through text-muted-foreground" : ""}`}>
+                {habit.name}
+              </p>
+              <Badge variant="outline" className="text-[10px] h-4 px-1">{habit.frequency}</Badge>
+            </div>
+            {identity && (
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Identity: {identity.statement}
+              </p>
+            )}
+            {habit.cue && (
+              <p className="text-[11px] text-primary/70 mt-0.5">
+                {habit.cue.toLowerCase().startsWith('when') ? habit.cue : `When ${habit.cue}`} → {habit.response}
+              </p>
+            )}
+          </div>
+
+          <Button variant="ghost" size="sm" className="text-destructive h-7 opacity-0 group-hover:opacity-100"
+            onClick={() => deleteHabit.mutate()}>
+            <Trash2 className="w-3 h-3" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================
+// NEW HABIT FORM
+// ============================================================
+function NewHabitForm({ identities }: { identities: Identity[] }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [identityId, setIdentityId] = useState<string>("");
+  const [cue, setCue] = useState("");
+  const [response, setResponse] = useState("");
+  const [reward, setReward] = useState("");
+  const [frequency, setFrequency] = useState("daily");
+
+  const create = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/habits", {
+      name,
+      identityId: identityId && identityId !== "none" ? Number(identityId) : null,
+      cue: cue || null,
+      response: response || null,
+      reward: reward || null,
+      frequency,
+      targetCount: 1,
+      active: 1,
+      createdAt: new Date().toISOString(),
+    }),
+    onSuccess: () => {
+      setName(""); setIdentityId(""); setCue(""); setResponse(""); setReward("");
+      setFrequency("daily"); setOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/habits"] });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" className="w-full border-dashed" data-testid="button-new-habit">
+          <Plus className="w-4 h-4 mr-1" /> New Habit
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="text-base">Create a Habit</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Habit name</label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Morning run" data-testid="input-habit-name" />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Linked identity</label>
+            <Select value={identityId} onValueChange={setIdentityId}>
+              <SelectTrigger><SelectValue placeholder="Which identity does this reinforce?" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {identities.map(i => (
+                  <SelectItem key={i.id} value={String(i.id)}>...who {i.statement}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Frequency</label>
+            <Select value={frequency} onValueChange={setFrequency}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="daily">Daily</SelectItem>
+                <SelectItem value="weekdays">Weekdays</SelectItem>
+                <SelectItem value="weekly">Weekly</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2 pt-1">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Habit Stack (optional)
+            </p>
+            <Input value={cue} onChange={(e) => setCue(e.target.value)}
+              placeholder="Cue: When I... (e.g. finish my morning coffee)" className="text-sm" />
+            <Input value={response} onChange={(e) => setResponse(e.target.value)}
+              placeholder="Response: I will... (e.g. put on my running shoes)" className="text-sm" />
+            <Input value={reward} onChange={(e) => setReward(e.target.value)}
+              placeholder="Reward: Which gives me... (e.g. energy for the day)" className="text-sm" />
+          </div>
+
+          <Button className="w-full" disabled={!name.trim()} onClick={() => create.mutate()} data-testid="button-save-habit">
+            Create Habit
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
