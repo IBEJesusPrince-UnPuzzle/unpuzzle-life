@@ -161,21 +161,26 @@ export default function RoutinePage() {
       </Card>
 
       {/* Timeline grouped by phase */}
-      {phases.map((group) => (
-        <PhaseGroup
-          key={group.phase}
-          phase={group.phase}
-          PhaseIcon={group.icon}
-          color={group.color}
-          items={group.items}
-          completedIds={completedIds}
-          logs={logs}
-          today={today}
-          currentIdx={currentIdx}
-          allItems={activeItems}
-          areas={areas}
-        />
-      ))}
+      {(() => {
+        // Build flat display-order list so "After..." shows the correct previous item's reward
+        const flatDisplayOrder: RoutineItem[] = phases.flatMap(g => g.items);
+        return phases.map((group) => (
+          <PhaseGroup
+            key={group.phase}
+            phase={group.phase}
+            PhaseIcon={group.icon}
+            color={group.color}
+            items={group.items}
+            completedIds={completedIds}
+            logs={logs}
+            today={today}
+            currentIdx={currentIdx}
+            allItems={activeItems}
+            flatDisplayOrder={flatDisplayOrder}
+            areas={areas}
+          />
+        ));
+      })()}
     </div>
   );
 }
@@ -184,7 +189,7 @@ export default function RoutinePage() {
 // PHASE GROUP
 // ============================================================
 function PhaseGroup({
-  phase, PhaseIcon, color, items, completedIds, logs, today, currentIdx, allItems, areas,
+  phase, PhaseIcon, color, items, completedIds, logs, today, currentIdx, allItems, flatDisplayOrder, areas,
 }: {
   phase: string;
   PhaseIcon: typeof Clock;
@@ -195,6 +200,7 @@ function PhaseGroup({
   today: string;
   currentIdx: number;
   allItems: RoutineItem[];
+  flatDisplayOrder: RoutineItem[];
   areas: Area[];
 }) {
   const phaseCompleted = items.filter(i => completedIds.has(i.id)).length;
@@ -212,6 +218,9 @@ function PhaseGroup({
       <div className="space-y-1.5">
         {items.map((item, i) => {
           const globalIdx = allItems.findIndex(ai => ai.id === item.id);
+          // Use flat display order for "After..." so it matches the visual sequence
+          const displayIdx = flatDisplayOrder.findIndex(fi => fi.id === item.id);
+          const prevItem = displayIdx > 0 ? flatDisplayOrder[displayIdx - 1] : null;
           return (
             <RoutineRow
               key={item.id}
@@ -221,7 +230,7 @@ function PhaseGroup({
               isCurrent={globalIdx === currentIdx}
               isPast={globalIdx < currentIdx}
               today={today}
-              prevReward={globalIdx > 0 ? allItems[globalIdx - 1].reward : null}
+              prevReward={prevItem ? prevItem.reward : null}
               areas={areas}
             />
           );
