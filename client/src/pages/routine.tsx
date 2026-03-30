@@ -486,7 +486,7 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
 // ============================================================
 // EDIT ROUTINE DIALOG (time, duration, location)
 // ============================================================
-function EditRoutineDialog({ item, open, onOpenChange }: {
+export function EditRoutineDialog({ item, open, onOpenChange }: {
   item: RoutineItem; open: boolean; onOpenChange: (v: boolean) => void;
 }) {
   // Parse current time into 12h format

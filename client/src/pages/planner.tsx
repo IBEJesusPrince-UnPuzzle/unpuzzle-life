@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import type { PlannerTask, Area, RoutineItem, RoutineLog } from "@shared/schema";
+import { EditRoutineDialog } from "./routine";
 
 // ============================================================
 // HELPERS
@@ -752,6 +753,7 @@ function RoutineItemCard({ item, areas, isComplete, date, logId }: {
 }) {
   const area = areas.find(a => a.id === item.areaId);
   const [expanded, setExpanded] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const logCompletion = useMutation({
     mutationFn: () => apiRequest("POST", "/api/routine-logs", {
@@ -772,6 +774,7 @@ function RoutineItemCard({ item, areas, isComplete, date, logId }: {
   });
 
   return (
+    <>
     <Card className={`group transition-all border-l-4 border-l-violet-500/50 ${isComplete ? "opacity-60" : ""}`}>
       <CardContent className="p-3">
         <div className="flex items-start gap-2.5">
@@ -842,9 +845,19 @@ function RoutineItemCard({ item, areas, isComplete, date, logId }: {
               </div>
             )}
           </div>
+
+          {/* Edit button */}
+          <div className="flex items-center gap-0.5 shrink-0">
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title="Edit routine"
+              onClick={() => setEditOpen(true)} data-testid={`edit-routine-${item.id}`}>
+              <Pencil className="w-3 h-3" />
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
+    <EditRoutineDialog item={item} open={editOpen} onOpenChange={setEditOpen} />
+    </>
   );
 }
 
