@@ -670,12 +670,14 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
           </Badge>
         </div>
 
+        <NewHabitForm areas={areas} identities={identities} />
+
         {activeHabits.length === 0 ? (
           <Card>
             <CardContent className="p-8 text-center text-muted-foreground">
               <Target className="w-10 h-10 mx-auto mb-3 opacity-30" />
               <p className="text-sm font-medium">No habits yet</p>
-              <p className="text-xs mt-1">Build your identity-driven habit systems below.</p>
+              <p className="text-xs mt-1">Build your identity-driven habit systems above.</p>
             </CardContent>
           </Card>
         ) : (
@@ -685,8 +687,6 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
             ))}
           </div>
         )}
-
-        <NewHabitForm areas={areas} identities={identities} />
 
         {/* Link to Routine */}
         <div className="pt-2">
