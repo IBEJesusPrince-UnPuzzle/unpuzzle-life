@@ -17,17 +17,14 @@ import ImportPage from "@/pages/import";
 import ProjectDetailPage from "@/pages/project-detail";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
-import { useLocation, Link, useRoute } from "wouter";
+import { useRoute } from "wouter";
+import { Menu } from "lucide-react";
 
 function ProjectDetailRoute() {
   const [, params] = useRoute("/projects/:id");
   if (!params?.id) return <NotFound />;
   return <ProjectDetailPage id={Number(params.id)} />;
 }
-import { LayoutDashboard, Inbox, Layers, RotateCcw, Moon, Sun, CalendarDays, Timer } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-
 
 function AppRouter() {
   return (
@@ -43,61 +40,6 @@ function AppRouter() {
       <Route path="/projects/:id" component={ProjectDetailRoute} />
       <Route component={NotFound} />
     </Switch>
-  );
-}
-
-const mobileNavItems = [
-  { href: "/", label: "Home", icon: LayoutDashboard },
-  { href: "/inbox", label: "Inbox", icon: Inbox, showBadge: true },
-  { href: "/routine", label: "Routine", icon: Timer },
-  { href: "/planner", label: "Agenda", icon: CalendarDays },
-  { href: "/review", label: "Review", icon: RotateCcw },
-  { href: "/horizons", label: "Horizons", icon: Layers },
-];
-
-function MobileNav({ isDark, toggleTheme }: { isDark: boolean; toggleTheme: () => void }) {
-  const [location] = useLocation();
-  const { data: stats } = useQuery<{ inboxCount: number }>({
-    queryKey: ["/api/stats"],
-    queryFn: () => apiRequest("GET", "/api/stats").then(r => r.json()),
-  });
-
-  return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border safe-area-bottom">
-      <div className="flex items-center justify-around h-14">
-        {mobileNavItems.map(({ href, label, icon: Icon, showBadge }) => {
-          const isActive = href === "/" ? location === "/" : location.startsWith(href);
-          return (
-            <Link key={href} href={href}>
-              <button
-                className={`flex flex-col items-center justify-center gap-0.5 w-full h-full px-1 transition-colors ${
-                  isActive ? "text-primary" : "text-muted-foreground"
-                }`}
-                data-testid={`mobile-nav-${label.toLowerCase()}`}
-              >
-                <span className="relative">
-                  <Icon className="w-5 h-5" />
-                  {showBadge && stats?.inboxCount ? (
-                    <span className="absolute -top-1.5 -right-2.5 bg-primary text-primary-foreground text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
-                      {stats.inboxCount}
-                    </span>
-                  ) : null}
-                </span>
-                <span className="text-[9px] font-medium leading-none">{label}</span>
-              </button>
-            </Link>
-          );
-        })}
-        <button
-          onClick={toggleTheme}
-          className="flex flex-col items-center justify-center gap-0.5 w-full h-full px-1 text-muted-foreground transition-colors"
-          data-testid="mobile-theme-toggle"
-        >
-          {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-          <span className="text-[9px] font-medium leading-none">{isDark ? "Light" : "Dark"}</span>
-        </button>
-      </div>
-    </nav>
   );
 }
 
@@ -127,10 +69,19 @@ export default function App() {
                   <SidebarTrigger data-testid="button-sidebar-toggle" />
                 </header>
 
-                <main className="flex-1 overflow-hidden pb-14 md:pb-0">
+                <main className="flex-1 overflow-hidden">
                   <AppRouter />
                 </main>
-                <MobileNav isDark={isDark} toggleTheme={() => setIsDark(!isDark)} />
+
+                {/* Mobile sidebar trigger — fixed at bottom center */}
+                <div className="md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
+                  <SidebarTrigger
+                    className="w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-95 transition-all"
+                    data-testid="mobile-sidebar-trigger"
+                  >
+                    <Menu className="w-5 h-5" />
+                  </SidebarTrigger>
+                </div>
               </div>
             </div>
           </SidebarProvider>
