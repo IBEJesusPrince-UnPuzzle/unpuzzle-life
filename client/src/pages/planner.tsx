@@ -394,13 +394,19 @@ export function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick:
           </Button>
         </div>
 
-        <input
-          type="date"
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-          className="h-7 px-2 text-xs border rounded-md bg-card text-foreground"
-          data-testid="date-picker"
-        />
+        <Select value={selectedDate} onValueChange={setSelectedDate}>
+          <SelectTrigger className="h-7 w-auto min-w-[130px] text-xs" data-testid="date-picker">
+            <SelectValue>{formatDateLabel(selectedDate)} ({selectedDate})</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {Array.from({ length: 14 }, (_, i) => {
+              const d = new Date();
+              d.setDate(d.getDate() + i - 3);
+              const ds = getDateStr(d);
+              return <SelectItem key={ds} value={ds}>{formatDateLabel(ds)} ({ds})</SelectItem>;
+            })}
+          </SelectContent>
+        </Select>
 
         <div className="flex-1" />
 
@@ -611,7 +617,7 @@ function EditTaskDialog({ task, areas, open, onOpenChange }: {
               placeholder="How did it go?" className="text-sm" />
           </div>
           <RecurrenceBuilder value={recurrenceJson} onChange={setRecurrenceJson} />
-          <Button className="w-full" disabled={!goal.trim()} onClick={() => update.mutate()}
+          <Button className="w-full" disabled={!goal.trim() || !areaId || areaId === "none" || !startTime || !endTime} onClick={() => update.mutate()}
             data-testid="button-update-task">
             Save Changes
           </Button>
@@ -657,12 +663,18 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
           </button>
 
           <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setEditOpen(true)}>
-            <div className="flex items-start gap-2 flex-wrap">
-              <p className={`text-sm font-medium leading-snug ${isDone ? "line-through" : ""}`}>
-                {task.goal}
+            {/* Line 1: In the area of... */}
+            {area && (
+              <p className="text-[11px] text-muted-foreground">
+                In the area of <span className="font-medium text-foreground">{area.name}</span> I will...
               </p>
-            </div>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
+            )}
+            {/* Line 2: Task name */}
+            <p className={`text-sm font-medium leading-snug ${isDone ? "line-through" : ""}`}>
+              {task.goal}
+            </p>
+            {/* Line 3: Time + Duration + Flag */}
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               {task.startTime && (
                 <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
                   <Clock className="w-3 h-3" />
@@ -675,14 +687,9 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
                   {parseFloat(task.hours).toFixed(task.hours.includes(".") ? 1 : 0)}h
                 </Badge>
               )}
-              {area && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onAreaClick(area.id); }}
-                  className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-                >
-                  {area.name}
-                </button>
-              )}
+              <Badge variant="outline" className="text-[10px] h-4 px-1">
+                Task
+              </Badge>
               {task.recurrence && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center gap-0.5">
                   <Repeat className="w-2.5 h-2.5" />
@@ -780,23 +787,38 @@ function RoutineItemCard({ item, areas, isComplete, date, logId }: {
           </button>
 
           <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+            {/* Line 1: In the area of... */}
+            {area && (
+              <p className="text-[11px] text-muted-foreground">
+                In the area of <span className="font-medium text-foreground">{area.name}</span> I will...
+              </p>
+            )}
+            {/* Line 2: Routine response */}
             <p className={`text-sm font-medium leading-snug ${isComplete ? "line-through" : ""}`}>
               {item.response}
             </p>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
+            {/* Line 3: Time + Duration + Routine flag */}
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
                 <Clock className="w-3 h-3" />
                 {formatTime12h(item.time)}
+                {item.durationMinutes > 0 && (() => {
+                  const endH = parseInt(item.time.split(":")[0]);
+                  const endM = parseInt(item.time.split(":")[1]) + item.durationMinutes;
+                  const endTime = `${Math.floor((endH * 60 + endM) / 60).toString().padStart(2, "0")}:${((endH * 60 + endM) % 60).toString().padStart(2, "0")}`;
+                  return ` \u2013 ${formatTime12h(endTime)}`;
+                })()}
               </span>
-              {area && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
-                  {area.name}
-                </span>
+              {item.durationMinutes > 0 && (
+                <Badge variant="outline" className="text-[10px] h-4 px-1">
+                  {item.durationMinutes >= 60 ? `${(item.durationMinutes / 60).toFixed(1)}h` : `${item.durationMinutes}m`}
+                </Badge>
               )}
               <Badge variant="outline" className="text-[10px] h-4 px-1 text-violet-600 dark:text-violet-400 border-violet-500/30">
                 Routine
               </Badge>
             </div>
+            {/* Expanded view */}
             {expanded && (
               <div className="mt-2 space-y-1 text-[11px]">
                 {item.cue && (
@@ -1105,7 +1127,7 @@ function AddTaskDialog({ open, onOpenChange, areas, defaultDate, defaultAreaId }
           {/* Recurrence builder */}
           <RecurrenceBuilder value={recurrenceJson} onChange={setRecurrenceJson} />
 
-          <Button className="w-full" disabled={!goal.trim()} onClick={() => create.mutate()}
+          <Button className="w-full" disabled={!goal.trim() || !areaId || areaId === "none" || !startTime || !endTime} onClick={() => create.mutate()}
             data-testid="button-save-task">
             Add Task
           </Button>

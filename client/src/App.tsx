@@ -15,34 +15,10 @@ import RoutinePage from "@/pages/routine";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
-import { LayoutDashboard, Inbox, Layers, RotateCcw, Moon, Sun, CalendarDays, Timer, ChevronLeft } from "lucide-react";
+import { LayoutDashboard, Inbox, Layers, RotateCcw, Moon, Sun, CalendarDays, Timer } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
-function BackButton() {
-  const [location] = useLocation();
-  if (location === "/") return null;
-  return (
-    <a
-      href="#/"
-      className="flex items-center justify-center w-10 h-10 -m-2 text-muted-foreground hover:text-foreground active:text-foreground transition-colors"
-      data-testid="button-back"
-      aria-label="Back to Dashboard"
-    >
-      <ChevronLeft className="w-6 h-6" />
-    </a>
-  );
-}
-
-function MobileTopBar() {
-  const [location] = useLocation();
-  if (location === "/") return null;
-  return (
-    <div className="md:hidden flex items-center justify-center p-2 border-b shrink-0">
-      <BackButton />
-    </div>
-  );
-}
 
 function AppRouter() {
   return (
@@ -136,10 +112,8 @@ export default function App() {
               <AppSidebar isDark={isDark} toggleTheme={() => setIsDark(!isDark)} />
               <div className="flex flex-col flex-1 min-w-0">
                 <header className="hidden md:flex items-center gap-2 p-2 border-b shrink-0">
-                  <BackButton />
                   <SidebarTrigger data-testid="button-sidebar-toggle" />
                 </header>
-                <MobileTopBar />
 
                 <main className="flex-1 overflow-hidden pb-14 md:pb-0">
                   <AppRouter />
