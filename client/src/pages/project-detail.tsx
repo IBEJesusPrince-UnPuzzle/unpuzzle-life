@@ -6,9 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  FolderOpen, CheckCircle2, FileText, Plus, ListTodo, Archive,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  FolderOpen, CheckCircle2, FileText, Plus, ListTodo, Archive, CalendarDays, Clock,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { Project, Action, InboxItem, Area } from "@shared/schema";
 
 interface ProjectDetails {
@@ -146,23 +152,13 @@ export default function ProjectDetailPage({ id }: { id: number }) {
             <ListTodo className="w-4 h-4" /> Actions ({pendingActions.length})
           </h2>
           {pendingActions.map(action => (
-            <Card key={action.id}>
-              <CardContent className="p-3 flex items-center gap-3">
-                <Checkbox
-                  checked={false}
-                  onCheckedChange={() => completeAction.mutate(action.id)}
-                  data-testid={`action-check-${action.id}`}
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm">{action.title}</p>
-                  {action.context && (
-                    <Badge variant="secondary" className="text-[10px] h-4 px-1 mt-0.5">
-                      {action.context}
-                    </Badge>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <ActionCard
+              key={action.id}
+              action={action}
+              projectAreaId={project.areaId}
+              areas={areas}
+              onComplete={() => completeAction.mutate(action.id)}
+            />
           ))}
         </div>
       )}
@@ -232,5 +228,199 @@ export default function ProjectDetailPage({ id }: { id: number }) {
         </Card>
       )}
     </div>
+  );
+}
+
+// ============================================================
+// ACTION CARD with "Send to Agenda" button
+// ============================================================
+
+const HOURS_12 = Array.from({ length: 12 }, (_, i) => i + 1);
+const MINUTES = ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"];
+
+function to24h(h12: number, min: string, period: string): string {
+  let h = h12;
+  if (period === "AM" && h === 12) h = 0;
+  if (period === "PM" && h !== 12) h += 12;
+  return `${h.toString().padStart(2, "0")}:${min}`;
+}
+
+function QuickTimePicker({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+  const parsed = (() => {
+    if (!value) return { h12: "9", min: "00", period: "AM" };
+    const [h, m] = value.split(":").map(Number);
+    return {
+      h12: String(h === 0 ? 12 : h > 12 ? h - 12 : h),
+      min: (Math.round(m / 5) * 5 % 60).toString().padStart(2, "0"),
+      period: h >= 12 ? "PM" : "AM",
+    };
+  })();
+  const [hour, setHour] = useState(parsed.h12);
+  const [minute, setMinute] = useState(parsed.min);
+  const [period, setPeriod] = useState(parsed.period);
+
+  const update = (h: string, m: string, p: string) => {
+    setHour(h); setMinute(m); setPeriod(p);
+    if (h && m && p) onChange(to24h(Number(h), m, p));
+  };
+
+  return (
+    <div>
+      <label className="text-xs font-medium mb-1 block text-muted-foreground">{label}</label>
+      <div className="flex gap-1">
+        <Select value={hour} onValueChange={v => update(v, minute, period)}>
+          <SelectTrigger className="text-sm h-9 px-1.5 w-[46px]"><SelectValue placeholder="Hr" /></SelectTrigger>
+          <SelectContent>{HOURS_12.map(h => <SelectItem key={h} value={String(h)}>{h}</SelectItem>)}</SelectContent>
+        </Select>
+        <Select value={minute} onValueChange={v => update(hour, v, period)}>
+          <SelectTrigger className="text-sm h-9 px-1.5 w-[46px]"><SelectValue placeholder="Min" /></SelectTrigger>
+          <SelectContent>{MINUTES.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+        </Select>
+        <Select value={period} onValueChange={v => update(hour, minute, v)}>
+          <SelectTrigger className="text-sm h-9 px-1.5 w-[50px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="AM">AM</SelectItem>
+            <SelectItem value="PM">PM</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
+function ActionCard({ action, projectAreaId, areas, onComplete }: {
+  action: Action; projectAreaId: number | null; areas: Area[]; onComplete: () => void;
+}) {
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [areaId, setAreaId] = useState<string>(projectAreaId ? String(projectAreaId) : "none");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+
+  const hours = useMemo(() => {
+    if (!startTime || !endTime) return "";
+    const [sh, sm] = startTime.split(":").map(Number);
+    const [eh, em] = endTime.split(":").map(Number);
+    const diff = (eh * 60 + em - sh * 60 - sm) / 60;
+    return diff > 0 ? diff.toFixed(2) : "";
+  }, [startTime, endTime]);
+
+  const dateOptions = useMemo(() =>
+    Array.from({ length: 14 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      const ds = d.toISOString().split("T")[0];
+      const label = i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+      return { value: ds, label: `${label} (${ds})` };
+    })
+  , []);
+
+  const createTask = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/planner-tasks", {
+      date,
+      areaId: areaId && areaId !== "none" ? Number(areaId) : null,
+      goal: action.title,
+      startTime: startTime || null,
+      endTime: endTime || null,
+      hours: hours || null,
+      status: "planned",
+      recurrence: null,
+      habitId: null,
+      isDraft: 0,
+      sourceType: "manual",
+    }),
+    onSuccess: () => {
+      setScheduleOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+    },
+  });
+
+  return (
+    <>
+      <Card>
+        <CardContent className="p-3 flex items-center gap-3">
+          <Checkbox
+            checked={false}
+            onCheckedChange={onComplete}
+            data-testid={`action-check-${action.id}`}
+          />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm">{action.title}</p>
+            {action.context && (
+              <Badge variant="secondary" className="text-[10px] h-4 px-1 mt-0.5">
+                {action.context}
+              </Badge>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs gap-1 text-primary shrink-0"
+            onClick={() => setScheduleOpen(true)}
+            title="Send to Agenda"
+            data-testid={`action-to-agenda-${action.id}`}
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Agenda</span>
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <CalendarDays className="w-4 h-4 text-primary" />
+              Send to Agenda
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground -mt-1 truncate">"{action.title}"</p>
+          <div className="space-y-3 pt-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-medium mb-1 block text-muted-foreground">Date</label>
+                <Select value={date} onValueChange={setDate}>
+                  <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {dateOptions.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium mb-1 block text-muted-foreground">Area</label>
+                <Select value={areaId} onValueChange={setAreaId}>
+                  <SelectTrigger className="text-sm"><SelectValue placeholder="Select area" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No area</SelectItem>
+                    {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-2">
+              <QuickTimePicker label="Start" value={startTime} onChange={setStartTime} />
+              <QuickTimePicker label="End" value={endTime} onChange={setEndTime} />
+              {hours && (
+                <div className="flex-shrink-0">
+                  <label className="text-xs font-medium mb-1 block text-muted-foreground">Duration</label>
+                  <div className="h-9 px-2 text-sm border rounded-md bg-muted/50 flex items-center text-muted-foreground min-w-[48px]">
+                    {parseFloat(hours).toFixed(1)}h
+                  </div>
+                </div>
+              )}
+            </div>
+            <Button
+              className="w-full"
+              disabled={!startTime || !endTime || !areaId || areaId === "none" || createTask.isPending}
+              onClick={() => createTask.mutate()}
+              data-testid="button-send-to-agenda"
+            >
+              {createTask.isPending ? "Creating..." : "Add to Agenda"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
