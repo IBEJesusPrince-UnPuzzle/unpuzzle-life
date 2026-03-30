@@ -20,11 +20,11 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
 function BackButton() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   if (location === "/") return null;
   return (
     <button
-      onClick={() => window.history.back()}
+      onClick={() => setLocation("/")}
       className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
       data-testid="button-back"
     >

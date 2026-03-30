@@ -157,6 +157,28 @@ function PurposeSection({ purposes }: { purposes: Purpose[] }) {
         <span className="text-xs text-muted-foreground">Why do I exist? What do I stand for?</span>
       </div>
 
+      <Card className="border-dashed">
+        <CardContent className="p-4 space-y-3">
+          <Input
+            placeholder="My life's purpose is..."
+            value={statement}
+            onChange={(e) => setStatement(e.target.value)}
+            data-testid="input-purpose"
+          />
+          <Textarea
+            placeholder="Core principles (one per line)..."
+            value={principles}
+            onChange={(e) => setPrinciples(e.target.value)}
+            rows={3}
+            className="text-sm"
+            data-testid="input-principles"
+          />
+          <Button size="sm" onClick={() => create.mutate()} disabled={!statement.trim()} data-testid="button-add-purpose">
+            <Plus className="w-3 h-3 mr-1" /> Add Purpose
+          </Button>
+        </CardContent>
+      </Card>
+
       {purposes.map((p) => {
         const princ = p.principles ? JSON.parse(p.principles) : [];
         if (editingId === p.id) {
@@ -216,28 +238,6 @@ function PurposeSection({ purposes }: { purposes: Purpose[] }) {
           </Card>
         );
       })}
-
-      <Card className="border-dashed">
-        <CardContent className="p-4 space-y-3">
-          <Input
-            placeholder="My life's purpose is..."
-            value={statement}
-            onChange={(e) => setStatement(e.target.value)}
-            data-testid="input-purpose"
-          />
-          <Textarea
-            placeholder="Core principles (one per line)..."
-            value={principles}
-            onChange={(e) => setPrinciples(e.target.value)}
-            rows={3}
-            className="text-sm"
-            data-testid="input-principles"
-          />
-          <Button size="sm" onClick={() => create.mutate()} disabled={!statement.trim()} data-testid="button-add-purpose">
-            <Plus className="w-3 h-3 mr-1" /> Add Purpose
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -305,6 +305,19 @@ function VisionSection({ visions }: { visions: Vision[] }) {
         <span className="text-xs text-muted-foreground">What does my ideal life look like in 3-5 years?</span>
       </div>
 
+      <Card className="border-dashed">
+        <CardContent className="p-4 space-y-3">
+          <Input placeholder="3-5 year vision..." value={title} onChange={(e) => setTitle(e.target.value)} data-testid="input-vision" />
+          <Textarea placeholder="Describe this vision in detail..." value={desc} onChange={(e) => setDesc(e.target.value)} rows={2} className="text-sm" />
+          <div className="flex gap-2">
+            <Input placeholder="Timeframe (e.g. 2029)" value={timeframe} onChange={(e) => setTimeframe(e.target.value)} className="w-40" />
+            <Button size="sm" onClick={() => create.mutate()} disabled={!title.trim()} data-testid="button-add-vision">
+              <Plus className="w-3 h-3 mr-1" /> Add Vision
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {visions.map((v) => {
         if (editingId === v.id) {
           return (
@@ -362,19 +375,6 @@ function VisionSection({ visions }: { visions: Vision[] }) {
           </Card>
         );
       })}
-
-      <Card className="border-dashed">
-        <CardContent className="p-4 space-y-3">
-          <Input placeholder="3-5 year vision..." value={title} onChange={(e) => setTitle(e.target.value)} data-testid="input-vision" />
-          <Textarea placeholder="Describe this vision in detail..." value={desc} onChange={(e) => setDesc(e.target.value)} rows={2} className="text-sm" />
-          <div className="flex gap-2">
-            <Input placeholder="Timeframe (e.g. 2029)" value={timeframe} onChange={(e) => setTimeframe(e.target.value)} className="w-40" />
-            <Button size="sm" onClick={() => create.mutate()} disabled={!title.trim()} data-testid="button-add-vision">
-              <Plus className="w-3 h-3 mr-1" /> Add Vision
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -559,6 +559,38 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
         <span className="text-xs text-muted-foreground">"I am the type of person who..."</span>
       </div>
 
+      <Card className="border-dashed">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">In the area of...</span>
+            <Select value={areaId} onValueChange={setAreaId}>
+              <SelectTrigger className="w-44" data-testid="select-identity-area">
+                <SelectValue placeholder="Select area" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No area</SelectItem>
+                {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">I'm the type of person who...</span>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              placeholder="exercises every day, reads before bed..."
+              value={statement}
+              onChange={(e) => setStatement(e.target.value)}
+              className="text-sm flex-1"
+              data-testid="input-identity"
+            />
+            <Button size="sm" onClick={() => create.mutate()} disabled={!statement.trim()} data-testid="button-add-identity">
+              <Plus className="w-3 h-3 mr-1" /> Add
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {identities.length > 0 && (
         <div className="grid sm:grid-cols-2 gap-2">
           {identities.map((id) => {
@@ -625,38 +657,6 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
           })}
         </div>
       )}
-
-      <Card className="border-dashed">
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground whitespace-nowrap">In the area of...</span>
-            <Select value={areaId} onValueChange={setAreaId}>
-              <SelectTrigger className="w-44" data-testid="select-identity-area">
-                <SelectValue placeholder="Select area" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No area</SelectItem>
-                {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground whitespace-nowrap">I'm the type of person who...</span>
-          </div>
-          <div className="flex gap-2">
-            <Input
-              placeholder="exercises every day, reads before bed..."
-              value={statement}
-              onChange={(e) => setStatement(e.target.value)}
-              className="text-sm flex-1"
-              data-testid="input-identity"
-            />
-            <Button size="sm" onClick={() => create.mutate()} disabled={!statement.trim()} data-testid="button-add-identity">
-              <Plus className="w-3 h-3 mr-1" /> Add
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Divider */}
       <div className="border-t pt-4 mt-4" />
@@ -733,6 +733,25 @@ function GoalSection({ goals, visions }: { goals: Goal[]; visions: Vision[] }) {
         <span className="text-xs text-muted-foreground">What do I want to achieve in 1-2 years?</span>
       </div>
 
+      <Card className="border-dashed">
+        <CardContent className="p-4 space-y-3">
+          <Input placeholder="1-2 year goal..." value={title} onChange={(e) => setTitle(e.target.value)} data-testid="input-goal" />
+          <div className="flex gap-2">
+            <Select value={visionId} onValueChange={setVisionId}>
+              <SelectTrigger className="flex-1"><SelectValue placeholder="Link to vision (optional)" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No vision</SelectItem>
+                {visions.map(v => <SelectItem key={v.id} value={String(v.id)}>{v.title}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="w-40" />
+          </div>
+          <Button size="sm" onClick={() => create.mutate()} disabled={!title.trim()} data-testid="button-add-goal">
+            <Plus className="w-3 h-3 mr-1" /> Add Goal
+          </Button>
+        </CardContent>
+      </Card>
+
       {goals.map((g) => (
         <Card key={g.id}>
           <CardContent className="p-4 flex justify-between items-start">
@@ -754,25 +773,6 @@ function GoalSection({ goals, visions }: { goals: Goal[]; visions: Vision[] }) {
           </CardContent>
         </Card>
       ))}
-
-      <Card className="border-dashed">
-        <CardContent className="p-4 space-y-3">
-          <Input placeholder="1-2 year goal..." value={title} onChange={(e) => setTitle(e.target.value)} data-testid="input-goal" />
-          <div className="flex gap-2">
-            <Select value={visionId} onValueChange={setVisionId}>
-              <SelectTrigger className="flex-1"><SelectValue placeholder="Link to vision (optional)" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No vision</SelectItem>
-                {visions.map(v => <SelectItem key={v.id} value={String(v.id)}>{v.title}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="w-40" />
-          </div>
-          <Button size="sm" onClick={() => create.mutate()} disabled={!title.trim()} data-testid="button-add-goal">
-            <Plus className="w-3 h-3 mr-1" /> Add Goal
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -859,20 +859,6 @@ function ProjectSection({ projects, areas, goals }: { projects: Project[]; areas
         <span className="text-xs text-muted-foreground">Multi-step outcomes I'm committed to.</span>
       </div>
 
-      {active.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Active ({active.length})</p>
-          {active.map((p) => <ProjectCard key={p.id} p={p} />)}
-        </div>
-      )}
-
-      {someday.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Someday / Maybe ({someday.length})</p>
-          {someday.map((p) => <ProjectCard key={p.id} p={p} />)}
-        </div>
-      )}
-
       <Card className="border-dashed">
         <CardContent className="p-4 space-y-3">
           <Input placeholder="New project..." value={title} onChange={(e) => setTitle(e.target.value)} data-testid="input-project" />
@@ -897,6 +883,20 @@ function ProjectSection({ projects, areas, goals }: { projects: Project[]; areas
           </Button>
         </CardContent>
       </Card>
+
+      {active.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Active ({active.length})</p>
+          {active.map((p) => <ProjectCard key={p.id} p={p} />)}
+        </div>
+      )}
+
+      {someday.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Someday / Maybe ({someday.length})</p>
+          {someday.map((p) => <ProjectCard key={p.id} p={p} />)}
+        </div>
+      )}
     </div>
   );
 }
