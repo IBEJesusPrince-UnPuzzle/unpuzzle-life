@@ -705,4 +705,116 @@ export function registerRoutes(server: Server, app: Express) {
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
+
+  // ============================================================
+  // BULK IMPORT
+  // ============================================================
+  app.post("/api/import", (req, res) => {
+    const { type, rows } = req.body;
+    if (!type || !Array.isArray(rows)) {
+      return res.status(400).json({ error: "type and rows[] required" });
+    }
+
+    const now = new Date().toISOString();
+    const allAreas = storage.getAreas();
+    const allIdentities = storage.getIdentities();
+    const allVisions = storage.getVisions();
+    let created = 0;
+    const errors: string[] = [];
+
+    const findAreaByName = (name: string) => allAreas.find(a => a.name.toLowerCase() === name.toLowerCase());
+    const findIdentityByStatement = (stmt: string) => allIdentities.find(i => i.statement.toLowerCase() === stmt.toLowerCase());
+    const findVisionByTitle = (title: string) => allVisions.find(v => v.title.toLowerCase() === title.toLowerCase());
+
+    try {
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const rowNum = i + 2; // +2 for header row + 0-indexed
+        try {
+          if (type === "purposes") {
+            if (!row.statement) { errors.push(`Row ${rowNum}: missing statement`); continue; }
+            const principles = row.principles ? JSON.stringify(row.principles.split("|").map((s: string) => s.trim()).filter(Boolean)) : null;
+            storage.createPurpose({ statement: row.statement, principles, createdAt: now });
+            created++;
+          } else if (type === "visions") {
+            if (!row.title) { errors.push(`Row ${rowNum}: missing title`); continue; }
+            storage.createVision({ title: row.title, description: row.description || null, timeframe: row.timeframe || null, status: "active", createdAt: now });
+            created++;
+          } else if (type === "areas") {
+            if (!row.name) { errors.push(`Row ${rowNum}: missing name`); continue; }
+            storage.createArea({ name: row.name, description: row.description || null, category: row.category || null, icon: null, sortOrder: allAreas.length + created });
+            created++;
+          } else if (type === "identities") {
+            if (!row.statement) { errors.push(`Row ${rowNum}: missing statement`); continue; }
+            const area = row.area_name ? findAreaByName(row.area_name) : null;
+            storage.createIdentity({ statement: row.statement, areaId: area?.id || null, visionId: null, createdAt: now });
+            created++;
+          } else if (type === "habits") {
+            if (!row.name) { errors.push(`Row ${rowNum}: missing name`); continue; }
+            const area = row.area_name ? findAreaByName(row.area_name) : null;
+            const identity = row.identity_statement ? findIdentityByStatement(row.identity_statement) : null;
+            const freqMap: Record<string, string> = {
+              "daily": JSON.stringify({ type: "daily", interval: 1 }),
+              "weekly": JSON.stringify({ type: "weekly", interval: 1, days: ["monday"] }),
+              "weekdays": JSON.stringify({ type: "weekly", interval: 1, days: ["monday","tuesday","wednesday","thursday","friday"] }),
+            };
+            storage.createHabit({
+              name: row.name,
+              description: null,
+              identityId: identity?.id || null,
+              cue: row.cue || null,
+              craving: row.because || null,
+              response: row.name,
+              reward: row.reward || null,
+              frequency: freqMap[row.frequency?.toLowerCase()] || freqMap["daily"],
+              targetCount: 1,
+              active: 1,
+              createdAt: now,
+              areaId: area?.id || null,
+              timeOfDay: row.time_of_day || null,
+            });
+            created++;
+          } else if (type === "goals") {
+            if (!row.title) { errors.push(`Row ${rowNum}: missing title`); continue; }
+            const vision = row.vision_title ? findVisionByTitle(row.vision_title) : null;
+            storage.createGoal({ title: row.title, description: row.description || null, visionId: vision?.id || null, targetDate: row.target_date || null, status: "active", createdAt: now });
+            created++;
+          } else if (type === "tasks") {
+            if (!row.goal || !row.date) { errors.push(`Row ${rowNum}: missing goal or date`); continue; }
+            const area = row.area_name ? findAreaByName(row.area_name) : null;
+            let hours: string | null = null;
+            if (row.start_time && row.end_time) {
+              const [sh, sm] = row.start_time.split(":").map(Number);
+              const [eh, em] = row.end_time.split(":").map(Number);
+              const diff = (eh * 60 + em - sh * 60 - sm) / 60;
+              if (diff > 0) hours = diff.toFixed(2);
+            }
+            storage.createPlannerTask({
+              date: row.date,
+              areaId: area?.id || null,
+              goal: row.goal,
+              startTime: row.start_time || null,
+              endTime: row.end_time || null,
+              hours,
+              result: null,
+              status: "planned",
+              recurrence: null,
+              habitId: null,
+              isDraft: 0,
+              sourceType: "manual",
+            });
+            created++;
+          } else {
+            return res.status(400).json({ error: `Unknown type: ${type}` });
+          }
+        } catch (err: any) {
+          errors.push(`Row ${rowNum}: ${err.message}`);
+        }
+      }
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    res.json({ created, errors, total: rows.length });
+  });
 }

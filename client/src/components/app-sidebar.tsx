@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Inbox, Layers, Target, RotateCcw,
-  Sun, Moon, Flame, CalendarDays, Timer
+  Sun, Moon, Flame, CalendarDays, Timer, Upload
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -19,6 +19,7 @@ const navItems = [
   { title: "Agenda", url: "/planner", icon: CalendarDays },
   { title: "Weekly Review", url: "/review", icon: RotateCcw },
   { title: "Horizons", url: "/horizons", icon: Layers },
+  { title: "Import", url: "/import", icon: Upload },
 ];
 
 export function AppSidebar({ isDark, toggleTheme }: { isDark: boolean; toggleTheme: () => void }) {
