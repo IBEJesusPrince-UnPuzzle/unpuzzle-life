@@ -14,6 +14,7 @@ import PlannerPage from "@/pages/planner";
 import RoutinePage from "@/pages/routine";
 import IdentityVotePage from "@/pages/identity-vote";
 import ImportPage from "@/pages/import";
+import ProjectDetailPage from "@/pages/project-detail";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
@@ -33,6 +34,7 @@ function AppRouter() {
       <Route path="/review" component={ReviewPage} />
       <Route path="/identity-vote" component={IdentityVotePage} />
       <Route path="/import" component={ImportPage} />
+      <Route path="/projects/:id">{(params) => <ProjectDetailPage id={Number(params.id)} />}</Route>
       <Route component={NotFound} />
     </Switch>
   );

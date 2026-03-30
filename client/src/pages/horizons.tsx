@@ -813,14 +813,15 @@ function ProjectSection({ projects, areas, goals }: { projects: Project[]; areas
 
   function ProjectCard({ p }: { p: Project }) {
     return (
-      <Card key={p.id}>
+      <Card key={p.id} className="cursor-pointer hover:shadow-md transition-shadow">
         <CardContent className="p-4">
           <div className="flex justify-between items-start">
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <FolderOpen className="w-4 h-4 text-chart-5" />
-                <p className="font-medium text-sm">{p.title}</p>
-              </div>
+            <Link href={`/projects/${p.id}`}>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="w-4 h-4 text-chart-5" />
+                  <p className="font-medium text-sm hover:text-primary transition-colors">{p.title}</p>
+                </div>
               <div className="flex gap-1.5 mt-1.5 ml-6">
                 {p.areaId && (
                   <Badge variant="outline" className="text-[10px] h-4">
@@ -833,16 +834,17 @@ function ProjectSection({ projects, areas, goals }: { projects: Project[]; areas
                   </Badge>
                 )}
               </div>
-            </div>
+              </div>
+            </Link>
             <div className="flex items-center gap-1">
               {p.status === "active" && (
                 <Button variant="ghost" size="sm" className="h-7 text-xs"
-                  onClick={() => updateStatus.mutate({ id: p.id, status: "completed" })}>
+                  onClick={(e) => { e.stopPropagation(); updateStatus.mutate({ id: p.id, status: "completed" }); }}>
                   <CheckCircle2 className="w-3 h-3" />
                 </Button>
               )}
               <Button variant="ghost" size="sm" className="text-destructive h-7"
-                onClick={() => deleteProject.mutate(p.id)}>
+                onClick={(e) => { e.stopPropagation(); deleteProject.mutate(p.id); }}>
                 <Trash2 className="w-3 h-3" />
               </Button>
             </div>

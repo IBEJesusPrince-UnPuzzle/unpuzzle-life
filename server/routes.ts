@@ -116,6 +116,39 @@ export function registerRoutes(server: Server, app: Express) {
     res.json({ ok: true });
   });
 
+  // Project detail: actions + references + related tasks
+  app.get("/api/projects/:id/details", (req, res) => {
+    const projectId = Number(req.params.id);
+    const project = storage.getProjects().find(p => p.id === projectId);
+    if (!project) return res.status(404).json({ error: "Not found" });
+
+    const actions = storage.getActions().filter(a => a.projectId === projectId);
+    const references = storage.getInboxItems().filter(
+      i => i.processedAs === "reference" && i.referenceProjectId === projectId
+    );
+    const areas = storage.getAreas();
+
+    res.json({
+      project,
+      actions,
+      references,
+      areas,
+    });
+  });
+
+  // References: all filed references, optionally filtered by area or project
+  app.get("/api/references", (req, res) => {
+    const allInbox = storage.getInboxItems();
+    let refs = allInbox.filter(i => i.processedAs === "reference");
+    if (req.query.areaId) {
+      refs = refs.filter(r => r.referenceAreaId === Number(req.query.areaId));
+    }
+    if (req.query.projectId) {
+      refs = refs.filter(r => r.referenceProjectId === Number(req.query.projectId));
+    }
+    res.json(refs);
+  });
+
   // ============================================================
   // ACTIONS
   // ============================================================
