@@ -565,23 +565,28 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
             if (editingId === id.id) {
               return (
                 <Card key={id.id} className="bg-primary/[0.03]">
-                  <CardContent className="p-3 space-y-2">
-                    <p className="text-xs text-muted-foreground">I am the type of person who...</p>
-                    <Input
-                      value={editStatement}
-                      onChange={(e) => setEditStatement(e.target.value)}
-                      placeholder="exercises every day, reads before bed..."
-                      className="text-sm"
-                    />
-                    <Select value={editAreaId} onValueChange={setEditAreaId}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Area" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No area</SelectItem>
-                        {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                  <CardContent className="p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">In the area of...</span>
+                      <Select value={editAreaId} onValueChange={setEditAreaId}>
+                        <SelectTrigger className="w-44">
+                          <SelectValue placeholder="Select area" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No area</SelectItem>
+                          {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">I'm the type of person who...</span>
+                      <Input
+                        value={editStatement}
+                        onChange={(e) => setEditStatement(e.target.value)}
+                        placeholder="exercises every day, reads before bed..."
+                        className="text-sm mt-1"
+                      />
+                    </div>
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => saveEdit(id.id)} disabled={!editStatement.trim()}>Save</Button>
                       <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
@@ -596,14 +601,14 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
               <Card key={id.id} className="bg-primary/[0.03]">
                 <CardContent className="p-3 flex justify-between items-start">
                   <div>
-                    <p className="text-sm font-medium" data-testid={`identity-${id.id}`}>
-                      "I am the type of person who {id.statement}"
-                    </p>
                     {id.areaId && (
-                      <Badge variant="outline" className="text-[10px] h-4 px-1 mt-1.5">
-                        {areas.find(a => a.id === id.areaId)?.name}
-                      </Badge>
+                      <p className="text-[11px] text-muted-foreground mb-0.5">
+                        In the area of <span className="font-medium text-foreground">{areas.find(a => a.id === id.areaId)?.name}</span>
+                      </p>
                     )}
+                    <p className="text-sm font-medium" data-testid={`identity-${id.id}`}>
+                      I'm the type of person who {id.statement}
+                    </p>
                   </div>
                   <div className="flex items-center gap-1 ml-2 shrink-0">
                     <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => startEdit(id)} data-testid={`edit-identity-${id.id}`}>
@@ -622,27 +627,34 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
       )}
 
       <Card className="border-dashed">
-        <CardContent className="p-3 flex gap-2 items-end">
-          <div className="flex-1 space-y-2">
-            <p className="text-xs text-muted-foreground">I am the type of person who...</p>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">In the area of...</span>
+            <Select value={areaId} onValueChange={setAreaId}>
+              <SelectTrigger className="w-44" data-testid="select-identity-area">
+                <SelectValue placeholder="Select area" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No area</SelectItem>
+                {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">I'm the type of person who...</span>
+          </div>
+          <div className="flex gap-2">
             <Input
               placeholder="exercises every day, reads before bed..."
               value={statement}
               onChange={(e) => setStatement(e.target.value)}
-              className="text-sm"
+              className="text-sm flex-1"
               data-testid="input-identity"
             />
+            <Button size="sm" onClick={() => create.mutate()} disabled={!statement.trim()} data-testid="button-add-identity">
+              <Plus className="w-3 h-3 mr-1" /> Add
+            </Button>
           </div>
-          <Select value={areaId} onValueChange={setAreaId}>
-            <SelectTrigger className="w-32"><SelectValue placeholder="Area" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No area</SelectItem>
-              {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Button size="sm" onClick={() => create.mutate()} disabled={!statement.trim()} data-testid="button-add-identity">
-            <Plus className="w-3 h-3 mr-1" /> Add
-          </Button>
         </CardContent>
       </Card>
 
