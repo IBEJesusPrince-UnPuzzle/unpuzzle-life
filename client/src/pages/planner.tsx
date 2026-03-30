@@ -1446,7 +1446,7 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
             <Input
               value={because}
               onChange={(e) => setBecause(e.target.value)}
-              placeholder="e.g. it's delicious, I have fun"
+              placeholder="e.g. what's attractive about it? why crave it?"
             />
           </div>
 
@@ -1455,7 +1455,7 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
             <Input
               value={reward}
               onChange={(e) => setReward(e.target.value)}
-              placeholder="e.g. making my tummy smile"
+              placeholder="e.g. describe how it satisfies you"
             />
           </div>
 

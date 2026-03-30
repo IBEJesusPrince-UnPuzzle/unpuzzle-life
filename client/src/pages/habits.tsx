@@ -333,7 +333,7 @@ export function NewHabitForm({ areas, identities }: { areas: Area[]; identities:
             <Input
               value={because}
               onChange={(e) => setBecause(e.target.value)}
-              placeholder="e.g. it's delicious, I have fun, I don't like the feeling of being rushed"
+              placeholder="e.g. what's attractive about it? why crave it?"
             />
           </div>
 
@@ -343,7 +343,7 @@ export function NewHabitForm({ areas, identities }: { areas: Area[]; identities:
             <Input
               value={reward}
               onChange={(e) => setReward(e.target.value)}
-              placeholder="e.g. making my tummy smile, resetting my nervous system, having beautiful memories"
+              placeholder="e.g. describe how it satisfies you"
             />
           </div>
 
@@ -508,7 +508,7 @@ export function EditHabitDialog({ habit, areas, identities, open, onOpenChange }
             <Input
               value={because}
               onChange={(e) => setBecause(e.target.value)}
-              placeholder="e.g. it's delicious, I have fun"
+              placeholder="e.g. what's attractive about it? why crave it?"
             />
           </div>
 
@@ -517,7 +517,7 @@ export function EditHabitDialog({ habit, areas, identities, open, onOpenChange }
             <Input
               value={reward}
               onChange={(e) => setReward(e.target.value)}
-              placeholder="e.g. making my tummy smile"
+              placeholder="e.g. describe how it satisfies you"
             />
           </div>
 
