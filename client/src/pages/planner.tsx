@@ -1357,7 +1357,7 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
         <div className="space-y-4 pt-1">
           {area && (
             <div>
-              <p className="text-sm font-medium text-muted-foreground mb-1">In the...</p>
+              <p className="text-sm font-medium text-muted-foreground mb-1">In the area of...</p>
               <div className="text-sm px-3 py-2 rounded-md border bg-muted/50">{area.name}</div>
             </div>
           )}
