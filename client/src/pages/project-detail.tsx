@@ -12,7 +12,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  FolderOpen, CheckCircle2, FileText, Plus, ListTodo, Archive, CalendarDays, Clock,
+  FolderOpen, CheckCircle2, FileText, Plus, ListTodo, Archive,
+  CalendarDays, Clock, Pencil, Trash2, X, Check,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import type { Project, Action, InboxItem, Area } from "@shared/schema";
@@ -36,6 +37,7 @@ export default function ProjectDetailPage({ id }: { id: number }) {
     mutationFn: () => apiRequest("POST", "/api/actions", {
       title: newAction,
       projectId: id,
+      areaId: data?.project.areaId || null,
       createdAt: new Date().toISOString(),
     }),
     onSuccess: () => {
@@ -47,19 +49,16 @@ export default function ProjectDetailPage({ id }: { id: number }) {
 
   const completeAction = useMutation({
     mutationFn: (actionId: number) => apiRequest("PATCH", `/api/actions/${actionId}`, {
-      completed: 1,
-      completedAt: new Date().toISOString(),
+      completed: 1, completedAt: new Date().toISOString(),
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "details"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/actions"] });
     },
   });
 
   const uncompleteAction = useMutation({
     mutationFn: (actionId: number) => apiRequest("PATCH", `/api/actions/${actionId}`, {
-      completed: 0,
-      completedAt: null,
+      completed: 0, completedAt: null,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "details"] });
@@ -79,7 +78,6 @@ export default function ProjectDetailPage({ id }: { id: number }) {
 
   const { project, actions, references, areas } = data;
   const area = areas.find(a => a.id === project.areaId);
-  const goalArea = project.goalId ? null : null; // future: link to goal
   const pendingActions = actions.filter(a => !a.completed);
   const completedActions = actions.filter(a => a.completed);
 
@@ -96,8 +94,8 @@ export default function ProjectDetailPage({ id }: { id: number }) {
             {project.status}
           </Badge>
           {area && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
-              {area.name}
+            <span className="text-[11px] text-muted-foreground">
+              In the area of <span className="font-medium text-foreground">{area.name}</span>
             </span>
           )}
         </div>
@@ -155,6 +153,7 @@ export default function ProjectDetailPage({ id }: { id: number }) {
             <ActionCard
               key={action.id}
               action={action}
+              projectId={id}
               projectAreaId={project.areaId}
               areas={areas}
               onComplete={() => completeAction.mutate(action.id)}
@@ -169,31 +168,9 @@ export default function ProjectDetailPage({ id }: { id: number }) {
           <h2 className="text-sm font-medium flex items-center gap-1">
             <FileText className="w-4 h-4" /> References ({references.length})
           </h2>
-          {references.map(ref => {
-            const refArea = areas.find(a => a.id === ref.referenceAreaId);
-            return (
-              <Card key={ref.id}>
-                <CardContent className="p-3">
-                  <p className="text-sm">{ref.content}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <p className="text-[10px] text-muted-foreground">
-                      Filed {new Date(ref.createdAt).toLocaleDateString("en-US", {
-                        month: "short", day: "numeric", year: "numeric"
-                      })}
-                    </p>
-                    {refArea && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
-                        {refArea.name}
-                      </span>
-                    )}
-                  </div>
-                  {ref.notes && (
-                    <p className="text-xs text-muted-foreground mt-1 italic">{ref.notes}</p>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
+          {references.map(ref => (
+            <ReferenceCard key={ref.id} item={ref} areas={areas} />
+          ))}
         </div>
       )}
 
@@ -210,7 +187,7 @@ export default function ProjectDetailPage({ id }: { id: number }) {
                   checked={true}
                   onCheckedChange={() => uncompleteAction.mutate(action.id)}
                 />
-                <p className="text-sm line-through text-muted-foreground">{action.title}</p>
+                <p className="text-sm line-through text-muted-foreground flex-1">{action.title}</p>
               </CardContent>
             </Card>
           ))}
@@ -232,11 +209,11 @@ export default function ProjectDetailPage({ id }: { id: number }) {
 }
 
 // ============================================================
-// ACTION CARD with "Send to Agenda" button
+// ACTION CARD with edit + send to agenda
 // ============================================================
 
 const HOURS_12 = Array.from({ length: 12 }, (_, i) => i + 1);
-const MINUTES = ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"];
+const MINUTES_LIST = ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"];
 
 function to24h(h12: number, min: string, period: string): string {
   let h = h12;
@@ -274,7 +251,7 @@ function QuickTimePicker({ value, onChange, label }: { value: string; onChange: 
         </Select>
         <Select value={minute} onValueChange={v => update(hour, v, period)}>
           <SelectTrigger className="text-sm h-9 px-1.5 w-[46px]"><SelectValue placeholder="Min" /></SelectTrigger>
-          <SelectContent>{MINUTES.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+          <SelectContent>{MINUTES_LIST.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
         </Select>
         <Select value={period} onValueChange={v => update(hour, minute, v)}>
           <SelectTrigger className="text-sm h-9 px-1.5 w-[50px]"><SelectValue /></SelectTrigger>
@@ -288,14 +265,18 @@ function QuickTimePicker({ value, onChange, label }: { value: string; onChange: 
   );
 }
 
-function ActionCard({ action, projectAreaId, areas, onComplete }: {
-  action: Action; projectAreaId: number | null; areas: Area[]; onComplete: () => void;
+function ActionCard({ action, projectId, projectAreaId, areas, onComplete }: {
+  action: Action; projectId: number; projectAreaId: number | null; areas: Area[]; onComplete: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(action.title);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [areaId, setAreaId] = useState<string>(projectAreaId ? String(projectAreaId) : "none");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
+
+  const actionArea = areas.find(a => a.id === (action.areaId || projectAreaId));
 
   const hours = useMemo(() => {
     if (!startTime || !endTime) return "";
@@ -314,6 +295,21 @@ function ActionCard({ action, projectAreaId, areas, onComplete }: {
       return { value: ds, label: `${label} (${ds})` };
     })
   , []);
+
+  const updateAction = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/actions/${action.id}`, { title: editTitle }),
+    onSuccess: () => {
+      setEditing(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "details"] });
+    },
+  });
+
+  const deleteAction = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/actions/${action.id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "details"] });
+    },
+  });
 
   const createTask = useMutation({
     mutationFn: () => apiRequest("POST", "/api/planner-tasks", {
@@ -339,31 +335,61 @@ function ActionCard({ action, projectAreaId, areas, onComplete }: {
   return (
     <>
       <Card>
-        <CardContent className="p-3 flex items-center gap-3">
-          <Checkbox
-            checked={false}
-            onCheckedChange={onComplete}
-            data-testid={`action-check-${action.id}`}
-          />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm">{action.title}</p>
-            {action.context && (
-              <Badge variant="secondary" className="text-[10px] h-4 px-1 mt-0.5">
-                {action.context}
-              </Badge>
+        <CardContent className="p-3">
+          {/* Area line */}
+          {actionArea && (
+            <p className="text-[11px] text-muted-foreground mb-0.5">
+              In the area of <span className="font-medium text-foreground">{actionArea.name}</span>
+            </p>
+          )}
+          <div className="flex items-center gap-3">
+            <Checkbox checked={false} onCheckedChange={onComplete} data-testid={`action-check-${action.id}`} />
+            <div className="flex-1 min-w-0">
+              {editing ? (
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    autoFocus
+                    value={editTitle}
+                    onChange={e => setEditTitle(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && editTitle.trim()) updateAction.mutate();
+                      if (e.key === "Escape") setEditing(false);
+                    }}
+                    className="text-sm h-8"
+                  />
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-primary shrink-0"
+                    onClick={() => updateAction.mutate()} disabled={!editTitle.trim()}>
+                    <Check className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 shrink-0"
+                    onClick={() => { setEditing(false); setEditTitle(action.title); }}>
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm">{action.title}</p>
+              )}
+              {action.context && !editing && (
+                <Badge variant="secondary" className="text-[10px] h-4 px-1 mt-0.5">{action.context}</Badge>
+              )}
+            </div>
+            {!editing && (
+              <div className="flex items-center gap-0.5 shrink-0">
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title="Edit"
+                  onClick={() => { setEditing(true); setEditTitle(action.title); }}>
+                  <Pencil className="w-3 h-3" />
+                </Button>
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-primary" title="Send to Agenda"
+                  onClick={() => setScheduleOpen(true)}>
+                  <CalendarDays className="w-3 h-3" />
+                </Button>
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" title="Delete"
+                  onClick={() => deleteAction.mutate()}>
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              </div>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs gap-1 text-primary shrink-0"
-            onClick={() => setScheduleOpen(true)}
-            title="Send to Agenda"
-            data-testid={`action-to-agenda-${action.id}`}
-          >
-            <CalendarDays className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Agenda</span>
-          </Button>
         </CardContent>
       </Card>
 
@@ -371,8 +397,7 @@ function ActionCard({ action, projectAreaId, areas, onComplete }: {
         <DialogContent className="max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle className="text-base flex items-center gap-2">
-              <CalendarDays className="w-4 h-4 text-primary" />
-              Send to Agenda
+              <CalendarDays className="w-4 h-4 text-primary" /> Send to Agenda
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground -mt-1 truncate">"{action.title}"</p>
@@ -410,17 +435,104 @@ function ActionCard({ action, projectAreaId, areas, onComplete }: {
                 </div>
               )}
             </div>
-            <Button
-              className="w-full"
+            <Button className="w-full"
               disabled={!startTime || !endTime || !areaId || areaId === "none" || createTask.isPending}
-              onClick={() => createTask.mutate()}
-              data-testid="button-send-to-agenda"
-            >
+              onClick={() => createTask.mutate()}>
               {createTask.isPending ? "Creating..." : "Add to Agenda"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+// ============================================================
+// REFERENCE CARD with edit
+// ============================================================
+
+function ReferenceCard({ item, areas }: { item: InboxItem; areas: Area[] }) {
+  const [editing, setEditing] = useState(false);
+  const [editContent, setEditContent] = useState(item.content);
+  const refArea = areas.find(a => a.id === (item.referenceAreaId || item.areaId));
+
+  const updateRef = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/inbox/${item.id}`, { content: editContent }),
+    onSuccess: () => {
+      setEditing(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries();
+    },
+  });
+
+  const deleteRef = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/inbox/${item.id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+    },
+  });
+
+  return (
+    <Card>
+      <CardContent className="p-3">
+        {/* Area line */}
+        {refArea && (
+          <p className="text-[11px] text-muted-foreground mb-0.5">
+            In the area of <span className="font-medium text-foreground">{refArea.name}</span>
+          </p>
+        )}
+        <div className="flex items-start gap-2">
+          <FileText className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            {editing ? (
+              <div className="flex items-center gap-1.5">
+                <Input
+                  autoFocus
+                  value={editContent}
+                  onChange={e => setEditContent(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && editContent.trim()) updateRef.mutate();
+                    if (e.key === "Escape") setEditing(false);
+                  }}
+                  className="text-sm h-8"
+                />
+                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-primary shrink-0"
+                  onClick={() => updateRef.mutate()} disabled={!editContent.trim()}>
+                  <Check className="w-3.5 h-3.5" />
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 shrink-0"
+                  onClick={() => { setEditing(false); setEditContent(item.content); }}>
+                  <X className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm">{item.content}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Filed {new Date(item.createdAt).toLocaleDateString("en-US", {
+                    month: "short", day: "numeric", year: "numeric"
+                  })}
+                </p>
+                {item.notes && (
+                  <p className="text-xs text-muted-foreground mt-1 italic">{item.notes}</p>
+                )}
+              </>
+            )}
+          </div>
+          {!editing && (
+            <div className="flex items-center gap-0.5 shrink-0">
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title="Edit"
+                onClick={() => { setEditing(true); setEditContent(item.content); }}>
+                <Pencil className="w-3 h-3" />
+              </Button>
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" title="Delete"
+                onClick={() => deleteRef.mutate()}>
+                <Trash2 className="w-3 h-3" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

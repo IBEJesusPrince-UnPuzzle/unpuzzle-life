@@ -17,7 +17,13 @@ import ImportPage from "@/pages/import";
 import ProjectDetailPage from "@/pages/project-detail";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
-import { useLocation, Link } from "wouter";
+import { useLocation, Link, useRoute } from "wouter";
+
+function ProjectDetailRoute() {
+  const [, params] = useRoute("/projects/:id");
+  if (!params?.id) return <NotFound />;
+  return <ProjectDetailPage id={Number(params.id)} />;
+}
 import { LayoutDashboard, Inbox, Layers, RotateCcw, Moon, Sun, CalendarDays, Timer } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -34,7 +40,7 @@ function AppRouter() {
       <Route path="/review" component={ReviewPage} />
       <Route path="/identity-vote" component={IdentityVotePage} />
       <Route path="/import" component={ImportPage} />
-      <Route path="/projects/:id">{(params) => <ProjectDetailPage id={Number(params.id)} />}</Route>
+      <Route path="/projects/:id" component={ProjectDetailRoute} />
       <Route component={NotFound} />
     </Switch>
   );
