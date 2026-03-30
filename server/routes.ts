@@ -569,6 +569,95 @@ export function registerRoutes(server: Server, app: Express) {
   });
 
   // ============================================================
+  // IDENTITY VOTE DETAILS
+  // ============================================================
+  app.get("/api/identity-vote-details", (_req, res) => {
+    const today = new Date().toISOString().split("T")[0];
+    const now = new Date();
+    const currentHHMM = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
+
+    const allHabits = storage.getHabits();
+    const allIdentities = storage.getIdentities();
+    const allRoutineItems = storage.getRoutineItems();
+    const allPlannerTasks = storage.getPlannerTasks();
+    const allAreas = storage.getAreas();
+
+    const habitsWithIdentity = allHabits.filter(h => h.identityId != null && h.active);
+
+    const breakdown = habitsWithIdentity.map(habit => {
+      const identity = allIdentities.find(i => i.id === habit.identityId);
+      const area = allAreas.find(a => a.id === habit.areaId);
+      const linkedRoutineItems = allRoutineItems.filter(r => r.habitId === habit.id);
+
+      // Past tasks (count toward vote)
+      const pastTasks = allPlannerTasks.filter(t => {
+        if (t.habitId !== habit.id) return false;
+        if (!t.endTime) return false;
+        const isPast = t.date < today || (t.date === today && t.endTime < currentHHMM);
+        return isPast && (t.status === "done" || t.status === "planned");
+      });
+
+      const done = pastTasks.filter(t => t.status === "done").length;
+      const total = pastTasks.length;
+
+      // Upcoming tasks (actionable — user can complete these to increase vote)
+      const upcomingTasks = allPlannerTasks.filter(t => {
+        if (t.habitId !== habit.id) return false;
+        if (t.status === "done" || t.status === "skipped") return false;
+        const isFuture = t.date > today || (t.date === today && (!t.endTime || t.endTime >= currentHHMM));
+        return isFuture;
+      });
+
+      return {
+        habitId: habit.id,
+        habitName: habit.name,
+        identityStatement: identity?.statement || null,
+        areaName: area?.name || null,
+        hasRoutine: linkedRoutineItems.length > 0,
+        done,
+        total,
+        percent: total > 0 ? Math.round((done / total) * 100) : null,
+        upcomingTasks: upcomingTasks.map(t => ({
+          id: t.id,
+          goal: t.goal,
+          date: t.date,
+          startTime: t.startTime,
+          endTime: t.endTime,
+          status: t.status,
+        })),
+        pastTasks: pastTasks.slice(-5).map(t => ({
+          id: t.id,
+          goal: t.goal,
+          date: t.date,
+          status: t.status,
+        })),
+      };
+    });
+
+    // Overall
+    const totalDone = breakdown.reduce((s, b) => s + b.done, 0);
+    const totalAll = breakdown.reduce((s, b) => s + b.total, 0);
+    const overallPercent = totalAll > 0 ? Math.round((totalDone / totalAll) * 100) : 0;
+
+    // Habits with identity but no routine (can't contribute)
+    const habitsWithoutRoutine = habitsWithIdentity.filter(h => {
+      return !allRoutineItems.some(r => r.habitId === h.id);
+    }).map(h => ({
+      habitId: h.id,
+      habitName: h.name,
+      identityStatement: allIdentities.find(i => i.id === h.identityId)?.statement || null,
+    }));
+
+    res.json({
+      overallPercent,
+      totalDone,
+      totalAll,
+      breakdown,
+      habitsWithoutRoutine,
+    });
+  });
+
+  // ============================================================
   // PENDING ACTIONS
   // ============================================================
   app.get("/api/pending-actions", (_req, res) => {

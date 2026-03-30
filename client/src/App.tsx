@@ -12,6 +12,7 @@ import HorizonsPage from "@/pages/horizons";
 import ReviewPage from "@/pages/review";
 import PlannerPage from "@/pages/planner";
 import RoutinePage from "@/pages/routine";
+import IdentityVotePage from "@/pages/identity-vote";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
@@ -29,6 +30,7 @@ function AppRouter() {
       <Route path="/routine" component={RoutinePage} />
       <Route path="/planner" component={PlannerPage} />
       <Route path="/review" component={ReviewPage} />
+      <Route path="/identity-vote" component={IdentityVotePage} />
       <Route component={NotFound} />
     </Switch>
   );
