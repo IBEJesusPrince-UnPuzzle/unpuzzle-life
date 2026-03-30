@@ -33,6 +33,16 @@ function BackButton() {
   );
 }
 
+function MobileTopBar() {
+  const [location] = useLocation();
+  if (location === "/") return null;
+  return (
+    <div className="md:hidden flex items-center justify-center p-2 border-b shrink-0">
+      <BackButton />
+    </div>
+  );
+}
+
 function AppRouter() {
   return (
     <Switch>
@@ -128,9 +138,7 @@ export default function App() {
                   <BackButton />
                   <SidebarTrigger data-testid="button-sidebar-toggle" />
                 </header>
-                <div className="md:hidden flex items-center gap-2 p-2 border-b shrink-0">
-                  <BackButton />
-                </div>
+                <MobileTopBar />
 
                 <main className="flex-1 overflow-hidden pb-14 md:pb-0">
                   <AppRouter />
