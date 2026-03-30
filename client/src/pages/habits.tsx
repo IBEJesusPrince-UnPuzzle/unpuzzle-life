@@ -194,6 +194,7 @@ export function NewHabitForm({ areas, identities }: { areas: Area[]; identities:
   const [areaId, setAreaId] = useState<string>("");
   const [action, setAction] = useState("");
   const [identityId, setIdentityId] = useState<number | null>(null);
+  const [cue, setCue] = useState("");
   const [timeOfDay, setTimeOfDay] = useState<string>("");
   const [recurrenceJson, setRecurrenceJson] = useState<string | null>(JSON.stringify({ type: "daily", interval: 1 }));
   const [because, setBecause] = useState("");
@@ -218,7 +219,7 @@ export function NewHabitForm({ areas, identities }: { areas: Area[]; identities:
       craving: because || null,
       reward: reward || null,
       response: action,
-      cue: null,
+      cue: cue || null,
       identityId: identityId,
       frequency: recurrenceJson || JSON.stringify({ type: "daily", interval: 1 }),
       targetCount: 1,
@@ -226,7 +227,7 @@ export function NewHabitForm({ areas, identities }: { areas: Area[]; identities:
       createdAt: new Date().toISOString(),
     }),
     onSuccess: () => {
-      setAction(""); setAreaId(""); setTimeOfDay(""); setBecause(""); setReward("");
+      setAction(""); setAreaId(""); setTimeOfDay(""); setCue(""); setBecause(""); setReward("");
       setIdentityId(null);
       setRecurrenceJson(JSON.stringify({ type: "daily", interval: 1 }));
       setOpen(false);
@@ -289,6 +290,17 @@ export function NewHabitForm({ areas, identities }: { areas: Area[]; identities:
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* "...when..." (cue) */}
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...when...</p>
+            <Input
+              value={cue}
+              onChange={(e) => setCue(e.target.value)}
+              placeholder='e.g. triggering/reminding action'
+              data-testid="input-habit-cue"
+            />
           </div>
 
           {/* "...in the..." */}
@@ -358,6 +370,7 @@ export function EditHabitDialog({ habit, areas, identities, open, onOpenChange }
   const [areaId, setAreaId] = useState(habit.areaId ? String(habit.areaId) : "");
   const [action, setAction] = useState(habit.name);
   const [identityId, setIdentityId] = useState<number | null>(habit.identityId ?? null);
+  const [cue, setCue] = useState(habit.cue || "");
   const [timeOfDay, setTimeOfDay] = useState(habit.timeOfDay || "");
   const [recurrenceJson, setRecurrenceJson] = useState<string | null>(habit.frequency);
   const [because, setBecause] = useState(habit.craving || "");
@@ -368,6 +381,7 @@ export function EditHabitDialog({ habit, areas, identities, open, onOpenChange }
     setAreaId(habit.areaId ? String(habit.areaId) : "");
     setAction(habit.name);
     setIdentityId(habit.identityId ?? null);
+    setCue(habit.cue || "");
     setTimeOfDay(habit.timeOfDay || "");
     setRecurrenceJson(habit.frequency);
     setBecause(habit.craving || "");
@@ -393,6 +407,7 @@ export function EditHabitDialog({ habit, areas, identities, open, onOpenChange }
         craving: because || null,
         reward: reward || null,
         response: action,
+        cue: cue || null,
         identityId: identityId,
         frequency: recurrenceJson || JSON.stringify({ type: "daily", interval: 1 }),
       };
@@ -453,6 +468,17 @@ export function EditHabitDialog({ habit, areas, identities, open, onOpenChange }
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* "...when..." (cue) */}
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...when...</p>
+            <Input
+              value={cue}
+              onChange={(e) => setCue(e.target.value)}
+              placeholder='e.g. triggering/reminding action'
+              data-testid="edit-habit-cue"
+            />
           </div>
 
           <div>
