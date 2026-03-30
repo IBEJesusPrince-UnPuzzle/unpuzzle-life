@@ -22,13 +22,20 @@ import { apiRequest } from "@/lib/queryClient";
 function BackButton() {
   const [location, setLocation] = useLocation();
   if (location === "/") return null;
+  const goHome = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setLocation("/");
+  };
   return (
     <button
-      onClick={() => setLocation("/")}
-      className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+      onClick={goHome}
+      onTouchEnd={goHome}
+      className="flex items-center justify-center w-10 h-10 -m-2 text-muted-foreground hover:text-foreground active:text-foreground transition-colors"
       data-testid="button-back"
+      aria-label="Back to Dashboard"
     >
-      <ChevronLeft className="w-5 h-5" />
+      <ChevronLeft className="w-6 h-6" />
     </button>
   );
 }
