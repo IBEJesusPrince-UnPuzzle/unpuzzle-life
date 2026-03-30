@@ -24,9 +24,10 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
-function ProjectDetailRoute() {
-  const m = window.location.hash.match(/\/projects\/(\d+)/);
-  return m ? <ProjectDetailPage id={Number(m[1])} /> : <NotFound />;
+function ProjectDetailRoute({ params }: { params: { id?: string } }) {
+  const id = Number(params?.id);
+  if (!id || isNaN(id)) return <NotFound />;
+  return <ProjectDetailPage id={id} />;
 }
 
 function AppRouter() {

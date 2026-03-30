@@ -15,7 +15,7 @@ import {
   FolderOpen, CheckCircle2, FileText, Plus, ListTodo, Archive,
   CalendarDays, Clock, Pencil, Trash2, X, Check,
 } from "lucide-react";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import type { Project, Action, InboxItem, Area } from "@shared/schema";
 
 interface ProjectDetails {
@@ -26,17 +26,12 @@ interface ProjectDetails {
 }
 
 export default function ProjectDetailPage({ id }: { id: number }) {
-  const [data, setData] = useState<ProjectDetails | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setIsLoading(true);
-    apiRequest("GET", `/api/projects/${id}/details`)
-      .then(r => r.json())
-      .then(d => { setData(d); setIsLoading(false); })
-      .catch(e => { setError(e.message); setIsLoading(false); });
-  }, [id]);
+  const { data, isLoading, error } = useQuery<ProjectDetails>({
+    queryKey: ["/api/projects", id, "details"],
+    queryFn: () => apiRequest("GET", `/api/projects/${id}/details`).then(r => r.json()),
+    enabled: !!id && id > 0,
+    retry: 2,
+  });
 
   const [newAction, setNewAction] = useState("");
 
