@@ -7,12 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  CheckCircle2, Circle, Inbox, Layers, Target, Flame,
-  Plus, ArrowRight
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  CheckCircle2, Fingerprint, Clock, AlertTriangle, Inbox as InboxIcon,
+  Target, Plus, ArrowRight
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
-import type { Action, Habit, HabitLog } from "@shared/schema";
+import type { Action, Habit, HabitLog, Area } from "@shared/schema";
 
 function getToday() {
   return new Date().toISOString().split("T")[0];
@@ -28,15 +31,22 @@ function getGreeting() {
 export default function Dashboard() {
   const today = getToday();
   const [quickCapture, setQuickCapture] = useState("");
+  const [captureAreaId, setCaptureAreaId] = useState<string>("");
 
   const { data: stats, isLoading: statsLoading } = useQuery<{
+    identityVotePercent: number;
+    pendingActionsCount: number;
+    missedTasksCount: number;
+    inboxCount: number;
+    // keep old ones for compatibility
     pendingActions: number;
     completedToday: number;
     activeProjects: number;
-    inboxCount: number;
     habitsCompletedToday: number;
     totalActiveHabits: number;
   }>({ queryKey: ["/api/stats"] });
+
+  const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
 
   const { data: actions = [] } = useQuery<Action[]>({ queryKey: ["/api/actions"] });
   const { data: habits = [] } = useQuery<Habit[]>({ queryKey: ["/api/habits"] });
@@ -78,12 +88,15 @@ export default function Dashboard() {
   });
 
   const captureToInbox = useMutation({
-    mutationFn: (content: string) => apiRequest("POST", "/api/inbox", {
-      content,
-      createdAt: new Date().toISOString(),
-    }),
+    mutationFn: ({ content, areaId }: { content: string; areaId: number | null }) =>
+      apiRequest("POST", "/api/inbox", {
+        content,
+        areaId,
+        createdAt: new Date().toISOString(),
+      }),
     onSuccess: () => {
       setQuickCapture("");
+      setCaptureAreaId("");
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
     },
   });
@@ -108,20 +121,36 @@ export default function Dashboard() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (quickCapture.trim()) captureToInbox.mutate(quickCapture.trim());
+          if (quickCapture.trim() && captureAreaId) {
+            captureToInbox.mutate({
+              content: quickCapture.trim(),
+              areaId: captureAreaId && captureAreaId !== "none" ? Number(captureAreaId) : null,
+            });
+          }
         }}
-        className="flex gap-2"
+        className="flex flex-col sm:flex-row gap-2 sm:items-end"
       >
         <Input
-          placeholder="Quick capture to inbox..."
+          placeholder="What's on your mind? Brain dump here..."
           value={quickCapture}
           onChange={(e) => setQuickCapture(e.target.value)}
           className="flex-1"
           data-testid="input-quick-capture"
         />
-        <Button type="submit" size="sm" disabled={!quickCapture.trim()} data-testid="button-capture">
-          <Plus className="w-4 h-4 mr-1" /> Capture
-        </Button>
+        <div className="flex gap-2">
+          <Select value={captureAreaId} onValueChange={setCaptureAreaId}>
+            <SelectTrigger className="text-sm w-40">
+              <SelectValue placeholder="Related Area..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No area</SelectItem>
+              {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button type="submit" size="sm" disabled={!quickCapture.trim() || !captureAreaId} data-testid="button-capture">
+            <Plus className="w-4 h-4 mr-1" /> Capture
+          </Button>
+        </div>
       </form>
 
       {/* Stats Row */}
@@ -132,50 +161,58 @@ export default function Dashboard() {
           ))
         ) : (
           <>
-            <Card>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Target className="w-4 h-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xl font-semibold tabular-nums" data-testid="stat-habits">{habitPercent}%</p>
-                  <p className="text-xs text-muted-foreground">Habits today</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-chart-3/10 flex items-center justify-center">
-                  <CheckCircle2 className="w-4 h-4 text-chart-3" />
-                </div>
-                <div>
-                  <p className="text-xl font-semibold tabular-nums" data-testid="stat-completed">{stats?.completedToday || 0}</p>
-                  <p className="text-xs text-muted-foreground">Done today</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-chart-4/10 flex items-center justify-center">
-                  <Circle className="w-4 h-4 text-chart-4" />
-                </div>
-                <div>
-                  <p className="text-xl font-semibold tabular-nums" data-testid="stat-pending">{stats?.pendingActions || 0}</p>
-                  <p className="text-xs text-muted-foreground">Pending actions</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-chart-5/10 flex items-center justify-center">
-                  <Inbox className="w-4 h-4 text-chart-5" />
-                </div>
-                <div>
-                  <p className="text-xl font-semibold tabular-nums" data-testid="stat-inbox">{stats?.inboxCount || 0}</p>
-                  <p className="text-xs text-muted-foreground">In inbox</p>
-                </div>
-              </CardContent>
-            </Card>
+            <Link href="/horizons">
+              <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Fingerprint className="w-4 h-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-xl font-semibold tabular-nums">{stats?.identityVotePercent || 0}%</p>
+                    <p className="text-xs text-muted-foreground">Identity Vote</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link href="/routine">
+              <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-chart-4/10 flex items-center justify-center">
+                    <Clock className="w-4 h-4 text-chart-4" />
+                  </div>
+                  <div>
+                    <p className="text-xl font-semibold tabular-nums">{stats?.pendingActionsCount || 0}</p>
+                    <p className="text-xs text-muted-foreground">Pending Actions</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link href="/planner">
+              <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-destructive/10 flex items-center justify-center">
+                    <AlertTriangle className="w-4 h-4 text-destructive" />
+                  </div>
+                  <div>
+                    <p className="text-xl font-semibold tabular-nums">{stats?.missedTasksCount || 0}</p>
+                    <p className="text-xs text-muted-foreground">Missed Tasks</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link href="/inbox">
+              <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-chart-5/10 flex items-center justify-center">
+                    <InboxIcon className="w-4 h-4 text-chart-5" />
+                  </div>
+                  <div>
+                    <p className="text-xl font-semibold tabular-nums">{stats?.inboxCount || 0}</p>
+                    <p className="text-xs text-muted-foreground">In Inbox</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
           </>
         )}
       </div>
@@ -186,7 +223,7 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-medium">Today's Habits</CardTitle>
-            <Link href="/habits">
+            <Link href="/horizons">
               <Button variant="ghost" size="sm" className="text-xs h-7" data-testid="link-all-habits">
                 View all <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
@@ -197,7 +234,7 @@ export default function Dashboard() {
               <div className="text-center py-8 text-muted-foreground">
                 <Target className="w-8 h-8 mx-auto mb-2 opacity-40" />
                 <p className="text-sm">No habits yet</p>
-                <Link href="/habits">
+                <Link href="/horizons">
                   <Button variant="outline" size="sm" className="mt-3 text-xs">
                     <Plus className="w-3 h-3 mr-1" /> Create your first habit
                   </Button>

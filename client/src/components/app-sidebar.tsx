@@ -15,7 +15,6 @@ import { apiRequest } from "@/lib/queryClient";
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Inbox", url: "/inbox", icon: Inbox },
-  { title: "Habits", url: "/habits", icon: Target },
   { title: "Routine", url: "/routine", icon: Timer },
   { title: "Agenda", url: "/planner", icon: CalendarDays },
   { title: "Weekly Review", url: "/review", icon: RotateCcw },

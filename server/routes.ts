@@ -515,11 +515,46 @@ export function registerRoutes(server: Server, app: Express) {
     const allActions = storage.getActions();
     const allProjects = storage.getProjects();
     const allHabits = storage.getHabits();
+    const allRoutineItems = storage.getRoutineItems();
     const inboxCount = storage.getInboxItems().filter(i => !i.processed).length;
-    const today = new Date().toISOString().split("T")[0];
+    const now = new Date();
+    const today = now.toISOString().split("T")[0];
+    const currentHHMM = now.toTimeString().slice(0, 5); // "HH:MM"
     const todayLogs = storage.getHabitLogsByDate(today);
     const activeHabits = allHabits.filter(h => h.active);
-    
+
+    // missedTasksCount: planned tasks with endTime in the past
+    const allPlannerTasks = storage.getAllPlannerTasks();
+    const missedTasksCount = allPlannerTasks.filter(t => {
+      if (t.status !== "planned" || !t.endTime) return false;
+      if (t.date < today) return true;
+      if (t.date === today && t.endTime < currentHHMM) return true;
+      return false;
+    }).length;
+
+    // pendingActionsCount: draft routine items
+    const pendingActionsCount = allRoutineItems.filter(r => r.isDraft === 1).length;
+
+    // identityVotePercent: habits linked to an identity → routine items → planner tasks with past endTime
+    const habitsWithIdentity = allHabits.filter(h => h.identityId != null);
+    let identityDone = 0;
+    let identityTotal = 0;
+    for (const habit of habitsWithIdentity) {
+      const linkedRoutineItems = allRoutineItems.filter(r => r.habitId === habit.id);
+      if (linkedRoutineItems.length === 0) continue;
+      const linkedTasks = allPlannerTasks.filter(t => {
+        if (t.habitId !== habit.id) return false;
+        if (!t.endTime) return false;
+        const isPast = t.date < today || (t.date === today && t.endTime < currentHHMM);
+        return isPast && (t.status === "done" || t.status === "planned");
+      });
+      for (const t of linkedTasks) {
+        identityTotal++;
+        if (t.status === "done") identityDone++;
+      }
+    }
+    const identityVotePercent = identityTotal > 0 ? Math.round((identityDone / identityTotal) * 100) : 0;
+
     res.json({
       pendingActions: allActions.filter(a => !a.completed).length,
       completedToday: allActions.filter(a => a.completedAt?.startsWith(today)).length,
@@ -527,6 +562,58 @@ export function registerRoutes(server: Server, app: Express) {
       inboxCount,
       habitsCompletedToday: todayLogs.length,
       totalActiveHabits: activeHabits.length,
+      missedTasksCount,
+      pendingActionsCount,
+      identityVotePercent,
     });
+  });
+
+  // ============================================================
+  // PENDING ACTIONS
+  // ============================================================
+  app.get("/api/pending-actions", (_req, res) => {
+    const allRoutineItems = storage.getRoutineItems();
+    const draftItems = allRoutineItems.filter(r => r.isDraft === 1);
+    res.json(draftItems.map(r => ({
+      type: "draft_routine",
+      id: r.id,
+      name: r.response,
+      page: "/routine",
+    })));
+  });
+
+  // ============================================================
+  // MISSED TASKS
+  // ============================================================
+  app.get("/api/missed-tasks", (_req, res) => {
+    const now = new Date();
+    const today = now.toISOString().split("T")[0];
+    const currentHHMM = now.toTimeString().slice(0, 5);
+    const allPlannerTasks = storage.getAllPlannerTasks();
+    const missed = allPlannerTasks.filter(t => {
+      if (t.status !== "planned" || !t.endTime) return false;
+      if (t.date < today) return true;
+      if (t.date === today && t.endTime < currentHHMM) return true;
+      return false;
+    });
+    res.json(missed);
+  });
+
+  // ============================================================
+  // POSTPONE PLANNER TASK
+  // ============================================================
+  app.patch("/api/planner-tasks/:id/postpone", (req, res) => {
+    const { date, startTime, endTime } = req.body;
+    if (!date || !startTime || !endTime) {
+      return res.status(400).json({ error: "date, startTime, and endTime are required" });
+    }
+    const result = storage.updatePlannerTask(Number(req.params.id), {
+      date,
+      startTime,
+      endTime,
+      status: "planned",
+    });
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
   });
 }

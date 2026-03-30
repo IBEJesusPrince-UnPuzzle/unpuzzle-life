@@ -177,6 +177,7 @@ export const inboxItems = sqliteTable("inbox_items", {
   deletedAt: text("deleted_at"),
   referenceAreaId: integer("reference_area_id").references(() => areas.id),
   referenceProjectId: integer("reference_project_id").references(() => projects.id),
+  areaId: integer("area_id").references(() => areas.id),
   createdAt: text("created_at").notNull(),
 });
 

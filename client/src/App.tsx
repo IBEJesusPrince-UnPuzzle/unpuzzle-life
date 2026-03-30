@@ -9,16 +9,29 @@ import { AppSidebar } from "@/components/app-sidebar";
 import Dashboard from "@/pages/dashboard";
 import InboxPage from "@/pages/inbox";
 import HorizonsPage from "@/pages/horizons";
-import HabitsPage from "@/pages/habits";
 import ReviewPage from "@/pages/review";
 import PlannerPage from "@/pages/planner";
 import RoutinePage from "@/pages/routine";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
-import { LayoutDashboard, Inbox, Layers, Target, RotateCcw, Moon, Sun, CalendarDays, Timer } from "lucide-react";
+import { LayoutDashboard, Inbox, Layers, RotateCcw, Moon, Sun, CalendarDays, Timer, ChevronLeft } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+
+function BackButton() {
+  const [location] = useLocation();
+  if (location === "/") return null;
+  return (
+    <button
+      onClick={() => window.history.back()}
+      className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+      data-testid="button-back"
+    >
+      <ChevronLeft className="w-5 h-5" />
+    </button>
+  );
+}
 
 function AppRouter() {
   return (
@@ -26,7 +39,6 @@ function AppRouter() {
       <Route path="/" component={Dashboard} />
       <Route path="/inbox" component={InboxPage} />
       <Route path="/horizons" component={HorizonsPage} />
-      <Route path="/habits" component={HabitsPage} />
       <Route path="/routine" component={RoutinePage} />
       <Route path="/planner" component={PlannerPage} />
       <Route path="/review" component={ReviewPage} />
@@ -38,7 +50,6 @@ function AppRouter() {
 const mobileNavItems = [
   { href: "/", label: "Home", icon: LayoutDashboard },
   { href: "/inbox", label: "Inbox", icon: Inbox, showBadge: true },
-  { href: "/habits", label: "Habits", icon: Target },
   { href: "/routine", label: "Routine", icon: Timer },
   { href: "/planner", label: "Agenda", icon: CalendarDays },
   { href: "/review", label: "Review", icon: RotateCcw },
@@ -114,8 +125,12 @@ export default function App() {
               <AppSidebar isDark={isDark} toggleTheme={() => setIsDark(!isDark)} />
               <div className="flex flex-col flex-1 min-w-0">
                 <header className="hidden md:flex items-center gap-2 p-2 border-b shrink-0">
+                  <BackButton />
                   <SidebarTrigger data-testid="button-sidebar-toggle" />
                 </header>
+                <div className="md:hidden flex items-center gap-2 p-2 border-b shrink-0">
+                  <BackButton />
+                </div>
 
                 <main className="flex-1 overflow-hidden pb-14 md:pb-0">
                   <AppRouter />

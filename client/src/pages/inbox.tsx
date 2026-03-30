@@ -21,6 +21,7 @@ type ProcessStep = "choose" | "doIt" | "addToProject" | "fileIt" | "wonderIt" | 
 
 export default function InboxPage() {
   const [newItem, setNewItem] = useState("");
+  const [captureAreaId, setCaptureAreaId] = useState<string>("");
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
@@ -37,12 +38,15 @@ export default function InboxPage() {
   const processed = items.filter(i => i.processed);
 
   const addItem = useMutation({
-    mutationFn: (content: string) => apiRequest("POST", "/api/inbox", {
-      content,
-      createdAt: new Date().toISOString(),
-    }),
+    mutationFn: ({ content, areaId }: { content: string; areaId: number | null }) =>
+      apiRequest("POST", "/api/inbox", {
+        content,
+        areaId,
+        createdAt: new Date().toISOString(),
+      }),
     onSuccess: () => {
       setNewItem("");
+      setCaptureAreaId("");
       queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
     },
@@ -84,9 +88,14 @@ export default function InboxPage() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (newItem.trim()) addItem.mutate(newItem.trim());
+          if (newItem.trim() && captureAreaId) {
+            addItem.mutate({
+              content: newItem.trim(),
+              areaId: captureAreaId && captureAreaId !== "none" ? Number(captureAreaId) : null,
+            });
+          }
         }}
-        className="flex gap-2"
+        className="flex flex-col sm:flex-row gap-2 sm:items-end"
       >
         <Input
           placeholder="What's on your mind? Brain dump here..."
@@ -95,9 +104,20 @@ export default function InboxPage() {
           className="flex-1"
           data-testid="input-inbox-capture"
         />
-        <Button type="submit" disabled={!newItem.trim()} data-testid="button-inbox-add">
-          <Plus className="w-4 h-4 mr-1" /> Add
-        </Button>
+        <div className="flex gap-2">
+          <Select value={captureAreaId} onValueChange={setCaptureAreaId}>
+            <SelectTrigger className="text-sm w-40">
+              <SelectValue placeholder="Related Area..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No area</SelectItem>
+              {areasList.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button type="submit" disabled={!newItem.trim() || !captureAreaId} data-testid="button-inbox-add">
+            <Plus className="w-4 h-4 mr-1" /> Add
+          </Button>
+        </div>
       </form>
 
       {/* Unprocessed Items */}

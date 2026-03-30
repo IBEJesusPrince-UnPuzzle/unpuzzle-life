@@ -11,13 +11,13 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Target, Plus, Trash2, CheckCircle2, Pencil,
+  Target, Plus, Trash2, CheckCircle2,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import type { Identity, Habit, HabitLog, Area } from "@shared/schema";
 import { RecurrenceBuilder, formatRecurrence } from "./planner";
 
-const TIME_OF_DAY_CATEGORIES = [
+export const TIME_OF_DAY_CATEGORIES = [
   { value: "early_morning", label: "Early Morning", range: "12:00 AM – 5:59 AM" },
   { value: "morning", label: "Morning", range: "6:00 AM – 8:59 AM" },
   { value: "late_morning", label: "Late Morning", range: "9:00 AM – 11:59 AM" },
@@ -80,7 +80,7 @@ export default function HabitsPage() {
           </div>
         )}
 
-        <NewHabitForm areas={areas} />
+        <NewHabitForm areas={areas} identities={identities} />
       </div>
     </div>
   );
@@ -89,7 +89,7 @@ export default function HabitsPage() {
 // ============================================================
 // HABIT ROW
 // ============================================================
-function HabitRow({ habit, todayLogs, identities, areas, today }: {
+export function HabitRow({ habit, todayLogs, identities, areas, today }: {
   habit: Habit; todayLogs: HabitLog[]; identities: Identity[]; areas: Area[]; today: string;
 }) {
   const log = todayLogs.find(l => l.habitId === habit.id);
@@ -181,7 +181,7 @@ function HabitRow({ habit, todayLogs, identities, areas, today }: {
         </CardContent>
       </Card>
 
-      <EditHabitDialog habit={habit} areas={areas} open={editOpen} onOpenChange={setEditOpen} />
+      <EditHabitDialog habit={habit} areas={areas} identities={identities} open={editOpen} onOpenChange={setEditOpen} />
     </>
   );
 }
@@ -189,10 +189,11 @@ function HabitRow({ habit, todayLogs, identities, areas, today }: {
 // ============================================================
 // NEW HABIT FORM — Identity Sentence Builder
 // ============================================================
-function NewHabitForm({ areas }: { areas: Area[] }) {
+export function NewHabitForm({ areas, identities }: { areas: Area[]; identities: Identity[] }) {
   const [open, setOpen] = useState(false);
   const [areaId, setAreaId] = useState<string>("");
   const [action, setAction] = useState("");
+  const [identityId, setIdentityId] = useState<number | null>(null);
   const [timeOfDay, setTimeOfDay] = useState<string>("");
   const [recurrenceJson, setRecurrenceJson] = useState<string | null>(JSON.stringify({ type: "daily", interval: 1 }));
   const [because, setBecause] = useState("");
@@ -218,7 +219,7 @@ function NewHabitForm({ areas }: { areas: Area[] }) {
       reward: reward || null,
       response: action,
       cue: null,
-      identityId: null,
+      identityId: identityId,
       frequency: recurrenceJson || JSON.stringify({ type: "daily", interval: 1 }),
       targetCount: 1,
       active: 1,
@@ -226,6 +227,7 @@ function NewHabitForm({ areas }: { areas: Area[] }) {
     }),
     onSuccess: () => {
       setAction(""); setAreaId(""); setTimeOfDay(""); setBecause(""); setReward("");
+      setIdentityId(null);
       setRecurrenceJson(JSON.stringify({ type: "daily", interval: 1 }));
       setOpen(false);
       queryClient.invalidateQueries({ queryKey: ["/api/habits"] });
@@ -271,12 +273,22 @@ function NewHabitForm({ areas }: { areas: Area[] }) {
           {/* "...I am the type of person who..." */}
           <div>
             <p className="text-sm font-medium text-muted-foreground mb-1.5">...I am the type of person who...</p>
-            <Input
-              value={action}
-              onChange={(e) => setAction(e.target.value)}
-              placeholder="e.g. exercises, meal preps, eats breakfast, plays with my kids"
-              data-testid="input-habit-name"
-            />
+            <Select value={action} onValueChange={(val) => {
+              setAction(val);
+              const match = identities.find(i => i.statement === val);
+              setIdentityId(match?.id ?? null);
+            }}>
+              <SelectTrigger data-testid="select-habit-identity">
+                <SelectValue placeholder="Select an identity statement" />
+              </SelectTrigger>
+              <SelectContent>
+                {identities.map(id => (
+                  <SelectItem key={id.id} value={id.statement}>
+                    {id.statement}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* "...in the..." */}
@@ -340,11 +352,12 @@ function NewHabitForm({ areas }: { areas: Area[] }) {
 // ============================================================
 // EDIT HABIT DIALOG
 // ============================================================
-function EditHabitDialog({ habit, areas, open, onOpenChange }: {
-  habit: Habit; areas: Area[]; open: boolean; onOpenChange: (v: boolean) => void;
+export function EditHabitDialog({ habit, areas, identities, open, onOpenChange }: {
+  habit: Habit; areas: Area[]; identities: Identity[]; open: boolean; onOpenChange: (v: boolean) => void;
 }) {
   const [areaId, setAreaId] = useState(habit.areaId ? String(habit.areaId) : "");
   const [action, setAction] = useState(habit.name);
+  const [identityId, setIdentityId] = useState<number | null>(habit.identityId ?? null);
   const [timeOfDay, setTimeOfDay] = useState(habit.timeOfDay || "");
   const [recurrenceJson, setRecurrenceJson] = useState<string | null>(habit.frequency);
   const [because, setBecause] = useState(habit.craving || "");
@@ -354,6 +367,7 @@ function EditHabitDialog({ habit, areas, open, onOpenChange }: {
   const resetForm = () => {
     setAreaId(habit.areaId ? String(habit.areaId) : "");
     setAction(habit.name);
+    setIdentityId(habit.identityId ?? null);
     setTimeOfDay(habit.timeOfDay || "");
     setRecurrenceJson(habit.frequency);
     setBecause(habit.craving || "");
@@ -379,6 +393,7 @@ function EditHabitDialog({ habit, areas, open, onOpenChange }: {
         craving: because || null,
         reward: reward || null,
         response: action,
+        identityId: identityId,
         frequency: recurrenceJson || JSON.stringify({ type: "daily", interval: 1 }),
       };
       const res = await apiRequest("PATCH", `/api/habits/${habit.id}`, data);
@@ -422,12 +437,22 @@ function EditHabitDialog({ habit, areas, open, onOpenChange }: {
 
           <div>
             <p className="text-sm font-medium text-muted-foreground mb-1.5">...I am the type of person who...</p>
-            <Input
-              value={action}
-              onChange={(e) => setAction(e.target.value)}
-              placeholder="e.g. exercises, meal preps"
-              data-testid="edit-habit-name"
-            />
+            <Select value={action} onValueChange={(val) => {
+              setAction(val);
+              const match = identities.find(i => i.statement === val);
+              setIdentityId(match?.id ?? null);
+            }}>
+              <SelectTrigger data-testid="edit-habit-name">
+                <SelectValue placeholder="Select an identity statement" />
+              </SelectTrigger>
+              <SelectContent>
+                {identities.map(id => (
+                  <SelectItem key={id.id} value={id.statement}>
+                    {id.statement}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
