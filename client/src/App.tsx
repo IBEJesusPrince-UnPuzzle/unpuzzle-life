@@ -61,23 +61,19 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Router hook={useHashLocation}>
-          <SidebarProvider style={style as React.CSSProperties}>
+          <SidebarProvider defaultOpen={false} style={style as React.CSSProperties}>
             <div className="flex h-screen w-full">
               <AppSidebar isDark={isDark} toggleTheme={() => setIsDark(!isDark)} />
               <div className="flex flex-col flex-1 min-w-0">
-                <header className="hidden md:flex items-center gap-2 p-2 border-b shrink-0">
-                  <SidebarTrigger data-testid="button-sidebar-toggle" />
-                </header>
-
                 <main className="flex-1 overflow-hidden">
                   <AppRouter />
                 </main>
 
-                {/* Mobile sidebar trigger — fixed at bottom center */}
-                <div className="md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
+                {/* Sidebar trigger — fixed at bottom center on all screens */}
+                <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
                   <SidebarTrigger
                     className="w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-95 transition-all"
-                    data-testid="mobile-sidebar-trigger"
+                    data-testid="sidebar-trigger"
                   >
                     <Menu className="w-5 h-5" />
                   </SidebarTrigger>
