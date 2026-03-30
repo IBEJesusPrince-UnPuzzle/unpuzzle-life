@@ -496,11 +496,137 @@ function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick: (id: n
 // TASK CARD
 // ============================================================
 
+function EditTaskDialog({ task, areas, open, onOpenChange }: {
+  task: PlannerTask; areas: Area[]; open: boolean; onOpenChange: (open: boolean) => void;
+}) {
+  const [goal, setGoal] = useState(task.goal);
+  const [areaId, setAreaId] = useState<string>(task.areaId ? String(task.areaId) : "none");
+  const [startTime, setStartTime] = useState(task.startTime || "");
+  const [endTime, setEndTime] = useState(task.endTime || "");
+  const [date, setDate] = useState(task.date);
+  const [resultText, setResultText] = useState(task.result || "");
+  const [recurrenceJson, setRecurrenceJson] = useState<string | null>(task.recurrence || null);
+
+  // Reset form when dialog opens with new task
+  useEffect(() => {
+    if (open) {
+      setGoal(task.goal);
+      setAreaId(task.areaId ? String(task.areaId) : "none");
+      setStartTime(task.startTime || "");
+      setEndTime(task.endTime || "");
+      setDate(task.date);
+      setResultText(task.result || "");
+      setRecurrenceJson(task.recurrence || null);
+    }
+  }, [open, task]);
+
+  const hours = useMemo(() => {
+    if (!startTime || !endTime) return "";
+    const [sh, sm] = startTime.split(":").map(Number);
+    const [eh, em] = endTime.split(":").map(Number);
+    const diff = (eh * 60 + em - sh * 60 - sm) / 60;
+    return diff > 0 ? diff.toFixed(2) : "";
+  }, [startTime, endTime]);
+
+  const groupedAreas = useMemo(() => {
+    const groups: Record<string, Area[]> = {};
+    areas.forEach(a => {
+      const cat = a.category || "Other";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(a);
+    });
+    return groups;
+  }, [areas]);
+
+  const update = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/planner-tasks/${task.id}`, {
+      goal,
+      areaId: areaId && areaId !== "none" ? Number(areaId) : null,
+      startTime: startTime || null,
+      endTime: endTime || null,
+      hours: hours || null,
+      date,
+      result: resultText || null,
+      recurrence: recurrenceJson,
+    }),
+    onSuccess: () => {
+      onOpenChange(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks", task.date] });
+      queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks", date] });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+        <DialogHeader>
+          <DialogTitle className="text-base">Edit Task</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 pt-2">
+          <div>
+            <label className="text-xs font-medium mb-1 block text-muted-foreground">What</label>
+            <Input value={goal} onChange={e => setGoal(e.target.value)}
+              placeholder="What needs to be done?" className="text-sm" data-testid="edit-task-goal" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium mb-1 block text-muted-foreground">Date</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="w-full h-9 px-3 text-sm border rounded-md bg-card text-foreground" />
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block text-muted-foreground">Area</label>
+              <Select value={areaId} onValueChange={setAreaId}>
+                <SelectTrigger className="text-sm"><SelectValue placeholder="Select area" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No area</SelectItem>
+                  {CATEGORY_ORDER.map(cat => {
+                    const catAreas = groupedAreas[cat];
+                    if (!catAreas) return null;
+                    return catAreas.map(a => (
+                      <SelectItem key={a.id} value={String(a.id)}>
+                        <span className="text-xs text-muted-foreground mr-1">{cat.substring(0, 3)}.</span>
+                        {a.name}
+                      </SelectItem>
+                    ));
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-x-3 gap-y-2">
+            <TimePicker label="Start" value={startTime} onChange={setStartTime} />
+            <TimePicker label="End" value={endTime} onChange={setEndTime} />
+            <div className="flex-shrink-0">
+              <label className="text-xs font-medium mb-1 block text-muted-foreground">Hours</label>
+              <div className="h-9 px-2 text-sm border rounded-md bg-muted/50 flex items-center text-muted-foreground min-w-[48px]">
+                {hours ? `${parseFloat(hours).toFixed(1)}h` : "Auto"}
+              </div>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium mb-1 block text-muted-foreground">Result / Notes</label>
+            <Input value={resultText} onChange={e => setResultText(e.target.value)}
+              placeholder="How did it go?" className="text-sm" />
+          </div>
+          <RecurrenceBuilder value={recurrenceJson} onChange={setRecurrenceJson} />
+          <Button className="w-full" disabled={!goal.trim()} onClick={() => update.mutate()}
+            data-testid="button-update-task">
+            Save Changes
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area[]; onAreaClick: (id: number) => void }) {
   const area = areas.find(a => a.id === task.areaId);
   const isDone = task.status === "done";
   const isSkipped = task.status === "skipped";
   const [convertOpen, setConvertOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const updateStatus = useMutation({
     mutationFn: (status: string) => apiRequest("PATCH", `/api/planner-tasks/${task.id}`, { status }),
@@ -512,18 +638,9 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks", task.date] }),
   });
 
-  const [showResult, setShowResult] = useState(false);
-  const [result, setResult] = useState(task.result || "");
-
-  const saveResult = useMutation({
-    mutationFn: () => apiRequest("PATCH", `/api/planner-tasks/${task.id}`, { result }),
-    onSuccess: () => {
-      setShowResult(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks", task.date] });
-    },
-  });
-
   return (
+    <>
+    <EditTaskDialog task={task} areas={areas} open={editOpen} onOpenChange={setEditOpen} />
     <Card className={`group transition-all ${isDone ? "opacity-60" : isSkipped ? "opacity-40" : ""}`} data-testid={`task-${task.id}`}>
       <CardContent className="p-3">
         <div className="flex items-start gap-2.5">
@@ -539,7 +656,7 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
             {isDone && <CheckCircle2 className="w-3.5 h-3.5 text-primary-foreground" />}
           </button>
 
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setEditOpen(true)}>
             <div className="flex items-start gap-2 flex-wrap">
               <p className={`text-sm font-medium leading-snug ${isDone ? "line-through" : ""}`}>
                 {task.goal}
@@ -560,7 +677,7 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
               )}
               {area && (
                 <button
-                  onClick={() => onAreaClick(area.id)}
+                  onClick={(e) => { e.stopPropagation(); onAreaClick(area.id); }}
                   className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
                 >
                   {area.name}
@@ -573,25 +690,15 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
                 </span>
               )}
             </div>
-            {task.result && !showResult && (
+            {task.result && (
               <p className="text-[11px] text-muted-foreground mt-1 italic">Result: {task.result}</p>
-            )}
-            {showResult && (
-              <div className="flex gap-1.5 mt-1.5">
-                <Input value={result} onChange={e => setResult(e.target.value)}
-                  placeholder="How did it go?" className="h-7 text-xs flex-1" />
-                <Button size="sm" className="h-7 text-xs px-2" onClick={() => saveResult.mutate()}>Save</Button>
-                <Button size="sm" variant="ghost" className="h-7 text-xs px-2" onClick={() => setShowResult(false)}>
-                  <X className="w-3 h-3" />
-                </Button>
-              </div>
             )}
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title="Add result"
-              onClick={() => setShowResult(!showResult)}>
+          <div className="flex items-center gap-0.5 shrink-0">
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title="Edit task"
+              onClick={() => setEditOpen(true)} data-testid={`edit-task-${task.id}`}>
               <Pencil className="w-3 h-3" />
             </Button>
             {!isDone && !isSkipped && (
@@ -625,6 +732,7 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
         onOpenChange={setConvertOpen}
       />
     </Card>
+    </>
   );
 }
 

@@ -249,7 +249,7 @@ export function NewHabitForm({ areas, identities }: { areas: Area[]; identities:
         <div className="space-y-4 pt-2">
           {/* "In the..." */}
           <div>
-            <p className="text-sm font-medium text-muted-foreground mb-1.5">In the...</p>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">In the area of...</p>
             <Select value={areaId} onValueChange={setAreaId}>
               <SelectTrigger data-testid="select-habit-area">
                 <SelectValue placeholder="Select an area" />
@@ -414,7 +414,7 @@ export function EditHabitDialog({ habit, areas, identities, open, onOpenChange }
         </DialogHeader>
         <div className="space-y-4 pt-2">
           <div>
-            <p className="text-sm font-medium text-muted-foreground mb-1.5">In the...</p>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">In the area of...</p>
             <Select value={areaId} onValueChange={setAreaId}>
               <SelectTrigger data-testid="edit-habit-area">
                 <SelectValue placeholder="Select an area" />

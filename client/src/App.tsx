@@ -20,23 +20,17 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
 function BackButton() {
-  const [location, setLocation] = useLocation();
+  const [location] = useLocation();
   if (location === "/") return null;
-  const goHome = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setLocation("/");
-  };
   return (
-    <button
-      onClick={goHome}
-      onTouchEnd={goHome}
+    <a
+      href="#/"
       className="flex items-center justify-center w-10 h-10 -m-2 text-muted-foreground hover:text-foreground active:text-foreground transition-colors"
       data-testid="button-back"
       aria-label="Back to Dashboard"
     >
       <ChevronLeft className="w-6 h-6" />
-    </button>
+    </a>
   );
 }
 
