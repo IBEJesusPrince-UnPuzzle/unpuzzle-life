@@ -1331,6 +1331,7 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
   const [recurrenceJson, setRecurrenceJson] = useState<string | null>(
     task.recurrence || JSON.stringify({ type: "daily", interval: 1 })
   );
+  const [cue, setCue] = useState("");
   const [because, setBecause] = useState("");
   const [reward, setReward] = useState("");
 
@@ -1338,6 +1339,7 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
     setAction(task.goal);
     setTimeOfDay(timeToCategory(task.startTime));
     setRecurrenceJson(task.recurrence || JSON.stringify({ type: "daily", interval: 1 }));
+    setCue("");
     setBecause("");
     setReward("");
   };
@@ -1350,7 +1352,7 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
       craving: because || null,
       reward: reward || null,
       response: action,
-      cue: null,
+      cue: cue || null,
       identityId: null,
       frequency: recurrenceJson || JSON.stringify({ type: "daily", interval: 1 }),
       targetCount: 1,
@@ -1391,6 +1393,16 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
               onChange={(e) => setAction(e.target.value)}
               placeholder="e.g. exercises, meal preps"
               data-testid="convert-habit-name"
+            />
+          </div>
+
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...when...</p>
+            <Input
+              value={cue}
+              onChange={(e) => setCue(e.target.value)}
+              placeholder="e.g. triggering/reminding action"
+              data-testid="convert-habit-cue"
             />
           </div>
 
