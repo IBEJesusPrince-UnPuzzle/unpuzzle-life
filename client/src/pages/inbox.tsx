@@ -162,11 +162,21 @@ export default function InboxPage() {
                   ) : (
                     <>
                       <p className="text-sm" data-testid={`inbox-item-${item.id}`}>{item.content}</p>
-                      <p className="text-[10px] text-muted-foreground mt-1">
-                        {new Date(item.createdAt).toLocaleDateString("en-US", {
-                          month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
-                        })}
-                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="text-[10px] text-muted-foreground">
+                          {new Date(item.createdAt).toLocaleDateString("en-US", {
+                            month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+                          })}
+                        </p>
+                        {item.areaId && (() => {
+                          const area = areasList.find(a => a.id === item.areaId);
+                          return area ? (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+                              {area.name}
+                            </span>
+                          ) : null;
+                        })()}
+                      </div>
                     </>
                   )}
                 </div>
@@ -373,7 +383,7 @@ function DoItStep({ item, areas, onBack, onDone }: {
   item: InboxItem; areas: Area[]; onBack: () => void; onDone: () => void;
 }) {
   const [goal, setGoal] = useState(item.content);
-  const [areaId, setAreaId] = useState<string>("");
+  const [areaId, setAreaId] = useState<string>(item.areaId ? String(item.areaId) : "");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -543,7 +553,7 @@ function AddToProjectStep({ item, projects, onBack, onDone }: {
 function FileItStep({ item, areas, projects, onBack, onDone }: {
   item: InboxItem; areas: Area[]; projects: Project[]; onBack: () => void; onDone: () => void;
 }) {
-  const [areaId, setAreaId] = useState<string>("");
+  const [areaId, setAreaId] = useState<string>(item.areaId ? String(item.areaId) : "");
   const [projectId, setProjectId] = useState<string>("");
 
   const file = useMutation({
