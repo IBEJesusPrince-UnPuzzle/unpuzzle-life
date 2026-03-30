@@ -171,8 +171,8 @@ export default function InboxPage() {
                         {item.areaId && (() => {
                           const area = areasList.find(a => a.id === item.areaId);
                           return area ? (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
-                              {area.name}
+                            <span className="text-[10px] text-muted-foreground">
+                              In the area of <span className="font-medium text-foreground">{area.name}</span>
                             </span>
                           ) : null;
                         })()}
@@ -227,13 +227,21 @@ export default function InboxPage() {
             Recently processed
           </p>
           <div className="space-y-1">
-            {processed.slice(0, 5).map((item) => (
-              <div key={item.id} className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-                <Archive className="w-3 h-3" />
-                <span className="truncate flex-1 line-through">{item.content}</span>
-                <Badge variant="outline" className="text-[10px] h-4 px-1">{item.processedAs}</Badge>
-              </div>
-            ))}
+            {processed.slice(0, 5).map((item) => {
+              const itemArea = areasList.find(a => a.id === item.areaId);
+              return (
+                <div key={item.id} className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                  <Archive className="w-3 h-3" />
+                  <span className="truncate flex-1 line-through">{item.content}</span>
+                  {itemArea && (
+                    <span className="text-[10px] text-muted-foreground shrink-0">
+                      In the area of <span className="font-medium">{itemArea.name}</span>
+                    </span>
+                  )}
+                  <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0">{item.processedAs}</Badge>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -474,6 +482,7 @@ function AddToProjectStep({ item, projects, onBack, onDone }: {
       await apiRequest("POST", "/api/actions", {
         title: item.content,
         projectId,
+        areaId: item.areaId || null,
         createdAt: new Date().toISOString(),
       });
       await apiRequest("PATCH", `/api/inbox/${item.id}`, { processed: 1, processedAs: "project" });
@@ -490,6 +499,7 @@ function AddToProjectStep({ item, projects, onBack, onDone }: {
     mutationFn: async () => {
       await apiRequest("POST", "/api/projects", {
         title: newProjectTitle,
+        areaId: item.areaId || null,
         status: "active",
         createdAt: new Date().toISOString(),
       });
@@ -625,6 +635,7 @@ function WonderItStep({ item, onBack, onDone }: {
       await apiRequest("POST", "/api/actions", {
         title: item.content,
         projectId: project.id,
+        areaId: item.areaId || null,
         createdAt: new Date().toISOString(),
       });
       // Mark inbox item processed
