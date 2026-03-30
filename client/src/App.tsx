@@ -15,7 +15,7 @@ import ImportPage from "@/pages/import";
 import ProjectDetailPage from "@/pages/project-detail";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
-import { useRoute, useLocation, Link } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import {
@@ -25,9 +25,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 function ProjectDetailRoute() {
-  const [, params] = useRoute("/projects/:id");
-  if (!params?.id) return <NotFound />;
-  return <ProjectDetailPage id={Number(params.id)} />;
+  const m = window.location.hash.match(/\/projects\/(\d+)/);
+  return m ? <ProjectDetailPage id={Number(m[1])} /> : <NotFound />;
 }
 
 function AppRouter() {

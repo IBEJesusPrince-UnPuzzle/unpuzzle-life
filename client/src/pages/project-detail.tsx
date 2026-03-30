@@ -15,7 +15,7 @@ import {
   FolderOpen, CheckCircle2, FileText, Plus, ListTodo, Archive,
   CalendarDays, Clock, Pencil, Trash2, X, Check,
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { Project, Action, InboxItem, Area } from "@shared/schema";
 
 interface ProjectDetails {
@@ -26,10 +26,17 @@ interface ProjectDetails {
 }
 
 export default function ProjectDetailPage({ id }: { id: number }) {
-  const { data, isLoading } = useQuery<ProjectDetails>({
-    queryKey: ["/api/projects", id, "details"],
-    queryFn: () => apiRequest("GET", `/api/projects/${id}/details`).then(r => r.json()),
-  });
+  const [data, setData] = useState<ProjectDetails | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setIsLoading(true);
+    fetch(`/api/projects/${id}/details`)
+      .then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
+      .then(d => { setData(d); setIsLoading(false); })
+      .catch(e => { setError(e.message); setIsLoading(false); });
+  }, [id]);
 
   const [newAction, setNewAction] = useState("");
 
@@ -68,10 +75,14 @@ export default function ProjectDetailPage({ id }: { id: number }) {
   if (isLoading || !data) {
     return (
       <div className="p-6 max-w-4xl mx-auto">
-        <div className="animate-pulse space-y-4">
-          <div className="h-6 bg-muted rounded w-48" />
-          <div className="h-32 bg-muted rounded" />
-        </div>
+        {error ? (
+          <p className="text-sm text-destructive">Failed to load project: {(error as Error).message}</p>
+        ) : (
+          <div className="animate-pulse space-y-4">
+            <div className="h-6 bg-muted rounded w-48" />
+            <div className="h-32 bg-muted rounded" />
+          </div>
+        )}
       </div>
     );
   }

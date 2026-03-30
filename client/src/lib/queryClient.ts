@@ -1,6 +1,9 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-const API_BASE = "__PORT_5000__";
+// __PORT_5000__ is replaced by deploy_website with the proxy path.
+// In local/production server mode, it stays as-is, so we detect and use empty string.
+const raw = "__PORT_5000__";
+const API_BASE = raw.startsWith("__") ? "" : raw;
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {

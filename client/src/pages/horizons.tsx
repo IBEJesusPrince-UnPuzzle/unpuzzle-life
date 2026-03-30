@@ -709,6 +709,11 @@ function GoalSection({ goals, visions }: { goals: Goal[]; visions: Vision[] }) {
   const [visionId, setVisionId] = useState<string>("");
   const [targetDate, setTargetDate] = useState("");
 
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editVisionId, setEditVisionId] = useState<string>("");
+  const [editTargetDate, setEditTargetDate] = useState("");
+
   const create = useMutation({
     mutationFn: () => apiRequest("POST", "/api/goals", {
       title, visionId: visionId ? Number(visionId) : null,
@@ -721,10 +726,37 @@ function GoalSection({ goals, visions }: { goals: Goal[]; visions: Vision[] }) {
     },
   });
 
+  const updateGoal = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<Goal> }) =>
+      apiRequest("PATCH", `/api/goals/${id}`, data),
+    onSuccess: () => {
+      setEditingId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/goals"] });
+    },
+  });
+
   const deleteGoal = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/goals/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/goals"] }),
   });
+
+  function startEdit(g: Goal) {
+    setEditingId(g.id);
+    setEditTitle(g.title);
+    setEditVisionId(g.visionId ? String(g.visionId) : "none");
+    setEditTargetDate(g.targetDate || "");
+  }
+
+  function saveEdit(id: number) {
+    updateGoal.mutate({
+      id,
+      data: {
+        title: editTitle,
+        visionId: editVisionId && editVisionId !== "none" ? Number(editVisionId) : null,
+        targetDate: editTargetDate || null,
+      },
+    });
+  }
 
   return (
     <div className="space-y-4">
@@ -752,27 +784,59 @@ function GoalSection({ goals, visions }: { goals: Goal[]; visions: Vision[] }) {
         </CardContent>
       </Card>
 
-      {goals.map((g) => (
-        <Card key={g.id}>
-          <CardContent className="p-4 flex justify-between items-start">
-            <div>
-              <div className="flex items-center gap-2">
-                <Target className="w-4 h-4 text-chart-1" />
-                <p className="font-medium text-sm">{g.title}</p>
-                {g.targetDate && <Badge variant="outline" className="text-[10px] h-4">{g.targetDate}</Badge>}
+      {goals.map((g) => {
+        if (editingId === g.id) {
+          return (
+            <Card key={g.id}>
+              <CardContent className="p-4 space-y-3">
+                <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Goal title" />
+                <div className="flex gap-2">
+                  <Select value={editVisionId} onValueChange={setEditVisionId}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Link to vision" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No vision</SelectItem>
+                      {visions.map(v => <SelectItem key={v.id} value={String(v.id)}>{v.title}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Input type="date" value={editTargetDate} onChange={(e) => setEditTargetDate(e.target.value)} className="w-40" />
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => saveEdit(g.id)} disabled={!editTitle.trim()}>Save</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
+                    <X className="w-3 h-3 mr-1" /> Cancel
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        }
+        return (
+          <Card key={g.id}>
+            <CardContent className="p-4 flex justify-between items-start">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Target className="w-4 h-4 text-chart-1" />
+                  <p className="font-medium text-sm">{g.title}</p>
+                  {g.targetDate && <Badge variant="outline" className="text-[10px] h-4">{g.targetDate}</Badge>}
+                </div>
+                {g.visionId && (
+                  <p className="text-xs text-muted-foreground mt-1 ml-6">
+                    Vision: {visions.find(v => v.id === g.visionId)?.title}
+                  </p>
+                )}
               </div>
-              {g.visionId && (
-                <p className="text-xs text-muted-foreground mt-1 ml-6">
-                  Vision: {visions.find(v => v.id === g.visionId)?.title}
-                </p>
-              )}
-            </div>
-            <Button variant="ghost" size="sm" className="text-destructive h-7" onClick={() => deleteGoal.mutate(g.id)}>
-              <Trash2 className="w-3 h-3" />
-            </Button>
-          </CardContent>
-        </Card>
-      ))}
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => startEdit(g)} data-testid={`edit-goal-${g.id}`}>
+                  <Pencil className="w-3 h-3" />
+                </Button>
+                <Button variant="ghost" size="sm" className="text-destructive h-7" onClick={() => deleteGoal.mutate(g.id)}>
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }
