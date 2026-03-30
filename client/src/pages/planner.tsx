@@ -265,7 +265,7 @@ export default function PlannerPage() {
 // SORTER VIEW — Daily chronological timeline
 // ============================================================
 
-function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick: (id: number) => void }) {
+export function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick: (id: number) => void }) {
   const [selectedDate, setSelectedDate] = useState(getToday());
   const [showAddDialog, setShowAddDialog] = useState(false);
 

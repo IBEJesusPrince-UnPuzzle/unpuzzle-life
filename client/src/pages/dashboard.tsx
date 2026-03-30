@@ -1,21 +1,19 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  CheckCircle2, Fingerprint, Clock, AlertTriangle, Inbox as InboxIcon,
-  Target, Plus, ArrowRight
+  Fingerprint, Clock, AlertTriangle, Inbox as InboxIcon, Plus,
 } from "lucide-react";
 import { useState } from "react";
-import { Link } from "wouter";
-import type { Action, Habit, HabitLog, Area } from "@shared/schema";
+import { Link, useLocation } from "wouter";
+import type { Area } from "@shared/schema";
+import { SorterView } from "./planner";
 
 function getToday() {
   return new Date().toISOString().split("T")[0];
@@ -48,44 +46,7 @@ export default function Dashboard() {
 
   const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
 
-  const { data: actions = [] } = useQuery<Action[]>({ queryKey: ["/api/actions"] });
-  const { data: habits = [] } = useQuery<Habit[]>({ queryKey: ["/api/habits"] });
-  const { data: todayLogs = [] } = useQuery<HabitLog[]>({
-    queryKey: ["/api/habit-logs", today],
-    queryFn: () => apiRequest("GET", `/api/habit-logs?date=${today}`).then(r => r.json()),
-  });
-
-  const pendingActions = actions.filter(a => !a.completed).slice(0, 8);
-  const activeHabits = habits.filter(h => h.active);
-
-  const completeAction = useMutation({
-    mutationFn: (id: number) => apiRequest("PATCH", `/api/actions/${id}`, {
-      completed: 1,
-      completedAt: new Date().toISOString(),
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/actions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-    },
-  });
-
-  const logHabit = useMutation({
-    mutationFn: (habitId: number) => apiRequest("POST", "/api/habit-logs", {
-      habitId, date: today, count: 1,
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/habit-logs", today] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-    },
-  });
-
-  const removeHabitLog = useMutation({
-    mutationFn: (logId: number) => apiRequest("DELETE", `/api/habit-logs/${logId}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/habit-logs", today] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-    },
-  });
+  const [, setLocation] = useLocation();
 
   const captureToInbox = useMutation({
     mutationFn: ({ content, areaId }: { content: string; areaId: number | null }) =>
@@ -100,10 +61,6 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
     },
   });
-
-  const habitsDone = todayLogs.length;
-  const habitsTotal = activeHabits.length;
-  const habitPercent = habitsTotal > 0 ? Math.round((habitsDone / habitsTotal) * 100) : 0;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6 overflow-y-auto h-full">
@@ -217,101 +174,9 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Two columns: Today's Habits + Next Actions */}
-      <div className="grid lg:grid-cols-2 gap-4">
-        {/* Today's Habits */}
-        <Card>
-          <CardHeader className="pb-3 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium">Today's Habits</CardTitle>
-            <Link href="/horizons">
-              <Button variant="ghost" size="sm" className="text-xs h-7" data-testid="link-all-habits">
-                View all <ArrowRight className="w-3 h-3 ml-1" />
-              </Button>
-            </Link>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {activeHabits.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Target className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">No habits yet</p>
-                <Link href="/horizons">
-                  <Button variant="outline" size="sm" className="mt-3 text-xs">
-                    <Plus className="w-3 h-3 mr-1" /> Create your first habit
-                  </Button>
-                </Link>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {activeHabits.map((habit) => {
-                  const log = todayLogs.find(l => l.habitId === habit.id);
-                  const isDone = !!log;
-                  return (
-                    <button
-                      key={habit.id}
-                      onClick={() => isDone ? removeHabitLog.mutate(log!.id) : logHabit.mutate(habit.id)}
-                      className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-md text-left transition-colors ${
-                        isDone ? "bg-primary/5" : "hover:bg-accent"
-                      }`}
-                      data-testid={`habit-toggle-${habit.id}`}
-                    >
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                        isDone ? "border-primary bg-primary" : "border-muted-foreground/30"
-                      }`}>
-                        {isDone && <CheckCircle2 className="w-3 h-3 text-primary-foreground" />}
-                      </div>
-                      <span className={`text-sm flex-1 ${isDone ? "line-through text-muted-foreground" : ""}`}>
-                        {habit.name}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Next Actions */}
-        <Card>
-          <CardHeader className="pb-3 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium">Next Actions</CardTitle>
-            <Link href="/horizons">
-              <Button variant="ghost" size="sm" className="text-xs h-7" data-testid="link-all-actions">
-                View all <ArrowRight className="w-3 h-3 ml-1" />
-              </Button>
-            </Link>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {pendingActions.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <CheckCircle2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">All caught up</p>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {pendingActions.map((action) => (
-                  <div
-                    key={action.id}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-accent transition-colors"
-                  >
-                    <Checkbox
-                      checked={!!action.completed}
-                      onCheckedChange={() => completeAction.mutate(action.id)}
-                      data-testid={`action-check-${action.id}`}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm truncate">{action.title}</p>
-                      {action.context && (
-                        <Badge variant="secondary" className="text-[10px] mt-0.5 h-4 px-1">
-                          {action.context}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {/* Embedded Agenda */}
+      <div className="-mx-6 -mb-6">
+        <SorterView areas={areas} onAreaClick={(id) => setLocation(`/planner`)} />
       </div>
     </div>
   );
