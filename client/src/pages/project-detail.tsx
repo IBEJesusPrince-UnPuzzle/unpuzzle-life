@@ -32,8 +32,8 @@ export default function ProjectDetailPage({ id }: { id: number }) {
 
   useEffect(() => {
     setIsLoading(true);
-    fetch(`/api/projects/${id}/details`)
-      .then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
+    apiRequest("GET", `/api/projects/${id}/details`)
+      .then(r => r.json())
       .then(d => { setData(d); setIsLoading(false); })
       .catch(e => { setError(e.message); setIsLoading(false); });
   }, [id]);
