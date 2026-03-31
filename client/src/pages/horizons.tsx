@@ -423,7 +423,16 @@ function AreaSection({ areas }: { areas: Area[] }) {
     });
   }
 
-  const AREA_CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Life", "Getting Things Done", "Other"];
+  const AREA_CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles & Responsibilities", "Getting Things Done", "Other"];
+
+  const CATEGORY_DESCRIPTIONS: Record<string, string> = {
+    "UnPuzzle": "The 5 core life puzzle pieces — mindfulness, fitness, career, finances, and joy",
+    "Chores": "Recurring household tasks that keep your environment running",
+    "Routines": "Time-blocked rituals that structure your day",
+    "Roles & Responsibilities": "The people and roles you show up for every day",
+    "Getting Things Done": "Context-based action lists for executing tasks",
+    "Other": "Uncategorized areas",
+  };
 
   const groupedAreas = AREA_CATEGORY_ORDER.reduce<Record<string, Area[]>>((acc, cat) => {
     const catAreas = areas.filter(a => (a.category || "Other") === cat);
@@ -445,7 +454,10 @@ function AreaSection({ areas }: { areas: Area[] }) {
             <SelectTrigger className="text-sm"><SelectValue placeholder="Select category..." /></SelectTrigger>
             <SelectContent>
               {AREA_CATEGORY_ORDER.filter(c => c !== "Other").map(c => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
+                <SelectItem key={c} value={c}>
+                  <span className="font-medium">{c}</span>
+                  <span className="text-[10px] text-muted-foreground ml-1.5">{CATEGORY_DESCRIPTIONS[c]}</span>
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -462,9 +474,14 @@ function AreaSection({ areas }: { areas: Area[] }) {
         if (!catAreas || catAreas.length === 0) return null;
         return (
           <div key={cat} className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-foreground">{cat}</h3>
-              <span className="text-[10px] text-muted-foreground">{catAreas.length} area{catAreas.length !== 1 ? "s" : ""}</span>
+            <div>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-foreground">{cat}</h3>
+                <span className="text-[10px] text-muted-foreground">{catAreas.length} area{catAreas.length !== 1 ? "s" : ""}</span>
+              </div>
+              {CATEGORY_DESCRIPTIONS[cat] && (
+                <p className="text-[11px] text-muted-foreground mt-0.5">{CATEGORY_DESCRIPTIONS[cat]}</p>
+              )}
             </div>
             <div className="grid sm:grid-cols-2 gap-2">
               {catAreas.map((a) => {
