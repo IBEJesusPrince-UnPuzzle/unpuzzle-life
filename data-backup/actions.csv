@@ -1,0 +1,6 @@
+id,title,notes,project_id,area_id,context,energy,time_estimate,due_date,completed,completed_at,created_at
+1,"Junior has a failed trip coming up and I think they need volunteers",,,,,,,,0,,2026-03-29T10:45:40.487Z
+2,"Project item test action",,5,,,,,,0,,2026-03-29T14:45:22.493Z
+3,"I need pads",,2,,,,,,0,,2026-03-30T14:29:04.943Z
+4,"Project Item Test action then task",,5,,,,,,0,,2026-03-30T14:55:52.541Z
+5,"Quick voice recorder note so I don't forget this",,6,3,,,,,0,,2026-03-31T01:02:03.382Z

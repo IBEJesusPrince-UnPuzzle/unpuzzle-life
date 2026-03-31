@@ -1,0 +1,7 @@
+id,title,description,area_id,goal_id,status,due_date,created_at
+1,"Get milk",,,,completed,,2026-03-29T14:16:26.634Z
+2,"Grocery store ",,10,,active,,2026-03-29T14:17:03.096Z
+3,"Test 1",,,,active,,2026-03-29T14:20:48.295Z
+4,"Test 2",,,,active,,2026-03-29T14:35:33.858Z
+5,"Project item test",,,,completed,,2026-03-29T14:43:10.282Z
+6,Someday/Maybe,"Items to revisit when the time is right",,,someday,,2026-03-31T01:02:03.383Z

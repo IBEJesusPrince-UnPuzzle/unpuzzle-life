@@ -1,0 +1,48 @@
+id,name,description,icon,sort_order,category
+1,"Reason (Mindfulness)","figuring out your emotions, beliefs, and behavior so that you start feeling, thinking, and reacting your best",brain,1,UnPuzzle
+2,"Fitness (Workouts)","figuring out your bodily systems and physical environment so you function at your best",dumbbell,2,UnPuzzle
+3,"Talent (Vocation)","figuring out your vocation so that your career supports your best life",sparkles,3,UnPuzzle
+4,"Finance (Resources)","figuring out your finances so that you afford your best life",wallet,4,UnPuzzle
+5,"Pleasure (Rewards)","figuring out your joys and pleasures so that you reward you for being you",heart,5,UnPuzzle
+6,Laundry-W&D,"washing & drying laundry",shirt,10,Chores
+7,Laundry-F&PA,"folding and putting away laundry",shirt,11,Chores
+8,Kitchen,"daily, weekly, monthly chores",cooking-pot,12,Chores
+9,"Meal Prep/Planning","planning and preparing for meals",utensils,13,Chores
+10,Grocery/Shopping,"shopping for groceries & items",shopping-cart,14,Chores
+11,Bathroom,"daily, weekly, monthly chores",bath,15,Chores
+12,"Front Room","daily, weekly, monthly chores",sofa,16,Chores
+13,Bedroom,"daily, weekly, monthly chores",bed-double,17,Chores
+14,Hallways/Foyer,"daily, weekly, monthly chores",door-open,18,Chores
+15,Office,"daily, weekly, monthly chores",monitor,19,Chores
+16,Misc.,"daily, weekly, monthly chores",boxes,20,Chores
+17,Pre-workout,"things to prepare for workout",timer,30,Routines
+18,Post-workout,"things to recover from workout",droplets,31,Routines
+19,"Get Ready","getting myself ready to go out somewhere",user-check,32,Routines
+20,"Get Family Ready","family getting ready to go out somewhere",users,33,Routines
+21,"Morning Commute","commuting to work/school in the morning",car,34,Routines
+22,"Afternoon Commute","commuting away from work/school in the afternoon",car,35,Routines
+23,"Morning Routine","wake, stretch, DPT, restroom, scale, brush teeth, wash face",sunrise,36,Routines
+24,"Afternoon Routine","homework help & dinner preparation",sun,37,Routines
+25,"Evening Routine","DPT then tomorrows clothes and supplies set aside",sunset,38,Routines
+26,"Bath Time","shower or bathe then get dressed",bath,39,Routines
+27,"Bed Time","in bed for the night",moon,40,Routines
+28,"Family Breakfast","breakfast as a family",coffee,41,Routines
+29,Lunch,"lunch time",sandwich,42,Routines
+30,"Family Dinner","dinner as a family",utensils-crossed,43,Routines
+31,"Family & Friends","doing things for my family & friends",heart-handshake,50,Life
+32,Husband,"doing things for my husband",heart,51,Life
+33,Son,"doing things for my son",baby,52,Life
+34,Daughter,"doing things for my daughter",baby,53,Life
+35,Text,"sending and replying to texts",message-square,60,"Getting Things Done"
+36,"Social Media","sending and replying to social media",share-2,61,"Getting Things Done"
+37,Email,"sending and replying to emails",mail,62,"Getting Things Done"
+38,Call,"calling or returning calls",phone,63,"Getting Things Done"
+39,Cellphone/Laptop,"doing things from my cellphone/laptop",smartphone,64,"Getting Things Done"
+40,"Computer Desk","doing things from my computer desk",monitor,65,"Getting Things Done"
+41,Errand,"doing things with my car",car,66,"Getting Things Done"
+42,Read/Think,"doing things when I can concentrate",book-open,67,"Getting Things Done"
+43,Home,"doing things when Im at my house",home,68,"Getting Things Done"
+44,"School/Work Hours","doing things during school/work hours",briefcase,69,"Getting Things Done"
+45,Waiting,"things waiting for something/someone else to proceed",clock,70,"Getting Things Done"
+46,"Kids Morning Routine","Kids Wake, Vitamins, Water, Stretch, Brush Teeth, Wash Face, Get Dressed, Get Supplies",alarm-clock,71,"Getting Things Done"
+47,"Kids Evening Routine","Kids Chores, Bed, & Bath Time",moon-star,72,"Getting Things Done"

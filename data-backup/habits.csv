@@ -1,0 +1,6 @@
+id,name,description,identity_id,cue,craving,response,reward,frequency,target_count,active,created_at,area_id,time_of_day
+1,"exercises every morning",,,,"I love feeling strong and energized","exercises every morning","having a clear mind and strong body","{""type"":""daily"",""interval"":1}",1,1,2026-03-29T18:09:29.457Z,2,morning
+2,Sweeps,,,,"I love seeing clean floors as I walk through my house ",Sweeps,"Peacefully walking barefoot in my kitchen ","{""type"":""weekly"",""interval"":1,""days"":[""monday"",""tuesday"",""wednesday"",""thursday"",""friday""]}",1,1,2026-03-29T18:21:54.512Z,8,evening
+3,Vaccums,,,,"Debris belongs in the trash and not on my floor ",Vaccums,"Walking barefoot in my house ","{""type"":""weekly"",""interval"":1,""days"":[""monday"",""tuesday"",""wednesday"",""thursday"",""friday""]}",1,1,2026-03-29T18:35:29.126Z,12,late_morning
+7,Microdose,,,,"it's after working out, while soaking, and before working ",Microdose,"getting back centered ","{""type"":""weekly"",""interval"":1,""days"":[""monday"",""tuesday"",""wednesday"",""thursday"",""friday"",""saturday""]}",1,1,2026-03-29T21:15:43.108Z,1,morning
+8,"shops effortlessly ",,2,,"I get the best deals and freshes quality ","shops effortlessly ","saving money and eating quality good","{""type"":""weekly"",""interval"":1,""days"":[""wednesday""]}",1,1,2026-03-30T11:10:26.639Z,10,late_morning

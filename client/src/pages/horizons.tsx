@@ -10,12 +10,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Compass, Eye, Target, FolderOpen, Plus, Trash2, CheckCircle2,
+  Compass, Eye, Target, FolderOpen, Plus, Trash2,
   Fingerprint, CalendarDays, ArrowRight, Pencil, X,
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
-import type { Purpose, Vision, Goal, Area, Project, Identity, Habit, HabitLog } from "@shared/schema";
+import type { Purpose, Vision, Area, Identity, Habit, HabitLog } from "@shared/schema";
 import { HabitRow, NewHabitForm } from "./habits";
 
 function HorizonBadge({ level, label }: { level: number; label: string }) {
@@ -39,10 +39,9 @@ export default function HorizonsPage() {
 
   const { data: purposes = [] } = useQuery<Purpose[]>({ queryKey: ["/api/purposes"] });
   const { data: visions = [] } = useQuery<Vision[]>({ queryKey: ["/api/visions"] });
-  const { data: goals = [] } = useQuery<Goal[]>({ queryKey: ["/api/goals"] });
   const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
-  const { data: projects = [] } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
   const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
+  const { data: habits = [] } = useQuery<Habit[]>({ queryKey: ["/api/habits"] });
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
@@ -54,20 +53,18 @@ export default function HorizonsPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-6 w-full">
+        <TabsList className="grid grid-cols-5 w-full">
           <TabsTrigger value="purpose" className="text-xs" data-testid="tab-purpose">Purpose</TabsTrigger>
           <TabsTrigger value="areas" className="text-xs" data-testid="tab-areas">Areas</TabsTrigger>
           <TabsTrigger value="identity" className="text-xs" data-testid="tab-identity">Identity</TabsTrigger>
-          <TabsTrigger value="goals" className="text-xs" data-testid="tab-goals">Goals</TabsTrigger>
           <TabsTrigger value="projects" className="text-xs" data-testid="tab-projects">Projects</TabsTrigger>
           <TabsTrigger value="agenda" className="text-xs" data-testid="tab-agenda">Agenda</TabsTrigger>
         </TabsList>
 
         <TabsContent value="purpose" className="mt-4">
           <PurposeSection purposes={purposes} />
-          <div className="mt-8">
-            <VisionSection visions={visions} />
-          </div>
+          <div className="border-t my-6" />
+          <VisionSection visions={visions} />
         </TabsContent>
 
         <TabsContent value="areas" className="mt-4">
@@ -78,12 +75,8 @@ export default function HorizonsPage() {
           <IdentitySection identities={identities} areas={areas} />
         </TabsContent>
 
-        <TabsContent value="goals" className="mt-4">
-          <GoalSection goals={goals} visions={visions} />
-        </TabsContent>
-
         <TabsContent value="projects" className="mt-4">
-          <ProjectSection projects={projects} areas={areas} goals={goals} />
+          <ProjectSection habits={habits} identities={identities} areas={areas} />
         </TabsContent>
 
         <TabsContent value="agenda" className="mt-4">
@@ -702,265 +695,61 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
 }
 
 // ============================================================
-// GOALS
+// PROJECTS (auto-generated from habit chain: Area > Identity > Habit)
 // ============================================================
-function GoalSection({ goals, visions }: { goals: Goal[]; visions: Vision[] }) {
-  const [title, setTitle] = useState("");
-  const [visionId, setVisionId] = useState<string>("");
-  const [targetDate, setTargetDate] = useState("");
-
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [editVisionId, setEditVisionId] = useState<string>("");
-  const [editTargetDate, setEditTargetDate] = useState("");
-
-  const create = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/goals", {
-      title, visionId: visionId ? Number(visionId) : null,
-      targetDate: targetDate || null, status: "active",
-      createdAt: new Date().toISOString(),
-    }),
-    onSuccess: () => {
-      setTitle(""); setVisionId(""); setTargetDate("");
-      queryClient.invalidateQueries({ queryKey: ["/api/goals"] });
-    },
-  });
-
-  const updateGoal = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<Goal> }) =>
-      apiRequest("PATCH", `/api/goals/${id}`, data),
-    onSuccess: () => {
-      setEditingId(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/goals"] });
-    },
-  });
-
-  const deleteGoal = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/goals/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/goals"] }),
-  });
-
-  function startEdit(g: Goal) {
-    setEditingId(g.id);
-    setEditTitle(g.title);
-    setEditVisionId(g.visionId ? String(g.visionId) : "none");
-    setEditTargetDate(g.targetDate || "");
-  }
-
-  function saveEdit(id: number) {
-    updateGoal.mutate({
-      id,
-      data: {
-        title: editTitle,
-        visionId: editVisionId && editVisionId !== "none" ? Number(editVisionId) : null,
-        targetDate: editTargetDate || null,
-      },
-    });
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 mb-2">
-        <HorizonBadge level={3} label="Goals" />
-        <span className="text-xs text-muted-foreground">What do I want to achieve in 1-2 years?</span>
-      </div>
-
-      <Card className="border-dashed">
-        <CardContent className="p-4 space-y-3">
-          <Input placeholder="1-2 year goal..." value={title} onChange={(e) => setTitle(e.target.value)} data-testid="input-goal" />
-          <div className="flex gap-2">
-            <Select value={visionId} onValueChange={setVisionId}>
-              <SelectTrigger className="flex-1"><SelectValue placeholder="Link to vision (optional)" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No vision</SelectItem>
-                {visions.map(v => <SelectItem key={v.id} value={String(v.id)}>{v.title}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="w-40" />
-          </div>
-          <Button size="sm" onClick={() => create.mutate()} disabled={!title.trim()} data-testid="button-add-goal">
-            <Plus className="w-3 h-3 mr-1" /> Add Goal
-          </Button>
-        </CardContent>
-      </Card>
-
-      {goals.map((g) => {
-        if (editingId === g.id) {
-          return (
-            <Card key={g.id}>
-              <CardContent className="p-4 space-y-3">
-                <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Goal title" />
-                <div className="flex gap-2">
-                  <Select value={editVisionId} onValueChange={setEditVisionId}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="Link to vision" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No vision</SelectItem>
-                      {visions.map(v => <SelectItem key={v.id} value={String(v.id)}>{v.title}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Input type="date" value={editTargetDate} onChange={(e) => setEditTargetDate(e.target.value)} className="w-40" />
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={() => saveEdit(g.id)} disabled={!editTitle.trim()}>Save</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
-                    <X className="w-3 h-3 mr-1" /> Cancel
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        }
-        return (
-          <Card key={g.id}>
-            <CardContent className="p-4 flex justify-between items-start">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Target className="w-4 h-4 text-chart-1" />
-                  <p className="font-medium text-sm">{g.title}</p>
-                  {g.targetDate && <Badge variant="outline" className="text-[10px] h-4">{g.targetDate}</Badge>}
-                </div>
-                {g.visionId && (
-                  <p className="text-xs text-muted-foreground mt-1 ml-6">
-                    Vision: {visions.find(v => v.id === g.visionId)?.title}
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => startEdit(g)} data-testid={`edit-goal-${g.id}`}>
-                  <Pencil className="w-3 h-3" />
-                </Button>
-                <Button variant="ghost" size="sm" className="text-destructive h-7" onClick={() => deleteGoal.mutate(g.id)}>
-                  <Trash2 className="w-3 h-3" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        );
-      })}
-    </div>
-  );
-}
-
-// ============================================================
-// PROJECTS
-// ============================================================
-function ProjectSection({ projects, areas, goals }: { projects: Project[]; areas: Area[]; goals: Goal[] }) {
-  const [title, setTitle] = useState("");
-  const [areaId, setAreaId] = useState<string>("");
-  const [goalId, setGoalId] = useState<string>("");
-
-  const active = projects.filter(p => p.status === "active");
-  const someday = projects.filter(p => p.status === "someday");
-
-  const create = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/projects", {
-      title, areaId: areaId && areaId !== "none" ? Number(areaId) : null,
-      goalId: goalId && goalId !== "none" ? Number(goalId) : null,
-      status: "active", createdAt: new Date().toISOString(),
-    }),
-    onSuccess: () => {
-      setTitle(""); setAreaId(""); setGoalId("");
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-    },
-  });
-
-  const updateStatus = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) =>
-      apiRequest("PATCH", `/api/projects/${id}`, { status }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/projects"] }),
-  });
-
-  const deleteProject = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/projects/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/projects"] }),
-  });
-
-  function ProjectCard({ p }: { p: Project }) {
-    return (
-      <Card key={p.id} className="cursor-pointer hover:shadow-md transition-shadow">
-        <CardContent className="p-4">
-          <div className="flex justify-between items-start">
-            <Link href={`/projects/${p.id}`}>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <FolderOpen className="w-4 h-4 text-chart-5" />
-                  <p className="font-medium text-sm hover:text-primary transition-colors">{p.title}</p>
-                </div>
-              <div className="flex gap-1.5 mt-1.5 ml-6">
-                {p.areaId && (
-                  <Badge variant="outline" className="text-[10px] h-4">
-                    {areas.find(a => a.id === p.areaId)?.name}
-                  </Badge>
-                )}
-                {p.goalId && (
-                  <Badge variant="outline" className="text-[10px] h-4">
-                    Goal: {goals.find(g => g.id === p.goalId)?.title}
-                  </Badge>
-                )}
-              </div>
-              </div>
-            </Link>
-            <div className="flex items-center gap-1">
-              {p.status === "active" && (
-                <Button variant="ghost" size="sm" className="h-7 text-xs"
-                  onClick={(e) => { e.stopPropagation(); updateStatus.mutate({ id: p.id, status: "completed" }); }}>
-                  <CheckCircle2 className="w-3 h-3" />
-                </Button>
-              )}
-              <Button variant="ghost" size="sm" className="text-destructive h-7"
-                onClick={(e) => { e.stopPropagation(); deleteProject.mutate(p.id); }}>
-                <Trash2 className="w-3 h-3" />
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+function ProjectSection({ habits, identities, areas }: { habits: Habit[]; identities: Identity[]; areas: Area[] }) {
+  // A project = active habit that has an identity
+  const projectHabits = habits.filter(h => h.active && h.identityId != null);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-2">
         <HorizonBadge level={1} label="Projects" />
-        <span className="text-xs text-muted-foreground">Multi-step outcomes I'm committed to.</span>
+        <span className="text-xs text-muted-foreground">Auto-generated from your habit chain (Area › Identity › Habit).</span>
       </div>
 
-      <Card className="border-dashed">
-        <CardContent className="p-4 space-y-3">
-          <Input placeholder="New project..." value={title} onChange={(e) => setTitle(e.target.value)} data-testid="input-project" />
-          <div className="flex gap-2">
-            <Select value={areaId} onValueChange={setAreaId}>
-              <SelectTrigger className="flex-1"><SelectValue placeholder="Area (optional)" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No area</SelectItem>
-                {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={goalId} onValueChange={setGoalId}>
-              <SelectTrigger className="flex-1"><SelectValue placeholder="Goal (optional)" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No goal</SelectItem>
-                {goals.map(g => <SelectItem key={g.id} value={String(g.id)}>{g.title}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button size="sm" onClick={() => create.mutate()} disabled={!title.trim()} data-testid="button-add-project">
-            <Plus className="w-3 h-3 mr-1" /> Add Project
-          </Button>
-        </CardContent>
-      </Card>
+      {projectHabits.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground">
+            <FolderOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <p className="text-sm font-medium">No projects yet</p>
+            <p className="text-xs mt-1">Projects are derived from active habits linked to an identity. Add habits with an identity in the Identity tab.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {projectHabits.map((habit) => {
+            const identity = identities.find(i => i.id === habit.identityId);
+            const area = areas.find(a => a.id === (habit.areaId ?? identity?.areaId));
+            const category = area?.category;
+            const tagLine = [category, area?.name].filter(Boolean).join(".");
+            const title = [identity?.statement, habit.cue].filter(Boolean).join("...");
 
-      {active.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Active ({active.length})</p>
-          {active.map((p) => <ProjectCard key={p.id} p={p} />)}
-        </div>
-      )}
-
-      {someday.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Someday / Maybe ({someday.length})</p>
-          {someday.map((p) => <ProjectCard key={p.id} p={p} />)}
+            return (
+              <Link key={habit.id} href={`/projects/${habit.id}`}>
+                <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                  <CardContent className="p-4">
+                    {tagLine && (
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">{tagLine}</p>
+                    )}
+                    <div className="flex items-start gap-2">
+                      <FolderOpen className="w-4 h-4 text-chart-5 mt-0.5 shrink-0" />
+                      <p className="font-medium text-sm hover:text-primary transition-colors">
+                        {title || habit.name}
+                      </p>
+                    </div>
+                    <div className="mt-4 grid grid-cols-3 gap-2">
+                      {["People", "Places", "Things"].map((cat) => (
+                        <div key={cat} className="rounded border border-dashed p-2">
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">{cat}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
