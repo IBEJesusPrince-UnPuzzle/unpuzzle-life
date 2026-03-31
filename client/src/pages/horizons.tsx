@@ -613,12 +613,22 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground whitespace-nowrap">In the area of...</span>
             <Select value={areaId} onValueChange={setAreaId}>
-              <SelectTrigger className="w-44" data-testid="select-identity-area">
+              <SelectTrigger className="w-52" data-testid="select-identity-area">
                 <SelectValue placeholder="Select area" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">No area</SelectItem>
-                {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
+                {["UnPuzzle", "Chores", "Routines", "Roles & Responsibilities", "Getting Things Done"].map(cat => {
+                  const catAreas = areas.filter(a => (a.category || "Other") === cat);
+                  if (catAreas.length === 0) return null;
+                  return [
+                    <SelectItem key={`hdr-${cat}`} value={`__hdr_${cat}`} disabled className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {cat}
+                    </SelectItem>,
+                    ...catAreas.map(a => (
+                      <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                    )),
+                  ];
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -650,12 +660,22 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground whitespace-nowrap">In the area of...</span>
                       <Select value={editAreaId} onValueChange={setEditAreaId}>
-                        <SelectTrigger className="w-44">
+                        <SelectTrigger className="w-52">
                           <SelectValue placeholder="Select area" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="none">No area</SelectItem>
-                          {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
+                          {["UnPuzzle", "Chores", "Routines", "Roles & Responsibilities", "Getting Things Done"].map(cat => {
+                            const catAreas = areas.filter(a => (a.category || "Other") === cat);
+                            if (catAreas.length === 0) return null;
+                            return [
+                              <SelectItem key={`ehdr-${cat}`} value={`__hdr_${cat}`} disabled className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                {cat}
+                              </SelectItem>,
+                              ...catAreas.map(a => (
+                                <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                              )),
+                            ];
+                          })}
                         </SelectContent>
                       </Select>
                     </div>
@@ -777,24 +797,34 @@ function ProjectSection({ habits, identities, areas }: { habits: Habit[]; identi
           {projectHabits.map((habit) => {
             const identity = identities.find(i => i.id === habit.identityId);
             const area = areas.find(a => a.id === (habit.areaId ?? identity?.areaId));
-            const category = area?.category;
-            const tagLine = [category, area?.name].filter(Boolean).join(".");
-            const title = [identity?.statement, habit.cue].filter(Boolean).join("...");
+            const category = area?.category || "";
+            const areaName = area?.name || "";
+            // "In the area of <Area> <Responsibility>" — exception: UnPuzzle uses "<Responsibility> <Area>"
+            const areaLabel = category === "UnPuzzle"
+              ? `${category} ${areaName}`
+              : `${areaName} ${category}`;
 
             return (
               <Link key={habit.id} href={`/projects/${habit.id}`}>
                 <Card className="cursor-pointer hover:shadow-md transition-shadow">
-                  <CardContent className="p-4">
-                    {tagLine && (
-                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">{tagLine}</p>
+                  <CardContent className="p-4 space-y-1.5">
+                    {area && (
+                      <p className="text-[11px] text-muted-foreground">
+                        In the area of <span className="font-medium text-foreground">{areaLabel}</span>...
+                      </p>
+                    )}
+                    {identity && (
+                      <p className="text-[11px] text-muted-foreground">
+                        I'm the type of person who...<span className="font-medium text-foreground">{identity.statement}</span>
+                      </p>
                     )}
                     <div className="flex items-start gap-2">
                       <FolderOpen className="w-4 h-4 text-chart-5 mt-0.5 shrink-0" />
                       <p className="font-medium text-sm hover:text-primary transition-colors">
-                        {title || habit.name}
+                        when...{habit.cue || habit.name}
                       </p>
                     </div>
-                    <div className="mt-4 grid grid-cols-3 gap-2">
+                    <div className="mt-3 grid grid-cols-3 gap-2">
                       {["People", "Places", "Things"].map((cat) => (
                         <div key={cat} className="rounded border border-dashed p-2">
                           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">{cat}</p>

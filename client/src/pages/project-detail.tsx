@@ -65,18 +65,19 @@ export default function ProjectDetailPage({ id }: { id: number }) {
     <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
       {/* Header */}
       <div>
-        {tag && (
-          <Badge variant="outline" className="text-[10px] mb-1">{tag}</Badge>
+        {area && (
+          <p className="text-[11px] text-muted-foreground mb-1">
+            In the area of <span className="font-medium text-foreground">
+              {area.category === "UnPuzzle" ? `${area.category} ${area.name}` : `${area.name} ${area.category || ""}`}
+            </span>
+          </p>
         )}
         <div className="flex items-center gap-2">
           <FolderOpen className="w-5 h-5 text-primary" />
-          <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+          <h1 className="text-lg font-semibold tracking-tight">
+            {identity?.statement || habit.name}{habit.cue ? ` when...${habit.cue}` : ""}
+          </h1>
         </div>
-        {area && (
-          <p className="text-[11px] text-muted-foreground mt-1">
-            In the area of <span className="font-medium text-foreground">{area.name}</span>
-          </p>
-        )}
       </div>
 
       {/* Habit Details Card */}
