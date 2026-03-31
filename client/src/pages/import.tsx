@@ -33,7 +33,7 @@ const IMPORT_TYPES = [
     label: "3. Areas",
     description: "Areas of focus / responsibility",
     columns: "name, description, category (UnPuzzle/Chores/Routines/Life/Getting Things Done)",
-    example: `name,description,category\n"Health","Physical wellness","Roles"`,
+    example: `name,description,category\n"Health","Physical wellness","Roles & Responsibilities"`,
     order: 3,
   },
   {

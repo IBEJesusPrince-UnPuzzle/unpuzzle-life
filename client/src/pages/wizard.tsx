@@ -42,7 +42,7 @@ const ANCHOR_PIECES = [
   { key: "joys", emoji: "\u{1F389}", label: "Joys/Pleasures", prompt: "Describe a moment that proves you're rewarding yourself for being you" },
 ];
 
-const CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles", "Getting Things Done", "Other"];
+const CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles & Responsibilities", "Getting Things Done", "Other"];
 
 const PHASES = [
   { num: 1, title: "Purpose & Principles", subtitle: "The corner pieces and edge frame \u2014 the immutable laws everything else clicks into" },

@@ -27,7 +27,7 @@ export const TIME_OF_DAY_CATEGORIES = [
   { value: "waking_hours", label: "Waking Hours", range: "8:00 AM – 7:59 PM" },
 ];
 
-const CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles", "Getting Things Done", "Other"];
+const CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles & Responsibilities", "Getting Things Done", "Other"];
 
 function getToday() {
   return new Date().toISOString().split("T")[0];

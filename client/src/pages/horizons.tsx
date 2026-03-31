@@ -423,13 +423,13 @@ function AreaSection({ areas }: { areas: Area[] }) {
     });
   }
 
-  const AREA_CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles", "Getting Things Done", "Other"];
+  const AREA_CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles & Responsibilities", "Getting Things Done", "Other"];
 
   const CATEGORY_DESCRIPTIONS: Record<string, string> = {
     "UnPuzzle": "The 5 core life puzzle pieces — mindfulness, fitness, career, finances, and joy",
     "Chores": "Recurring household tasks that keep your environment running",
     "Routines": "Time-blocked rituals that structure your day",
-    "Roles": "The people and roles you show up for every day",
+    "Roles & Responsibilities": "The people and roles you show up for every day",
     "Getting Things Done": "Context-based action lists for executing tasks",
     "Other": "Uncategorized areas",
   };
