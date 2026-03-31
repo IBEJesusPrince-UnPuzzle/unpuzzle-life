@@ -251,12 +251,12 @@ function TimePicker({ value, onChange, label }: { value: string; onChange: (v: s
   );
 }
 
-const CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles & Responsibilities", "Getting Things Done"];
+const CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles", "Getting Things Done"];
 const CATEGORY_COLORS: Record<string, string> = {
   "UnPuzzle": "bg-purple-500/10 text-purple-700 dark:text-purple-400",
   "Chores": "bg-blue-500/10 text-blue-700 dark:text-blue-400",
   "Routines": "bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  "Roles & Responsibilities": "bg-rose-500/10 text-rose-700 dark:text-rose-400",
+  "Roles": "bg-rose-500/10 text-rose-700 dark:text-rose-400",
   "Getting Things Done": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
 };
 
@@ -1509,7 +1509,7 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
             <Input
               value={action}
               onChange={(e) => setAction(e.target.value)}
-              placeholder="e.g. exercises, meal preps"
+              placeholder="e.g. day-to-day activity in this area of your ideal life"
               data-testid="convert-habit-name"
             />
           </div>

@@ -42,12 +42,12 @@ const ANCHOR_PIECES = [
   { key: "joys", emoji: "\u{1F389}", label: "Joys/Pleasures", prompt: "Describe a moment that proves you're rewarding yourself for being you" },
 ];
 
-const CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles & Responsibilities", "Getting Things Done", "Other"];
+const CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles", "Getting Things Done", "Other"];
 
 const PHASES = [
   { num: 1, title: "Purpose & Principles", subtitle: "The corner pieces and edge frame \u2014 the immutable laws everything else clicks into" },
   { num: 2, title: "Vision", subtitle: "Step into your completed puzzle \u2014 walk through an ordinary day in your ideal life" },
-  { num: 3, title: "Categories & Areas", subtitle: "The major sections and sub-assemblies \u2014 decide which parts of your life structure matter" },
+  { num: 3, title: "Responsibilities & Areas", subtitle: "The major sections and sub-assemblies \u2014 decide which parts of your life structure matter" },
   { num: 4, title: "Identity & Habits", subtitle: "The detailed, interlocking pieces \u2014 where the science meets the art" },
 ];
 
@@ -772,7 +772,7 @@ function Phase4Habits({
           <Input
             value={identityText}
             onChange={e => setIdentityText(e.target.value)}
-            placeholder="e.g. exercises daily, reads before bed"
+            placeholder="e.g. day-to-day activity in this area of your ideal life"
             className="text-sm flex-1"
             data-testid="input-identity"
           />
