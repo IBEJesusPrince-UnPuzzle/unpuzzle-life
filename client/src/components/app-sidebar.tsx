@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Inbox, Layers, Target, RotateCcw,
-  Sun, Moon, Flame, CalendarDays, Timer, Upload
+  Sun, Moon, Puzzle, CalendarDays, Timer, Upload
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -20,6 +20,7 @@ const navItems = [
   { title: "Weekly Review", url: "/review", icon: RotateCcw },
   { title: "Horizons", url: "/horizons", icon: Layers },
   { title: "Import", url: "/import", icon: Upload },
+  { title: "Build My Puzzle", url: "/wizard", icon: Puzzle },
 ];
 
 export function AppSidebar({ isDark, toggleTheme }: { isDark: boolean; toggleTheme: () => void }) {
@@ -40,9 +41,9 @@ export function AppSidebar({ isDark, toggleTheme }: { isDark: boolean; toggleThe
       <SidebarHeader className="p-4">
         <Link href="/" className="flex items-center gap-2.5 group" data-testid="link-home">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <Flame className="w-4.5 h-4.5 text-primary-foreground" />
+            <Puzzle className="w-4.5 h-4.5 text-primary-foreground" />
           </div>
-          <span className="font-semibold text-base tracking-tight">Momentum</span>
+          <span className="font-semibold text-base tracking-tight">UnPuzzle Life</span>
         </Link>
       </SidebarHeader>
 

@@ -13,6 +13,7 @@ import RoutinePage from "@/pages/routine";
 import IdentityVotePage from "@/pages/identity-vote";
 import ImportPage from "@/pages/import";
 import ProjectDetailPage from "@/pages/project-detail";
+import WizardPage from "@/pages/wizard";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
@@ -20,7 +21,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import {
   Menu, X, LayoutDashboard, Inbox, Timer, CalendarDays,
-  RotateCcw, Layers, Upload, Sun, Moon, Flame,
+  RotateCcw, Layers, Upload, Sun, Moon, Puzzle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -30,10 +31,30 @@ function ProjectDetailRoute({ params }: { params: { id?: string } }) {
   return <ProjectDetailPage id={id} />;
 }
 
+function DashboardWithRedirect() {
+  const [, navigate] = useLocation();
+  const { data: wizardData, isLoading } = useQuery<{ currentPhase: number; completed: number }>({
+    queryKey: ["/api/wizard-state"],
+    queryFn: () => apiRequest("GET", "/api/wizard-state").then(r => r.json()),
+  });
+
+  useEffect(() => {
+    if (!isLoading && wizardData && !wizardData.completed) {
+      navigate("/wizard");
+    }
+  }, [wizardData, isLoading, navigate]);
+
+  if (isLoading) return null;
+  if (wizardData && !wizardData.completed) return null;
+
+  return <Dashboard />;
+}
+
 function AppRouter() {
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
+      <Route path="/" component={DashboardWithRedirect} />
+      <Route path="/wizard" component={WizardPage} />
       <Route path="/inbox" component={InboxPage} />
       <Route path="/horizons" component={HorizonsPage} />
       <Route path="/routine" component={RoutinePage} />
@@ -55,6 +76,7 @@ const navItems = [
   { title: "Weekly Review", url: "/review", icon: RotateCcw },
   { title: "Horizons", url: "/horizons", icon: Layers },
   { title: "Import", url: "/import", icon: Upload },
+  { title: "Build My Puzzle", url: "/wizard", icon: Puzzle },
 ];
 
 function SlideMenu({ open, onClose, isDark, toggleTheme }: {
@@ -92,9 +114,9 @@ function SlideMenu({ open, onClose, isDark, toggleTheme }: {
           <div className="p-4 flex items-center justify-between border-b">
             <Link href="/" className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <Flame className="w-4 h-4 text-primary-foreground" />
+                <Puzzle className="w-4 h-4 text-primary-foreground" />
               </div>
-              <span className="font-semibold text-base tracking-tight">Momentum</span>
+              <span className="font-semibold text-base tracking-tight">UnPuzzle Life</span>
             </Link>
             <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground">
               <X className="w-5 h-5" />
@@ -148,44 +170,54 @@ function SlideMenu({ open, onClose, isDark, toggleTheme }: {
   );
 }
 
-export default function App() {
+function AppShell() {
   const [isDark, setIsDark] = useState(() =>
     window.matchMedia("(prefers-color-scheme: dark)").matches
   );
   const [menuOpen, setMenuOpen] = useState(false);
+  const [location] = useLocation();
+  const isWizard = location === "/wizard";
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
   }, [isDark]);
 
   return (
+    <div className="flex flex-col h-screen w-full">
+      <main className="flex-1 overflow-hidden">
+        <AppRouter />
+      </main>
+
+      {/* Floating menu button — hidden on wizard */}
+      {!isWizard && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30">
+          <button
+            onClick={() => setMenuOpen(true)}
+            className="w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-95 transition-all"
+            data-testid="menu-trigger"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
+      {/* Slide-out menu */}
+      <SlideMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        isDark={isDark}
+        toggleTheme={() => setIsDark(!isDark)}
+      />
+    </div>
+  );
+}
+
+export default function App() {
+  return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Router hook={useHashLocation}>
-          <div className="flex flex-col h-screen w-full">
-            <main className="flex-1 overflow-hidden">
-              <AppRouter />
-            </main>
-
-            {/* Floating menu button — bottom center */}
-            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30">
-              <button
-                onClick={() => setMenuOpen(true)}
-                className="w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-95 transition-all"
-                data-testid="menu-trigger"
-              >
-                <Menu className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Slide-out menu */}
-            <SlideMenu
-              open={menuOpen}
-              onClose={() => setMenuOpen(false)}
-              isDark={isDark}
-              toggleTheme={() => setIsDark(!isDark)}
-            />
-          </div>
+          <AppShell />
         </Router>
         <Toaster />
       </TooltipProvider>

@@ -22,6 +22,7 @@ export const visions = sqliteTable("visions", {
   timeframe: text("timeframe"), // e.g. "2027", "3 years"
   status: text("status").notNull().default("active"), // active, achieved, deferred
   createdAt: text("created_at").notNull(),
+  anchorMoments: text("anchor_moments"), // JSON array of {lifePiece, scene}
 });
 
 // Horizon 3: Goals (1-2 year objectives)
@@ -43,6 +44,7 @@ export const areas = sqliteTable("areas", {
   category: text("category"), // group: UnPuzzle, Chores, Routines, Life, Getting Things Done
   icon: text("icon"), // lucide icon name
   sortOrder: integer("sort_order").notNull().default(0),
+  archived: integer("archived").notNull().default(0), // 1 = archived, 0 = active
 });
 
 // Horizon 1: Projects (multi-step outcomes)
@@ -198,6 +200,17 @@ export const weeklyReviews = sqliteTable("weekly_reviews", {
 });
 
 // ============================================================
+// WIZARD STATE
+// ============================================================
+
+export const wizardState = sqliteTable("wizard_state", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  currentPhase: integer("current_phase").notNull().default(1), // 1-4
+  completed: integer("completed").notNull().default(0),
+  completedAt: text("completed_at"),
+});
+
+// ============================================================
 // INSERT SCHEMAS & TYPES
 // ============================================================
 
@@ -215,6 +228,7 @@ export const insertWeeklyReviewSchema = createInsertSchema(weeklyReviews).omit({
 export const insertRoutineItemSchema = createInsertSchema(routineItems).omit({ id: true });
 export const insertRoutineLogSchema = createInsertSchema(routineLogs).omit({ id: true });
 export const insertPlannerTaskSchema = createInsertSchema(plannerTasks).omit({ id: true });
+export const insertWizardStateSchema = createInsertSchema(wizardState).omit({ id: true });
 
 export type Purpose = typeof purposes.$inferSelect;
 export type InsertPurpose = z.infer<typeof insertPurposeSchema>;
@@ -244,3 +258,5 @@ export type RoutineLog = typeof routineLogs.$inferSelect;
 export type InsertRoutineLog = z.infer<typeof insertRoutineLogSchema>;
 export type PlannerTask = typeof plannerTasks.$inferSelect;
 export type InsertPlannerTask = z.infer<typeof insertPlannerTaskSchema>;
+export type WizardState = typeof wizardState.$inferSelect;
+export type InsertWizardState = z.infer<typeof insertWizardStateSchema>;

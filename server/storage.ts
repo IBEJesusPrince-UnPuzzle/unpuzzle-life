@@ -4,7 +4,7 @@ import { eq, and, desc, asc, isNull, gte } from "drizzle-orm";
 import {
   purposes, visions, goals, areas, projects, actions,
   identities, habits, habitLogs, inboxItems, weeklyReviews,
-  routineItems, routineLogs, plannerTasks,
+  routineItems, routineLogs, plannerTasks, wizardState,
   type Purpose, type InsertPurpose,
   type Vision, type InsertVision,
   type Goal, type InsertGoal,
@@ -19,6 +19,7 @@ import {
   type RoutineItem, type InsertRoutineItem,
   type RoutineLog, type InsertRoutineLog,
   type PlannerTask, type InsertPlannerTask,
+  type WizardState, type InsertWizardState,
 } from "@shared/schema";
 
 const sqlite = new Database("data.db");
@@ -115,6 +116,10 @@ export interface IStorage {
   createPlannerTask(data: InsertPlannerTask): PlannerTask;
   updatePlannerTask(id: number, data: Partial<InsertPlannerTask>): PlannerTask | undefined;
   deletePlannerTask(id: number): void;
+
+  // Wizard State
+  getWizardState(): WizardState | undefined;
+  upsertWizardState(data: Partial<InsertWizardState>): WizardState;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -359,6 +364,22 @@ export class DatabaseStorage implements IStorage {
   }
   deletePlannerTask(id: number): void {
     db.delete(plannerTasks).where(eq(plannerTasks.id, id)).run();
+  }
+
+  // Wizard State
+  getWizardState(): WizardState | undefined {
+    return db.select().from(wizardState).get();
+  }
+  upsertWizardState(data: Partial<InsertWizardState>): WizardState {
+    const existing = this.getWizardState();
+    if (existing) {
+      return db.update(wizardState).set(data).where(eq(wizardState.id, existing.id)).returning().get();
+    }
+    return db.insert(wizardState).values({
+      currentPhase: data.currentPhase ?? 1,
+      completed: data.completed ?? 0,
+      completedAt: data.completedAt ?? null,
+    }).returning().get();
   }
 }
 

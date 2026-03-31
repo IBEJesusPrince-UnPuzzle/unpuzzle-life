@@ -605,6 +605,71 @@ export function registerRoutes(server: Server, app: Express) {
   });
 
   // ============================================================
+  // WIZARD STATE
+  // ============================================================
+  app.get("/api/wizard-state", (_req, res) => {
+    let state = storage.getWizardState();
+    if (!state) {
+      state = storage.upsertWizardState({ currentPhase: 1, completed: 0 });
+    }
+    res.json(state);
+  });
+  app.patch("/api/wizard-state", (req, res) => {
+    const state = storage.upsertWizardState(req.body);
+    res.json(state);
+  });
+  app.post("/api/wizard/complete", (_req, res) => {
+    // For every active habit with identityId, create a draft routine_item
+    const allHabits = storage.getHabits();
+    const allRoutineItems = storage.getRoutineItems();
+    const habitsWithIdentity = allHabits.filter(h => h.active && h.identityId);
+
+    const timeOfDayMap: Record<string, string> = {
+      early_morning: "03:00",
+      morning: "07:00",
+      late_morning: "10:00",
+      afternoon: "13:00",
+      late_afternoon: "16:00",
+      evening: "20:00",
+      waking_hours: "12:00",
+    };
+
+    let created = 0;
+    for (const habit of habitsWithIdentity) {
+      // Skip if already has a linked routine item
+      const existing = allRoutineItems.find(r => r.habitId === habit.id);
+      if (existing) continue;
+
+      const placeholderTime = timeOfDayMap[habit.timeOfDay || ""] || "12:00";
+      storage.createRoutineItem({
+        sortOrder: 0,
+        time: placeholderTime,
+        durationMinutes: 10,
+        location: null,
+        cue: habit.cue || null,
+        craving: habit.craving || null,
+        response: habit.name,
+        reward: habit.reward || null,
+        areaId: habit.areaId || null,
+        habitId: habit.id,
+        dayVariant: null,
+        active: 1,
+        isDraft: 1,
+        timeOfDay: habit.timeOfDay || null,
+      });
+      created++;
+    }
+
+    // Mark wizard completed
+    storage.upsertWizardState({
+      completed: 1,
+      completedAt: new Date().toISOString(),
+    });
+
+    res.json({ created });
+  });
+
+  // ============================================================
   // DASHBOARD STATS
   // ============================================================
   app.get("/api/stats", (_req, res) => {
