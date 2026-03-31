@@ -248,48 +248,64 @@ export function NewHabitForm({ areas, identities }: { areas: Area[]; identities:
           <DialogTitle className="text-base">Build Your Habit</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-2">
-          {/* "In the..." */}
+          {/* "In the area of..." — must select area first */}
           <div>
             <p className="text-sm font-medium text-muted-foreground mb-1.5">In the area of...</p>
-            <Select value={areaId} onValueChange={setAreaId}>
+            <Select value={areaId} onValueChange={(val) => {
+              setAreaId(val);
+              // Reset identity when area changes
+              setAction(""); setIdentityId(null);
+            }}>
               <SelectTrigger data-testid="select-habit-area">
                 <SelectValue placeholder="Select an area" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">No area</SelectItem>
                 {CATEGORY_ORDER.map(cat => {
                   const catAreas = groupedAreas[cat];
                   if (!catAreas) return null;
-                  return catAreas.map(a => (
-                    <SelectItem key={a.id} value={String(a.id)}>
-                      <span className="text-xs text-muted-foreground mr-1">{cat.substring(0, 3)}.</span>
-                      {a.name}
-                    </SelectItem>
-                  ));
+                  return [
+                    <SelectItem key={`header-${cat}`} value={`__header_${cat}`} disabled className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {cat}
+                    </SelectItem>,
+                    ...catAreas.map(a => (
+                      <SelectItem key={a.id} value={String(a.id)}>
+                        {a.name}
+                      </SelectItem>
+                    )),
+                  ];
                 })}
               </SelectContent>
             </Select>
           </div>
 
-          {/* "...I am the type of person who..." */}
+          {/* "...I am the type of person who..." — filtered to selected area */}
           <div>
             <p className="text-sm font-medium text-muted-foreground mb-1.5">...I am the type of person who...</p>
-            <Select value={action} onValueChange={(val) => {
-              setAction(val);
-              const match = identities.find(i => i.statement === val);
-              setIdentityId(match?.id ?? null);
-            }}>
-              <SelectTrigger data-testid="select-habit-identity">
-                <SelectValue placeholder="Select an identity statement" />
-              </SelectTrigger>
-              <SelectContent>
-                {identities.map(id => (
-                  <SelectItem key={id.id} value={id.statement}>
-                    {id.statement}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {(() => {
+              const areaIdentities = areaId ? identities.filter(i => i.areaId === Number(areaId)) : [];
+              return areaIdentities.length > 0 ? (
+                <Select value={action} onValueChange={(val) => {
+                  setAction(val);
+                  const match = identities.find(i => i.statement === val);
+                  setIdentityId(match?.id ?? null);
+                }}>
+                  <SelectTrigger data-testid="select-habit-identity">
+                    <SelectValue placeholder="Select an identity statement" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {areaIdentities.map(id => (
+                      <SelectItem key={id.id} value={id.statement}>
+                        {id.statement}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <p className="text-xs text-muted-foreground italic py-2">
+                  {areaId ? "No identity statements for this area yet. Create one in the Identity tab first." : "Select an area above first."}
+                </p>
+              );
+            })()}
           </div>
 
           {/* "...when..." (cue) */}
@@ -349,7 +365,7 @@ export function NewHabitForm({ areas, identities }: { areas: Area[]; identities:
 
           <Button
             className="w-full"
-            disabled={!action.trim()}
+            disabled={!action.trim() || !identityId || !areaId}
             onClick={() => create.mutate()}
             data-testid="button-save-habit"
           >
