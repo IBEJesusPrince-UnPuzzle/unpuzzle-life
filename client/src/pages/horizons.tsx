@@ -378,17 +378,19 @@ function VisionSection({ visions }: { visions: Vision[] }) {
 function AreaSection({ areas }: { areas: Area[] }) {
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
+  const [category, setCategory] = useState<string>("");
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
+  const [editCategory, setEditCategory] = useState<string>("");
 
   const create = useMutation({
     mutationFn: () => apiRequest("POST", "/api/areas", {
-      name, description: desc || null, sortOrder: areas.length,
+      name, description: desc || null, category: category || null, sortOrder: areas.length,
     }),
     onSuccess: () => {
-      setName(""); setDesc("");
+      setName(""); setDesc(""); setCategory("");
       queryClient.invalidateQueries({ queryKey: ["/api/areas"] });
     },
   });
@@ -411,12 +413,13 @@ function AreaSection({ areas }: { areas: Area[] }) {
     setEditingId(a.id);
     setEditName(a.name);
     setEditDesc(a.description || "");
+    setEditCategory(a.category || "");
   }
 
   function saveEdit(id: number) {
     updateArea.mutate({
       id,
-      data: { name: editName, description: editDesc || null },
+      data: { name: editName, description: editDesc || null, category: editCategory || null },
     });
   }
 
@@ -438,9 +441,17 @@ function AreaSection({ areas }: { areas: Area[] }) {
       {/* Add Area form first */}
       <Card className="border-dashed">
         <CardContent className="p-4 space-y-3">
+          <Select value={category} onValueChange={setCategory}>
+            <SelectTrigger className="text-sm"><SelectValue placeholder="Select category..." /></SelectTrigger>
+            <SelectContent>
+              {AREA_CATEGORY_ORDER.filter(c => c !== "Other").map(c => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Input placeholder="Area name (e.g. Health, Finances, Career...)" value={name} onChange={(e) => setName(e.target.value)} data-testid="input-area" />
           <Input placeholder="Brief description (optional)" value={desc} onChange={(e) => setDesc(e.target.value)} />
-          <Button size="sm" onClick={() => create.mutate()} disabled={!name.trim()} data-testid="button-add-area">
+          <Button size="sm" onClick={() => create.mutate()} disabled={!name.trim() || !category} data-testid="button-add-area">
             <Plus className="w-3 h-3 mr-1" /> Add Area
           </Button>
         </CardContent>
@@ -461,6 +472,14 @@ function AreaSection({ areas }: { areas: Area[] }) {
                   return (
                     <Card key={a.id}>
                       <CardContent className="p-4 space-y-2">
+                        <Select value={editCategory} onValueChange={setEditCategory}>
+                          <SelectTrigger className="text-sm"><SelectValue placeholder="Category" /></SelectTrigger>
+                          <SelectContent>
+                            {AREA_CATEGORY_ORDER.filter(c => c !== "Other").map(c => (
+                              <SelectItem key={c} value={c}>{c}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Area name" />
                         <Input value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="Description (optional)" />
                         <div className="flex gap-2">
