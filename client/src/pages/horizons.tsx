@@ -420,6 +420,14 @@ function AreaSection({ areas }: { areas: Area[] }) {
     });
   }
 
+  const AREA_CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Life", "Getting Things Done", "Other"];
+
+  const groupedAreas = AREA_CATEGORY_ORDER.reduce<Record<string, Area[]>>((acc, cat) => {
+    const catAreas = areas.filter(a => (a.category || "Other") === cat);
+    if (catAreas.length > 0) acc[cat] = catAreas;
+    return acc;
+  }, {});
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-2">
@@ -438,44 +446,56 @@ function AreaSection({ areas }: { areas: Area[] }) {
         </CardContent>
       </Card>
 
-      <div className="grid sm:grid-cols-2 gap-3">
-        {areas.map((a) => {
-          if (editingId === a.id) {
-            return (
-              <Card key={a.id}>
-                <CardContent className="p-4 space-y-2">
-                  <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Area name" />
-                  <Input value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="Description (optional)" />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => saveEdit(a.id)} disabled={!editName.trim()}>Save</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
-                      <X className="w-3 h-3 mr-1" /> Cancel
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          }
-          return (
-            <Card key={a.id}>
-              <CardContent className="p-4 flex justify-between items-start">
-                <div>
-                  <p className="font-medium text-sm">{a.name}</p>
-                  {a.description && <p className="text-xs text-muted-foreground mt-1">{a.description}</p>}
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => startEdit(a)} data-testid={`edit-area-${a.id}`}>
-                    <Pencil className="w-3 h-3" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="text-destructive h-7" onClick={() => deleteArea.mutate(a.id)}>
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+      {AREA_CATEGORY_ORDER.map(cat => {
+        const catAreas = groupedAreas[cat];
+        if (!catAreas || catAreas.length === 0) return null;
+        return (
+          <div key={cat} className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground">{cat}</h3>
+              <span className="text-[10px] text-muted-foreground">{catAreas.length} area{catAreas.length !== 1 ? "s" : ""}</span>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {catAreas.map((a) => {
+                if (editingId === a.id) {
+                  return (
+                    <Card key={a.id}>
+                      <CardContent className="p-4 space-y-2">
+                        <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Area name" />
+                        <Input value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="Description (optional)" />
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => saveEdit(a.id)} disabled={!editName.trim()}>Save</Button>
+                          <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
+                            <X className="w-3 h-3 mr-1" /> Cancel
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                }
+                return (
+                  <Card key={a.id}>
+                    <CardContent className="p-3 flex justify-between items-start">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm">{a.name}</p>
+                        {a.description && <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{a.description}</p>}
+                      </div>
+                      <div className="flex items-center gap-0.5 shrink-0 ml-2">
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => startEdit(a)} data-testid={`edit-area-${a.id}`}>
+                          <Pencil className="w-3 h-3" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="text-destructive h-6 w-6 p-0" onClick={() => deleteArea.mutate(a.id)}>
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
