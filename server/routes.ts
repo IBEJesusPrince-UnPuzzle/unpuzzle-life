@@ -116,7 +116,7 @@ export function registerRoutes(server: Server, app: Express) {
     res.json({ ok: true });
   });
 
-  // Project detail: actions + references + related tasks
+  // Project detail: actions + references + related tasks (legacy project ID)
   app.get("/api/projects/:id/details", (req, res) => {
     const projectId = Number(req.params.id);
     const project = storage.getProjects().find(p => p.id === projectId);
@@ -133,6 +133,37 @@ export function registerRoutes(server: Server, app: Express) {
       actions,
       references,
       areas,
+    });
+  });
+
+  // Habit-based project detail: builds project view from habit chain
+  app.get("/api/habit-projects/:habitId", (req, res) => {
+    const habitId = Number(req.params.habitId);
+    const habit = storage.getHabits().find(h => h.id === habitId);
+    if (!habit) return res.status(404).json({ error: "Habit not found" });
+
+    const identity = habit.identityId ? storage.getIdentities().find(i => i.id === habit.identityId) : null;
+    const area = habit.areaId ? storage.getAreas().find(a => a.id === habit.areaId) : null;
+    const areas = storage.getAreas();
+    const routineItems = storage.getRoutineItems().filter(r => r.habitId === habitId);
+    const plannerTasks = storage.getPlannerTasks().filter(t => t.habitId === habitId);
+
+    // Build project title from identity + cue
+    const identityPart = identity?.statement || habit.name;
+    const cuePart = habit.cue || "";
+    const title = cuePart ? `${identityPart}...${cuePart}` : identityPart;
+    const tag = area ? `${area.category || ""}.${area.name}` : "";
+
+    res.json({
+      habitId: habit.id,
+      habit,
+      identity,
+      area,
+      areas,
+      title,
+      tag,
+      routineItems,
+      plannerTasks,
     });
   });
 
@@ -400,11 +431,17 @@ export function registerRoutes(server: Server, app: Express) {
     res.json(storage.getDraftTasks());
   });
   app.get("/api/planner-tasks", (req, res) => {
-    const { date, areaId } = req.query;
+    const { date, areaId, habitId, sourceType } = req.query;
     if (date) {
       res.json(storage.getPlannerTasksByDate(date as string));
     } else if (areaId) {
       res.json(storage.getPlannerTasksByArea(Number(areaId)));
+    } else if (habitId && sourceType) {
+      const all = storage.getPlannerTasks();
+      res.json(all.filter(t => t.habitId === Number(habitId) && t.sourceType === sourceType));
+    } else if (habitId) {
+      const all = storage.getPlannerTasks();
+      res.json(all.filter(t => t.habitId === Number(habitId)));
     } else {
       res.json([]);
     }
