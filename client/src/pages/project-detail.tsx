@@ -28,7 +28,7 @@ interface HabitProjectDetails {
 const TASK_CATEGORIES = [
   { key: "people", label: "People", icon: Users, description: "Who supports this habit and what do you need to do to ensure it always reaches you?" },
   { key: "places", label: "Places", icon: MapPin, description: "Where does this happen and what do you need to do to ensure you always reach them?" },
-  { key: "things", label: "Things", icon: Package, description: "What do you need? What do you need to do to ensure you always have them?" },
+  { key: "things", label: "Things", icon: Package, description: "What things do you need to support this habit and what tasks will ensure you always have them?" },
 ];
 
 export default function ProjectDetailPage({ id }: { id: number }) {
