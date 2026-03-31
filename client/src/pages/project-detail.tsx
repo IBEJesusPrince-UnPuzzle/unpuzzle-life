@@ -75,7 +75,7 @@ export default function ProjectDetailPage({ id }: { id: number }) {
         <div className="flex items-center gap-2">
           <FolderOpen className="w-5 h-5 text-primary" />
           <h1 className="text-lg font-semibold tracking-tight">
-            {identity?.statement || habit.name}{habit.cue ? ` when...${habit.cue}` : ""}
+            {identity?.statement || habit.name}{habit.cue ? ` when ${habit.cue}` : ""}
           </h1>
         </div>
       </div>
