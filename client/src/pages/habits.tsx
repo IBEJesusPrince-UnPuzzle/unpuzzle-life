@@ -264,7 +264,7 @@ export function NewHabitForm({ areas, identities }: { areas: Area[]; identities:
                   const catAreas = groupedAreas[cat];
                   if (!catAreas) return null;
                   return [
-                    <SelectItem key={`header-${cat}`} value={`__header_${cat}`} disabled className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <SelectItem key={`header-${cat}`} value={`__header_${cat}`} disabled className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/5 border-b border-primary/10">
                       {cat}
                     </SelectItem>,
                     ...catAreas.map(a => (

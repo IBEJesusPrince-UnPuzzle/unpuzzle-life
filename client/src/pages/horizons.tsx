@@ -621,7 +621,7 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
                   const catAreas = areas.filter(a => (a.category || "Other") === cat);
                   if (catAreas.length === 0) return null;
                   return [
-                    <SelectItem key={`hdr-${cat}`} value={`__hdr_${cat}`} disabled className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <SelectItem key={`hdr-${cat}`} value={`__hdr_${cat}`} disabled className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/5 border-b border-primary/10">
                       {cat}
                     </SelectItem>,
                     ...catAreas.map(a => (
@@ -668,7 +668,7 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
                             const catAreas = areas.filter(a => (a.category || "Other") === cat);
                             if (catAreas.length === 0) return null;
                             return [
-                              <SelectItem key={`ehdr-${cat}`} value={`__hdr_${cat}`} disabled className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              <SelectItem key={`ehdr-${cat}`} value={`__hdr_${cat}`} disabled className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/5 border-b border-primary/10">
                                 {cat}
                               </SelectItem>,
                               ...catAreas.map(a => (
