@@ -13,11 +13,37 @@ import {
 import {
   CalendarDays, ChevronLeft, ChevronRight, Plus, Clock, CheckCircle2,
   X, SkipForward, ArrowLeft, Pencil, Trash2, History, Repeat, Repeat2,
-  Eye, Heart, Zap, Trophy, Sparkles
+  Eye, Heart, Zap, Trophy, Sparkles, FolderOpen, ChevronDown, ChevronUp,
+  Users, MapPin, Package
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import type { PlannerTask, Area, RoutineItem, RoutineLog } from "@shared/schema";
 import { EditRoutineDialog } from "./routine";
+import { Link } from "wouter";
+
+// Habit chain info for project tasks
+interface HabitChain {
+  habitId: number;
+  habitName: string;
+  habitCue: string | null;
+  identityStatement: string | null;
+  areaName: string | null;
+  areaCategory: string | null;
+  projectTitle: string;
+  tag: string;
+}
+
+const PROJECT_CATEGORY_ICONS: Record<string, typeof Users> = {
+  project_people: Users,
+  project_places: MapPin,
+  project_things: Package,
+};
+
+const PROJECT_CATEGORY_LABELS: Record<string, string> = {
+  project_people: "People",
+  project_places: "Places",
+  project_things: "Things",
+};
 
 // ============================================================
 // HELPERS
@@ -634,6 +660,20 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
   const isSkipped = task.status === "skipped";
   const [convertOpen, setConvertOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [chainExpanded, setChainExpanded] = useState(false);
+
+  // Detect project task
+  const isProjectTask = task.sourceType?.startsWith("project_") && task.habitId;
+  const ProjectCatIcon = isProjectTask ? PROJECT_CATEGORY_ICONS[task.sourceType!] || FolderOpen : null;
+  const projectCatLabel = isProjectTask ? PROJECT_CATEGORY_LABELS[task.sourceType!] || "Project" : null;
+
+  // Fetch habit chain for project tasks (only when needed)
+  const { data: chain } = useQuery<HabitChain>({
+    queryKey: ["/api/habit-chain", task.habitId],
+    queryFn: () => apiRequest("GET", `/api/habit-chain/${task.habitId}`).then(r => r.json()),
+    enabled: !!isProjectTask,
+    staleTime: 60000,
+  });
 
   const updateStatus = useMutation({
     mutationFn: (status: string) => apiRequest("PATCH", `/api/planner-tasks/${task.id}`, { status }),
@@ -645,10 +685,16 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks", task.date] }),
   });
 
+  // Use chain area info for project tasks, fallback to task area
+  const displayAreaName = isProjectTask && chain?.areaName ? chain.areaName : area?.name;
+
   return (
     <>
     <EditTaskDialog task={task} areas={areas} open={editOpen} onOpenChange={setEditOpen} />
-    <Card className={`group transition-all ${isDone ? "opacity-60" : isSkipped ? "opacity-40" : ""}`} data-testid={`task-${task.id}`}>
+    <Card
+      className={`group transition-all ${isProjectTask ? "border-l-4 border-l-chart-5/60" : ""} ${isDone ? "opacity-60" : isSkipped ? "opacity-40" : ""}`}
+      data-testid={`task-${task.id}`}
+    >
       <CardContent className="p-3">
         <div className="flex items-start gap-2.5">
           {/* Status toggle */}
@@ -663,43 +709,100 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
             {isDone && <CheckCircle2 className="w-3.5 h-3.5 text-primary-foreground" />}
           </button>
 
-          <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setEditOpen(true)}>
-            {/* Line 1: In the area of... */}
-            {area && (
-              <p className="text-[11px] text-muted-foreground">
-                In the area of <span className="font-medium text-foreground">{area.name}</span> I will...
-              </p>
+          <div className="flex-1 min-w-0">
+            {/* Project badge row */}
+            {isProjectTask && chain && (
+              <div className="mb-1">
+                <Link href={`/projects/${task.habitId}`}>
+                  <div className="flex items-center gap-1 cursor-pointer group/proj">
+                    <FolderOpen className="w-3 h-3 text-chart-5 shrink-0" />
+                    <span className="text-[10px] font-medium text-chart-5 group-hover/proj:underline truncate">
+                      {chain.projectTitle}
+                    </span>
+                  </div>
+                </Link>
+              </div>
             )}
-            {/* Line 2: Task name */}
-            <p className={`text-sm font-medium leading-snug ${isDone ? "line-through" : ""}`}>
-              {task.goal}
-            </p>
-            {/* Line 3: Time + Duration + Flag */}
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              {task.startTime && (
-                <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
-                  <Clock className="w-3 h-3" />
-                  {formatTime12h(task.startTime)}
-                  {task.endTime && ` – ${formatTime12h(task.endTime)}`}
-                </span>
+
+            <div className="cursor-pointer" onClick={() => setEditOpen(true)}>
+              {/* Line 1: In the area of... */}
+              {displayAreaName && (
+                <p className="text-[11px] text-muted-foreground">
+                  In the area of <span className="font-medium text-foreground">{displayAreaName}</span> I will...
+                </p>
               )}
-              {task.hours && parseFloat(task.hours) > 0 && (
-                <Badge variant="outline" className="text-[10px] h-4 px-1">
-                  {parseFloat(task.hours).toFixed(task.hours.includes(".") ? 1 : 0)}h
-                </Badge>
-              )}
-              <Badge variant="outline" className="text-[10px] h-4 px-1">
-                Task
-              </Badge>
-              {task.recurrence && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center gap-0.5">
-                  <Repeat className="w-2.5 h-2.5" />
-                  {formatRecurrence(task.recurrence)}
-                </span>
+              {/* Line 2: Task name */}
+              <p className={`text-sm font-medium leading-snug ${isDone ? "line-through" : ""}`}>
+                {task.goal}
+              </p>
+              {/* Line 3: Time + Duration + Flags */}
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                {task.startTime && (
+                  <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+                    <Clock className="w-3 h-3" />
+                    {formatTime12h(task.startTime)}
+                    {task.endTime && ` – ${formatTime12h(task.endTime)}`}
+                  </span>
+                )}
+                {task.hours && parseFloat(task.hours) > 0 && (
+                  <Badge variant="outline" className="text-[10px] h-4 px-1">
+                    {parseFloat(task.hours).toFixed(task.hours.includes(".") ? 1 : 0)}h
+                  </Badge>
+                )}
+                {isProjectTask && ProjectCatIcon ? (
+                  <Badge variant="outline" className="text-[10px] h-4 px-1 text-chart-5 border-chart-5/30 flex items-center gap-0.5">
+                    <ProjectCatIcon className="w-2.5 h-2.5" />
+                    {projectCatLabel}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px] h-4 px-1">
+                    Task
+                  </Badge>
+                )}
+                {task.recurrence && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center gap-0.5">
+                    <Repeat className="w-2.5 h-2.5" />
+                    {formatRecurrence(task.recurrence)}
+                  </span>
+                )}
+              </div>
+              {task.result && (
+                <p className="text-[11px] text-muted-foreground mt-1 italic">Result: {task.result}</p>
               )}
             </div>
-            {task.result && (
-              <p className="text-[11px] text-muted-foreground mt-1 italic">Result: {task.result}</p>
+
+            {/* Expandable project chain */}
+            {isProjectTask && chain && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setChainExpanded(!chainExpanded); }}
+                className="flex items-center gap-1 mt-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {chainExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                <span>Project chain</span>
+              </button>
+            )}
+            {chainExpanded && chain && (
+              <div className="mt-1.5 ml-1 pl-2.5 border-l-2 border-chart-5/20 space-y-1">
+                {chain.areaName && (
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground">Area:</span>{" "}
+                    In the area of <span className="font-medium text-foreground">{chain.areaName}</span>
+                    {chain.areaCategory && <span className="text-muted-foreground"> ({chain.areaCategory})</span>}
+                  </p>
+                )}
+                {chain.identityStatement && (
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground">Identity:</span>{" "}
+                    I am the type of person who <span className="font-medium text-foreground">{chain.identityStatement}</span>
+                  </p>
+                )}
+                {chain.habitCue && (
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground">Habit:</span>{" "}
+                    When <span className="font-medium text-foreground">{chain.habitCue}</span>
+                  </p>
+                )}
+              </div>
             )}
           </div>
 
@@ -721,15 +824,17 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
             </Button>
           </div>
 
-          {/* Make this a habit — always visible */}
-          <button
-            onClick={() => setConvertOpen(true)}
-            className="shrink-0 mt-0.5 text-primary/60 hover:text-primary transition-colors"
-            title="Make this a habit"
-            data-testid={`task-to-habit-${task.id}`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-          </button>
+          {/* Make this a habit — only for non-project tasks */}
+          {!isProjectTask && (
+            <button
+              onClick={() => setConvertOpen(true)}
+              className="shrink-0 mt-0.5 text-primary/60 hover:text-primary transition-colors"
+              title="Make this a habit"
+              data-testid={`task-to-habit-${task.id}`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </CardContent>
 

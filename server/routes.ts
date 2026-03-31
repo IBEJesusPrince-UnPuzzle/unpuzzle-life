@@ -167,6 +167,32 @@ export function registerRoutes(server: Server, app: Express) {
     });
   });
 
+  // Lightweight habit chain lookup for project task badges in agenda
+  app.get("/api/habit-chain/:habitId", (req, res) => {
+    const habitId = Number(req.params.habitId);
+    const habit = storage.getHabits().find(h => h.id === habitId);
+    if (!habit) return res.status(404).json({ error: "Habit not found" });
+
+    const identity = habit.identityId ? storage.getIdentities().find(i => i.id === habit.identityId) : null;
+    const area = habit.areaId ? storage.getAreas().find(a => a.id === habit.areaId) : null;
+
+    const identityPart = identity?.statement || habit.name;
+    const cuePart = habit.cue || "";
+    const projectTitle = cuePart ? `${identityPart}...${cuePart}` : identityPart;
+    const tag = area ? `${area.category || ""}.${area.name}` : "";
+
+    res.json({
+      habitId: habit.id,
+      habitName: habit.name,
+      habitCue: habit.cue,
+      identityStatement: identity?.statement || null,
+      areaName: area?.name || null,
+      areaCategory: area?.category || null,
+      projectTitle,
+      tag,
+    });
+  });
+
   // References: all filed references, optionally filtered by area or project
   app.get("/api/references", (req, res) => {
     const allInbox = storage.getInboxItems();
