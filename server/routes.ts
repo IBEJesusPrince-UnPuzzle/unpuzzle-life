@@ -146,7 +146,7 @@ export function registerRoutes(server: Server, app: Express) {
     const area = habit.areaId ? storage.getAreas().find(a => a.id === habit.areaId) : null;
     const areas = storage.getAreas();
     const routineItems = storage.getRoutineItems().filter(r => r.habitId === habitId);
-    const plannerTasks = storage.getPlannerTasks().filter(t => t.habitId === habitId);
+    const plannerTasks = storage.getAllPlannerTasks().filter(t => t.habitId === habitId);
 
     // Build project title from identity + cue
     const identityPart = identity?.statement || habit.name;
@@ -437,10 +437,10 @@ export function registerRoutes(server: Server, app: Express) {
     } else if (areaId) {
       res.json(storage.getPlannerTasksByArea(Number(areaId)));
     } else if (habitId && sourceType) {
-      const all = storage.getPlannerTasks();
+      const all = storage.getAllPlannerTasks();
       res.json(all.filter(t => t.habitId === Number(habitId) && t.sourceType === sourceType));
     } else if (habitId) {
-      const all = storage.getPlannerTasks();
+      const all = storage.getAllPlannerTasks();
       res.json(all.filter(t => t.habitId === Number(habitId)));
     } else {
       res.json([]);
@@ -649,7 +649,7 @@ export function registerRoutes(server: Server, app: Express) {
     const allHabits = storage.getHabits();
     const allIdentities = storage.getIdentities();
     const allRoutineItems = storage.getRoutineItems();
-    const allPlannerTasks = storage.getPlannerTasks();
+    const allPlannerTasks = storage.getAllPlannerTasks();
     const allAreas = storage.getAreas();
 
     const habitsWithIdentity = allHabits.filter(h => h.identityId != null && h.active);
