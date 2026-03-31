@@ -26,9 +26,9 @@ interface HabitProjectDetails {
 
 // Task categories for project environment setup
 const TASK_CATEGORIES = [
-  { key: "people", label: "People", icon: Users, description: "Who supports this habit?" },
-  { key: "places", label: "Places", icon: MapPin, description: "Where does this happen?" },
-  { key: "things", label: "Things", icon: Package, description: "What do you need?" },
+  { key: "people", label: "People", icon: Users, description: "Who supports this habit? What do you need to do to ensure their support seamlessly reaches you?" },
+  { key: "places", label: "Places", icon: MapPin, description: "Where does this happen? What do you need to do to ensure you seamlessly reach these places?" },
+  { key: "things", label: "Things", icon: Package, description: "What do you need? What do you need to do to ensure you have them seamlessly?" },
 ];
 
 export default function ProjectDetailPage({ id }: { id: number }) {
