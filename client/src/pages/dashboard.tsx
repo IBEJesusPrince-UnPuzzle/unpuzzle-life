@@ -174,7 +174,7 @@ export default function Dashboard() {
 
       {/* Embedded Agenda */}
       <div className="-mx-6 -mb-6">
-        <SorterView areas={areas} onAreaClick={(id) => setLocation(`/planner`)} />
+        <SorterView areas={areas} onAreaClick={(id) => setLocation(`/planner`)} embedded />
       </div>
     </div>
   );

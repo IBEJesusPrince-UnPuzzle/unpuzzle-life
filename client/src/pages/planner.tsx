@@ -291,7 +291,7 @@ export default function PlannerPage() {
 // SORTER VIEW — Daily chronological timeline
 // ============================================================
 
-export function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick: (id: number) => void }) {
+export function SorterView({ areas, onAreaClick, embedded }: { areas: Area[]; onAreaClick: (id: number) => void; embedded?: boolean }) {
   const [selectedDate, setSelectedDate] = useState(getToday());
   const [showAddDialog, setShowAddDialog] = useState(false);
 
@@ -386,11 +386,13 @@ export function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick:
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4 overflow-y-auto h-full">
-      <div className="flex justify-center mb-3">
-        <a href="#/" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5">
-          <ArrowLeft className="w-4 h-4" /> Back to Dashboard
-        </a>
-      </div>
+      {!embedded && (
+        <div className="flex justify-center mb-3">
+          <a href="#/" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5">
+            <ArrowLeft className="w-4 h-4" /> Back to Dashboard
+          </a>
+        </div>
+      )}
       {/* Header */}
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Daily Agenda</h1>
