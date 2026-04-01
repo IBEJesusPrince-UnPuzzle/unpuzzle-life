@@ -85,6 +85,14 @@ export const identities = sqliteTable("identities", {
   statement: text("statement").notNull(), // "I am a healthy person"
   areaId: integer("area_id").references(() => areas.id),
   visionId: integer("vision_id").references(() => visions.id),
+  cue: text("cue"),
+  craving: text("craving"),
+  response: text("response"),
+  reward: text("reward"),
+  frequency: text("frequency").notNull().default("daily"),
+  targetCount: integer("target_count").notNull().default(1),
+  active: integer("active").notNull().default(1),
+  timeOfDay: text("time_of_day"),
   createdAt: text("created_at").notNull(),
 });
 

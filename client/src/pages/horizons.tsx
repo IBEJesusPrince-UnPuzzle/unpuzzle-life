@@ -7,6 +7,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
@@ -15,8 +18,9 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
-import type { Purpose, Vision, Area, Identity, Habit, HabitLog } from "@shared/schema";
-import { HabitRow, NewHabitForm } from "./habits";
+import type { Purpose, Vision, Area, Identity } from "@shared/schema";
+import { RecurrenceBuilder, formatRecurrence } from "./planner";
+import { TIME_OF_DAY_CATEGORIES } from "./habits";
 
 function HorizonBadge({ level, label }: { level: number; label: string }) {
   const colors: Record<number, string> = {
@@ -41,7 +45,6 @@ export default function HorizonsPage() {
   const { data: visions = [] } = useQuery<Vision[]>({ queryKey: ["/api/visions"] });
   const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
   const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
-  const { data: habits = [] } = useQuery<Habit[]>({ queryKey: ["/api/habits"] });
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
@@ -76,7 +79,7 @@ export default function HorizonsPage() {
         </TabsContent>
 
         <TabsContent value="projects" className="mt-4">
-          <ProjectSection habits={habits} identities={identities} areas={areas} />
+          <ProjectSection identities={identities} areas={areas} />
         </TabsContent>
 
         <TabsContent value="agenda" className="mt-4">
@@ -94,7 +97,6 @@ function PurposeSection({ purposes }: { purposes: Purpose[] }) {
   const [statement, setStatement] = useState("");
   const [principles, setPrinciples] = useState("");
 
-  // Inline edit state: map from id to editing state
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editStatement, setEditStatement] = useState("");
   const [editPrinciples, setEditPrinciples] = useState("");
@@ -447,7 +449,6 @@ function AreaSection({ areas }: { areas: Area[] }) {
         <span className="text-xs text-muted-foreground">What responsibilities do I maintain?</span>
       </div>
 
-      {/* Add Area form first */}
       <Card className="border-dashed">
         <CardContent className="p-4 space-y-3">
           <Select value={category} onValueChange={setCategory}>
@@ -537,34 +538,50 @@ function AreaSection({ areas }: { areas: Area[] }) {
 }
 
 // ============================================================
-// IDENTITY (with Habits section)
+// IDENTITY (unified — identity absorbs all habit fields)
 // ============================================================
 function IdentitySection({ identities, areas }: { identities: Identity[]; areas: Area[] }) {
-  const [statement, setStatement] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [areaId, setAreaId] = useState<string>("");
+  const [statement, setStatement] = useState("");
+  const [cue, setCue] = useState("");
+  const [timeOfDay, setTimeOfDay] = useState<string>("");
+  const [recurrence, setRecurrence] = useState<string | null>(JSON.stringify({ type: "daily", interval: 1 }));
+  const [craving, setCraving] = useState("");
+  const [reward, setReward] = useState("");
 
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editStatement, setEditStatement] = useState("");
   const [editAreaId, setEditAreaId] = useState<string>("");
+  const [editStatement, setEditStatement] = useState("");
+  const [editCue, setEditCue] = useState("");
+  const [editTimeOfDay, setEditTimeOfDay] = useState<string>("");
+  const [editRecurrence, setEditRecurrence] = useState<string | null>(null);
+  const [editCraving, setEditCraving] = useState("");
+  const [editReward, setEditReward] = useState("");
 
-  const today = new Date().toISOString().split("T")[0];
+  const activeIdentities = identities.filter(i => i.active);
 
-  const { data: habits = [] } = useQuery<Habit[]>({ queryKey: ["/api/habits"] });
-  const { data: todayLogs = [] } = useQuery<HabitLog[]>({
-    queryKey: ["/api/habit-logs", today],
-    queryFn: () => apiRequest("GET", `/api/habit-logs?date=${today}`).then(r => r.json()),
-  });
-
-  const activeHabits = habits.filter(h => h.active);
+  const AREA_CATEGORIES = ["UnPuzzle", "Chores", "Routines", "Roles", "Getting Things Done"];
 
   const create = useMutation({
     mutationFn: () => apiRequest("POST", "/api/identities", {
       statement,
-      areaId: areaId && areaId !== "none" ? Number(areaId) : null,
+      areaId: areaId && !areaId.startsWith("__") ? Number(areaId) : null,
+      visionId: null,
+      cue: cue || null,
+      craving: craving || null,
+      response: statement,
+      reward: reward || null,
+      frequency: recurrence || JSON.stringify({ type: "daily", interval: 1 }),
+      targetCount: 1,
+      active: 1,
+      timeOfDay: timeOfDay || null,
       createdAt: new Date().toISOString(),
     }),
     onSuccess: () => {
-      setStatement(""); setAreaId("");
+      setStatement(""); setAreaId(""); setCue(""); setTimeOfDay(""); setCraving(""); setReward("");
+      setRecurrence(JSON.stringify({ type: "daily", interval: 1 }));
+      setDialogOpen(false);
       queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
     },
   });
@@ -586,7 +603,12 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
   function startEdit(id: Identity) {
     setEditingId(id.id);
     setEditStatement(id.statement);
-    setEditAreaId(id.areaId ? String(id.areaId) : "none");
+    setEditAreaId(id.areaId ? String(id.areaId) : "");
+    setEditCue(id.cue || "");
+    setEditTimeOfDay(id.timeOfDay || "");
+    setEditRecurrence(id.frequency || null);
+    setEditCraving(id.craving || "");
+    setEditReward(id.reward || "");
   }
 
   function saveEdit(id: number) {
@@ -594,99 +616,186 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
       id,
       data: {
         statement: editStatement,
-        areaId: editAreaId && editAreaId !== "none" ? Number(editAreaId) : null,
+        areaId: editAreaId && !editAreaId.startsWith("__") ? Number(editAreaId) : null,
+        cue: editCue || null,
+        craving: editCraving || null,
+        reward: editReward || null,
+        frequency: editRecurrence || JSON.stringify({ type: "daily", interval: 1 }),
+        timeOfDay: editTimeOfDay || null,
       },
     });
   }
 
+  function AreaSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+    return (
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="text-sm" data-testid="select-identity-area">
+          <SelectValue placeholder="Select area (required)" />
+        </SelectTrigger>
+        <SelectContent>
+          {AREA_CATEGORIES.map(cat => {
+            const catAreas = areas.filter(a => (a.category || "Other") === cat);
+            if (catAreas.length === 0) return null;
+            return [
+              <SelectItem key={`hdr-${cat}`} value={`__hdr_${cat}`} disabled className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/5 border-b border-primary/10">
+                {cat}
+              </SelectItem>,
+              ...catAreas.map(a => (
+                <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+              )),
+            ];
+          })}
+        </SelectContent>
+      </Select>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      {/* Identity Statements */}
-      <div className="flex items-center gap-2 mb-2">
-        <Fingerprint className="w-4 h-4 text-primary" />
-        <span className="text-sm font-medium">Identity Statements</span>
-        <span className="text-xs text-muted-foreground">"I am the type of person who..."</span>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Fingerprint className="w-4 h-4 text-primary" />
+          <span className="text-sm font-medium">Identity & Habits</span>
+          <span className="text-xs text-muted-foreground">"I am the type of person who..."</span>
+        </div>
+        <Badge variant="secondary" className="text-xs">
+          {activeIdentities.length} active
+        </Badge>
       </div>
 
-      <Card className="border-dashed">
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground whitespace-nowrap">In the area of...</span>
-            <Select value={areaId} onValueChange={setAreaId}>
-              <SelectTrigger className="w-52" data-testid="select-identity-area">
-                <SelectValue placeholder="Select area" />
-              </SelectTrigger>
-              <SelectContent>
-                {["UnPuzzle", "Chores", "Routines", "Roles", "Getting Things Done"].map(cat => {
-                  const catAreas = areas.filter(a => (a.category || "Other") === cat);
-                  if (catAreas.length === 0) return null;
-                  return [
-                    <SelectItem key={`hdr-${cat}`} value={`__hdr_${cat}`} disabled className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/5 border-b border-primary/10">
-                      {cat}
-                    </SelectItem>,
-                    ...catAreas.map(a => (
-                      <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-                    )),
-                  ];
-                })}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground whitespace-nowrap">I'm the type of person who...</span>
-          </div>
-          <div className="flex gap-2">
-            <Input
-              placeholder="e.g. day-to-day activity in this area of your ideal life"
-              value={statement}
-              onChange={(e) => setStatement(e.target.value)}
-              className="text-sm flex-1"
-              data-testid="input-identity"
-            />
-            <Button size="sm" onClick={() => create.mutate()} disabled={!statement.trim()} data-testid="button-add-identity">
-              <Plus className="w-3 h-3 mr-1" /> Add
+      {/* Build Your Identity Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogTrigger asChild>
+          <Button size="sm" data-testid="button-add-identity">
+            <Plus className="w-3 h-3 mr-1" /> Build Your Identity
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Build Your Identity</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <label className="text-xs text-muted-foreground font-medium">In the area of... *</label>
+              <AreaSelect value={areaId} onChange={setAreaId} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground font-medium">I'm the type of person who... *</label>
+              <Input
+                placeholder="e.g. exercises every morning"
+                value={statement}
+                onChange={(e) => setStatement(e.target.value)}
+                className="text-sm mt-1"
+                data-testid="input-identity"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground font-medium">when...</label>
+              <Input
+                placeholder="e.g. my alarm goes off at 6am"
+                value={cue}
+                onChange={(e) => setCue(e.target.value)}
+                className="text-sm mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground font-medium">in the...</label>
+              <Select value={timeOfDay} onValueChange={setTimeOfDay}>
+                <SelectTrigger className="text-sm mt-1">
+                  <SelectValue placeholder="Select time of day" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIME_OF_DAY_CATEGORIES.map(t => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label} <span className="text-[10px] text-muted-foreground ml-1">({t.range})</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground font-medium">Recurrence</label>
+              <div className="mt-1">
+                <RecurrenceBuilder value={recurrence} onChange={setRecurrence} requireRecurrence />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground font-medium">because...</label>
+              <Input
+                placeholder="e.g. what's attractive about it? why crave it?"
+                value={craving}
+                onChange={(e) => setCraving(e.target.value)}
+                className="text-sm mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground font-medium">I'll be rewarded by...</label>
+              <Input
+                placeholder="e.g. describe how it satisfies you"
+                value={reward}
+                onChange={(e) => setReward(e.target.value)}
+                className="text-sm mt-1"
+              />
+            </div>
+            <Button
+              className="w-full"
+              onClick={() => create.mutate()}
+              disabled={!statement.trim() || !areaId || areaId.startsWith("__")}
+            >
+              Create Identity
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </DialogContent>
+      </Dialog>
 
-      {identities.length > 0 && (
-        <div className="grid sm:grid-cols-2 gap-2">
-          {identities.map((id) => {
+      {/* Identity Cards */}
+      {activeIdentities.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground">
+            <Target className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <p className="text-sm font-medium">No identities yet</p>
+            <p className="text-xs mt-1">Build your identity-driven systems above.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {activeIdentities.map((id) => {
+            const area = areas.find(a => a.id === id.areaId);
             if (editingId === id.id) {
               return (
                 <Card key={id.id} className="bg-primary/[0.03]">
-                  <CardContent className="p-3 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">In the area of...</span>
-                      <Select value={editAreaId} onValueChange={setEditAreaId}>
-                        <SelectTrigger className="w-52">
-                          <SelectValue placeholder="Select area" />
-                        </SelectTrigger>
+                  <CardContent className="p-4 space-y-3">
+                    <AreaSelect value={editAreaId} onChange={setEditAreaId} />
+                    <div>
+                      <span className="text-xs text-muted-foreground">I'm the type of person who...</span>
+                      <Input value={editStatement} onChange={(e) => setEditStatement(e.target.value)} className="text-sm mt-1" />
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">when...</span>
+                      <Input value={editCue} onChange={(e) => setEditCue(e.target.value)} className="text-sm mt-1" />
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">in the...</span>
+                      <Select value={editTimeOfDay} onValueChange={setEditTimeOfDay}>
+                        <SelectTrigger className="text-sm mt-1"><SelectValue placeholder="Time of day" /></SelectTrigger>
                         <SelectContent>
-                          {["UnPuzzle", "Chores", "Routines", "Roles", "Getting Things Done"].map(cat => {
-                            const catAreas = areas.filter(a => (a.category || "Other") === cat);
-                            if (catAreas.length === 0) return null;
-                            return [
-                              <SelectItem key={`ehdr-${cat}`} value={`__hdr_${cat}`} disabled className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/5 border-b border-primary/10">
-                                {cat}
-                              </SelectItem>,
-                              ...catAreas.map(a => (
-                                <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-                              )),
-                            ];
-                          })}
+                          {TIME_OF_DAY_CATEGORIES.map(t => (
+                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <span className="text-xs text-muted-foreground">I'm the type of person who...</span>
-                      <Input
-                        value={editStatement}
-                        onChange={(e) => setEditStatement(e.target.value)}
-                        placeholder="e.g. day-to-day activity in this area of your ideal life"
-                        className="text-sm mt-1"
-                      />
+                      <span className="text-xs text-muted-foreground">Recurrence</span>
+                      <div className="mt-1"><RecurrenceBuilder value={editRecurrence} onChange={setEditRecurrence} requireRecurrence /></div>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">because...</span>
+                      <Input value={editCraving} onChange={(e) => setEditCraving(e.target.value)} className="text-sm mt-1" />
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">I'll be rewarded by...</span>
+                      <Input value={editReward} onChange={(e) => setEditReward(e.target.value)} className="text-sm mt-1" />
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => saveEdit(id.id)} disabled={!editStatement.trim()}>Save</Button>
@@ -701,15 +810,35 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
             return (
               <Card key={id.id} className="bg-primary/[0.03]">
                 <CardContent className="p-3 flex justify-between items-start">
-                  <div>
-                    {id.areaId && (
+                  <div className="min-w-0 flex-1">
+                    {area && (
                       <p className="text-[11px] text-muted-foreground mb-0.5">
-                        In the area of <span className="font-medium text-foreground">{areas.find(a => a.id === id.areaId)?.name}</span>
+                        In the area of <span className="font-medium text-foreground">{area.name}</span>
                       </p>
                     )}
                     <p className="text-sm font-medium" data-testid={`identity-${id.id}`}>
                       I'm the type of person who {id.statement}
                     </p>
+                    {id.cue && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        when <span className="font-medium text-foreground">{id.cue}</span>
+                      </p>
+                    )}
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      {id.timeOfDay && (
+                        <Badge variant="outline" className="text-[10px] h-4 px-1">
+                          {TIME_OF_DAY_CATEGORIES.find(t => t.value === id.timeOfDay)?.label || id.timeOfDay}
+                        </Badge>
+                      )}
+                      {id.frequency && (
+                        <Badge variant="outline" className="text-[10px] h-4 px-1">
+                          {formatRecurrence(id.frequency)}
+                        </Badge>
+                      )}
+                      {id.craving && (
+                        <span className="text-[10px] text-muted-foreground">because: {id.craving}</span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-1 ml-2 shrink-0">
                     <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => startEdit(id)} data-testid={`edit-identity-${id.id}`}>
@@ -727,85 +856,51 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
         </div>
       )}
 
-      {/* Divider */}
-      <div className="border-t pt-4 mt-4" />
-
-      {/* Habit Systems */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">Habit Systems</h2>
-          <Badge variant="secondary" className="text-xs">
-            {todayLogs.length}/{activeHabits.length} today
-          </Badge>
-        </div>
-
-        <NewHabitForm areas={areas} identities={identities} />
-
-        {activeHabits.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center text-muted-foreground">
-              <Target className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p className="text-sm font-medium">No habits yet</p>
-              <p className="text-xs mt-1">Build your identity-driven habit systems above.</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-2">
-            {activeHabits.map((habit) => (
-              <HabitRow key={habit.id} habit={habit} todayLogs={todayLogs} identities={identities} areas={areas} today={today} />
-            ))}
-          </div>
-        )}
-
-        {/* Link to Routine */}
-        <div className="pt-2">
-          <Link href="/routine">
-            <span className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 cursor-pointer">
-              Manage your routine <ArrowRight className="w-3 h-3" />
-            </span>
-          </Link>
-        </div>
+      {/* Link to Routine */}
+      <div className="pt-2">
+        <Link href="/routine">
+          <span className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 cursor-pointer">
+            Manage your routine <ArrowRight className="w-3 h-3" />
+          </span>
+        </Link>
       </div>
     </div>
   );
 }
 
 // ============================================================
-// PROJECTS (auto-generated from habit chain: Area > Identity > Habit)
+// PROJECTS (auto-generated from identity chain: Area > Identity)
 // ============================================================
-function ProjectSection({ habits, identities, areas }: { habits: Habit[]; identities: Identity[]; areas: Area[] }) {
-  // A project = active habit that has an identity
-  const projectHabits = habits.filter(h => h.active && h.identityId != null);
+function ProjectSection({ identities, areas }: { identities: Identity[]; areas: Area[] }) {
+  const projectIdentities = identities.filter(i => i.active && i.areaId != null);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-2">
         <HorizonBadge level={1} label="Projects" />
-        <span className="text-xs text-muted-foreground">Auto-generated from your habit chain (Area › Identity › Habit).</span>
+        <span className="text-xs text-muted-foreground">Auto-generated from your identity chain (Area › Identity).</span>
       </div>
 
-      {projectHabits.length === 0 ? (
+      {projectIdentities.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
             <FolderOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="text-sm font-medium">No projects yet</p>
-            <p className="text-xs mt-1">Projects are derived from active habits linked to an identity. Add habits with an identity in the Identity tab.</p>
+            <p className="text-xs mt-1">Projects are derived from active identities linked to an area. Add identities in the Identity tab.</p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
-          {projectHabits.map((habit) => {
-            const identity = identities.find(i => i.id === habit.identityId);
-            const area = areas.find(a => a.id === (habit.areaId ?? identity?.areaId));
+          {projectIdentities.map((identity) => {
+            const area = areas.find(a => a.id === identity.areaId);
             const category = area?.category || "";
             const areaName = area?.name || "";
-            // "In the area of <Area> <Responsibility>" — exception: UnPuzzle uses "<Responsibility> <Area>"
             const areaLabel = category === "UnPuzzle"
               ? `${category} ${areaName}`
               : `${areaName} ${category}`;
 
             return (
-              <Link key={habit.id} href={`/projects/${habit.id}`}>
+              <Link key={identity.id} href={`/projects/${identity.id}`}>
                 <Card className="cursor-pointer hover:shadow-md transition-shadow">
                   <CardContent className="p-4 space-y-1.5">
                     {area && (
@@ -813,15 +908,13 @@ function ProjectSection({ habits, identities, areas }: { habits: Habit[]; identi
                         In the area of <span className="font-medium text-foreground">{areaLabel}</span>...
                       </p>
                     )}
-                    {identity && (
-                      <p className="text-[11px] text-muted-foreground">
-                        I'm the type of person who...<span className="font-medium text-foreground">{identity.statement}</span>
-                      </p>
-                    )}
+                    <p className="text-[11px] text-muted-foreground">
+                      I'm the type of person who...<span className="font-medium text-foreground">{identity.statement}</span>
+                    </p>
                     <div className="flex items-start gap-2">
                       <FolderOpen className="w-4 h-4 text-chart-5 mt-0.5 shrink-0" />
                       <p className="font-medium text-sm hover:text-primary transition-colors">
-                        when...{habit.cue || habit.name}
+                        {identity.cue ? `when...${identity.cue}` : identity.statement}
                       </p>
                     </div>
                     <div className="mt-3 grid grid-cols-3 gap-2">

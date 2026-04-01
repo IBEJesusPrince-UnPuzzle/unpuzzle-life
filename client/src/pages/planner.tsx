@@ -21,12 +21,11 @@ import type { PlannerTask, Area, RoutineItem, RoutineLog } from "@shared/schema"
 import { EditRoutineDialog } from "./routine";
 import { Link } from "wouter";
 
-// Habit chain info for project tasks
-interface HabitChain {
-  habitId: number;
-  habitName: string;
-  habitCue: string | null;
-  identityStatement: string | null;
+// Identity chain info for project tasks
+interface IdentityChain {
+  identityId: number;
+  identityStatement: string;
+  cue: string | null;
   areaName: string | null;
   areaCategory: string | null;
   projectTitle: string;
@@ -667,10 +666,10 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
   const ProjectCatIcon = isProjectTask ? PROJECT_CATEGORY_ICONS[task.sourceType!] || FolderOpen : null;
   const projectCatLabel = isProjectTask ? PROJECT_CATEGORY_LABELS[task.sourceType!] || "Project" : null;
 
-  // Fetch habit chain for project tasks (only when needed)
-  const { data: chain } = useQuery<HabitChain>({
-    queryKey: ["/api/habit-chain", task.habitId],
-    queryFn: () => apiRequest("GET", `/api/habit-chain/${task.habitId}`).then(r => r.json()),
+  // Fetch identity chain for project tasks (only when needed)
+  const { data: chain } = useQuery<IdentityChain>({
+    queryKey: ["/api/identity-chain", task.habitId],
+    queryFn: () => apiRequest("GET", `/api/identity-chain/${task.habitId}`).then(r => r.json()),
     enabled: !!isProjectTask,
     staleTime: 60000,
   });
@@ -1463,15 +1462,15 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
   };
 
   const create = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/habits", {
-      name: action,
+    mutationFn: () => apiRequest("POST", "/api/identities", {
+      statement: action,
       areaId: task.areaId || null,
+      visionId: null,
       timeOfDay: timeOfDay || null,
       craving: because || null,
       reward: reward || null,
       response: action,
       cue: cue || null,
-      identityId: null,
       frequency: recurrenceJson || JSON.stringify({ type: "daily", interval: 1 }),
       targetCount: 1,
       active: 1,
@@ -1479,7 +1478,7 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
     }),
     onSuccess: () => {
       onOpenChange(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/habits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
       queryClient.invalidateQueries({ queryKey: ["/api/routine-items"] });
     },
   });
@@ -1490,11 +1489,11 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
         <DialogHeader>
           <DialogTitle className="text-base flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-primary" />
-            Make This a Habit
+            Build Identity From Task
           </DialogTitle>
         </DialogHeader>
         <p className="text-xs text-muted-foreground -mt-1">
-          This will create a habit and a draft routine item you can schedule.
+          This will create an identity and a draft routine item you can schedule.
         </p>
         <div className="space-y-4 pt-1">
           {area && (
@@ -1570,7 +1569,7 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
             onClick={() => create.mutate()}
             data-testid="button-convert-habit"
           >
-            {create.isPending ? "Creating..." : "Create Habit & Draft Routine"}
+            {create.isPending ? "Creating..." : "Create Identity & Draft Routine"}
           </Button>
         </div>
       </DialogContent>

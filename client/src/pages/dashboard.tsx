@@ -36,12 +36,10 @@ export default function Dashboard() {
     pendingActionsCount: number;
     missedTasksCount: number;
     inboxCount: number;
-    // keep old ones for compatibility
     pendingActions: number;
     completedToday: number;
     activeProjects: number;
-    habitsCompletedToday: number;
-    totalActiveHabits: number;
+    totalActiveIdentities: number;
   }>({ queryKey: ["/api/stats"] });
 
   const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });

@@ -9,7 +9,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Puzzle, ChevronRight, ChevronLeft, Plus, Trash2, Sparkles,
+  Puzzle, ChevronRight, ChevronLeft, Plus, Sparkles, Trash2,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
@@ -48,7 +48,7 @@ const PHASES = [
   { num: 1, title: "Purpose & Principles", subtitle: "The corner pieces and edge frame \u2014 the immutable laws everything else clicks into" },
   { num: 2, title: "Vision", subtitle: "Step into your completed puzzle \u2014 walk through an ordinary day in your ideal life" },
   { num: 3, title: "Responsibilities & Areas", subtitle: "The major sections and sub-assemblies \u2014 decide which parts of your life structure matter" },
-  { num: 4, title: "Identity & Habits", subtitle: "The detailed, interlocking pieces \u2014 where the science meets the art" },
+  { num: 4, title: "Identity", subtitle: "The detailed, interlocking pieces \u2014 where the science meets the art" },
 ];
 
 // ============================================================
@@ -118,36 +118,28 @@ export default function WizardPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/areas"] }),
   });
 
-  // Phase 4: create identity
+  // Phase 4: create identity with all fields
   const createIdentity = useMutation({
-    mutationFn: (data: { statement: string; areaId: number }) =>
+    mutationFn: (data: {
+      statement: string; areaId: number;
+      cue?: string; timeOfDay?: string; frequency?: string;
+      craving?: string; reward?: string;
+    }) =>
       apiRequest("POST", "/api/identities", {
-        ...data,
-        visionId: null,
-        createdAt: new Date().toISOString(),
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/identities"] }),
-  });
-
-  // Phase 4: create habit
-  const createHabit = useMutation({
-    mutationFn: (data: { name: string; identityId: number; areaId: number | null; cue: string; timeOfDay: string; recurrence: string; craving: string; reward: string }) =>
-      apiRequest("POST", "/api/habits", {
-        name: data.name,
-        identityId: data.identityId,
+        statement: data.statement,
         areaId: data.areaId,
+        visionId: null,
         cue: data.cue || null,
         craving: data.craving || null,
-        response: data.name,
         reward: data.reward || null,
-        frequency: data.recurrence || JSON.stringify({ type: "daily", interval: 1 }),
+        frequency: data.frequency || JSON.stringify({ type: "daily", interval: 1 }),
         timeOfDay: data.timeOfDay || null,
         targetCount: 1,
         active: 1,
         createdAt: new Date().toISOString(),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/habits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
       setHabitCue(""); setHabitTimeOfDay(""); setHabitBecause(""); setHabitReward("");
       setHabitRecurrence(JSON.stringify({ type: "daily", interval: 1 }));
     },
@@ -292,17 +284,13 @@ export default function WizardPage() {
           />
         )}
         {phase === 4 && (
-          <Phase4Habits
+          <Phase4Identities
             activeGroupedAreas={activeGroupedAreas}
             selectedAreaId={selectedAreaId}
             setSelectedAreaId={setSelectedAreaId}
             identityText={identityText}
             setIdentityText={setIdentityText}
             areaIdentities={areaIdentities}
-            onCreateIdentity={async (stmt, areaId) => {
-              await createIdentity.mutateAsync({ statement: stmt, areaId });
-              setIdentityText("");
-            }}
             habitCue={habitCue}
             setHabitCue={setHabitCue}
             habitTimeOfDay={habitTimeOfDay}
@@ -313,20 +301,9 @@ export default function WizardPage() {
             setHabitBecause={setHabitBecause}
             habitReward={habitReward}
             setHabitReward={setHabitReward}
-            onCreateHabit={async (identityId, areaId) => {
-              if (!identityText.trim() && areaIdentities.length === 0) return;
-              const identity = areaIdentities[areaIdentities.length - 1];
-              if (!identity) return;
-              await createHabit.mutateAsync({
-                name: identity.statement,
-                identityId: identity.id,
-                areaId,
-                cue: habitCue,
-                timeOfDay: habitTimeOfDay,
-                recurrence: habitRecurrence || JSON.stringify({ type: "daily", interval: 1 }),
-                craving: habitBecause,
-                reward: habitReward,
-              });
+            onCreateIdentity={async (data) => {
+              await createIdentity.mutateAsync(data);
+              setIdentityText("");
             }}
           />
         )}
@@ -633,37 +610,36 @@ function Phase3Areas({
 }
 
 // ============================================================
-// PHASE 4: IDENTITY & HABITS
+// PHASE 4: IDENTITY (unified — no separate habits)
 // ============================================================
 
-function Phase4Habits({
+function Phase4Identities({
   activeGroupedAreas,
   selectedAreaId, setSelectedAreaId,
   identityText, setIdentityText,
   areaIdentities,
-  onCreateIdentity,
   habitCue, setHabitCue,
   habitTimeOfDay, setHabitTimeOfDay,
   habitRecurrence, setHabitRecurrence,
   habitBecause, setHabitBecause,
   habitReward, setHabitReward,
-  onCreateHabit,
+  onCreateIdentity,
 }: {
   activeGroupedAreas: Record<string, Area[]>;
   selectedAreaId: number | null; setSelectedAreaId: (v: number | null) => void;
   identityText: string; setIdentityText: (v: string) => void;
   areaIdentities: Identity[];
-  onCreateIdentity: (stmt: string, areaId: number) => Promise<void>;
   habitCue: string; setHabitCue: (v: string) => void;
   habitTimeOfDay: string; setHabitTimeOfDay: (v: string) => void;
   habitRecurrence: string | null; setHabitRecurrence: (v: string | null) => void;
   habitBecause: string; setHabitBecause: (v: string) => void;
   habitReward: string; setHabitReward: (v: string) => void;
-  onCreateHabit: (identityId: number, areaId: number | null) => Promise<void>;
+  onCreateIdentity: (data: {
+    statement: string; areaId: number;
+    cue?: string; timeOfDay?: string; frequency?: string;
+    craving?: string; reward?: string;
+  }) => Promise<void>;
 }) {
-  const [addingHabitForIdentity, setAddingHabitForIdentity] = useState<Identity | null>(null);
-  const [habitName, setHabitName] = useState("");
-
   const selectedArea = useMemo(() => {
     for (const areas of Object.values(activeGroupedAreas)) {
       const found = areas.find(a => a.id === selectedAreaId);
@@ -672,35 +648,12 @@ function Phase4Habits({
     return null;
   }, [activeGroupedAreas, selectedAreaId]);
 
-  const handleCreateHabit = async (identity: Identity) => {
-    if (!habitName.trim()) return;
-    await apiRequest("POST", "/api/habits", {
-      name: habitName,
-      identityId: identity.id,
-      areaId: selectedAreaId,
-      cue: habitCue || null,
-      craving: habitBecause || null,
-      response: habitName,
-      reward: habitReward || null,
-      frequency: habitRecurrence || JSON.stringify({ type: "daily", interval: 1 }),
-      timeOfDay: habitTimeOfDay || null,
-      targetCount: 1,
-      active: 1,
-      createdAt: new Date().toISOString(),
-    });
-    queryClient.invalidateQueries({ queryKey: ["/api/habits"] });
-    setHabitName("");
-    setHabitCue(""); setHabitTimeOfDay(""); setHabitBecause(""); setHabitReward("");
-    setHabitRecurrence(JSON.stringify({ type: "daily", interval: 1 }));
-    setAddingHabitForIdentity(null);
-  };
-
   if (!selectedAreaId) {
     // Area selection grid
     return (
       <div className="space-y-6">
         <p className="text-sm text-muted-foreground">
-          Select an area to create identity statements and habits for it.
+          Select an area to create identity statements for it.
         </p>
 
         {CATEGORY_ORDER.map(cat => {
@@ -731,11 +684,11 @@ function Phase4Habits({
     );
   }
 
-  // Area detail: identity + habit creation
+  // Area detail: identity creation with all fields
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={() => { setSelectedAreaId(null); setAddingHabitForIdentity(null); }}>
+        <Button variant="ghost" size="sm" onClick={() => setSelectedAreaId(null)}>
           <ChevronLeft className="w-4 h-4" />
         </Button>
         <div>
@@ -744,135 +697,118 @@ function Phase4Habits({
         </div>
       </div>
 
-      {/* Identity statements for this area */}
-      <div className="space-y-3">
-        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Identity Statements
-        </h4>
-
-        {areaIdentities.map(id => (
-          <Card key={id.id} className="border-amber-500/20">
-            <CardContent className="p-3">
-              <p className="text-sm">
-                <span className="text-muted-foreground">In {selectedArea?.name}, I am the type of person who...</span>{" "}
-                <span className="font-medium">{id.statement}</span>
-              </p>
-              {!addingHabitForIdentity && (
-                <Button variant="outline" size="sm" className="mt-2 h-7 text-xs gap-1"
-                  onClick={() => setAddingHabitForIdentity(id)}>
-                  <Plus className="w-3 h-3" /> Add Habit
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-
-        {/* Add identity form */}
-        <div className="flex gap-2">
-          <Input
-            value={identityText}
-            onChange={e => setIdentityText(e.target.value)}
-            placeholder="e.g. day-to-day activity in this area of your ideal life"
-            className="text-sm flex-1"
-            data-testid="input-identity"
-          />
-          <Button
-            size="sm"
-            disabled={!identityText.trim() || !selectedAreaId}
-            onClick={() => onCreateIdentity(identityText, selectedAreaId)}
-            className="h-9 bg-amber-600 hover:bg-amber-700 text-white"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </Button>
+      {/* Existing identities for this area */}
+      {areaIdentities.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Created Identities
+          </h4>
+          {areaIdentities.map(id => (
+            <Card key={id.id} className="border-amber-500/20">
+              <CardContent className="p-3">
+                <p className="text-sm">
+                  <span className="text-muted-foreground">I am the type of person who</span>{" "}
+                  <span className="font-medium">{id.statement}</span>
+                </p>
+                {id.cue && (
+                  <p className="text-[11px] text-muted-foreground mt-0.5">when {id.cue}</p>
+                )}
+                {id.craving && (
+                  <p className="text-[11px] text-muted-foreground/70 mt-0.5 italic">because {id.craving}</p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
         </div>
-      </div>
-
-      {/* Habit creation form (micro-fiction flow) */}
-      {addingHabitForIdentity && (
-        <Card className="border-amber-500/30 bg-amber-500/5">
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-amber-700 dark:text-amber-400">
-                New Habit for: {addingHabitForIdentity.statement}
-              </h4>
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
-                onClick={() => setAddingHabitForIdentity(null)}>
-                <Trash2 className="w-3 h-3" />
-              </Button>
-            </div>
-
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">Habit action</p>
-              <Input
-                value={habitName}
-                onChange={e => setHabitName(e.target.value)}
-                placeholder="e.g. do 20 pushups, read 10 pages"
-                className="text-sm"
-              />
-            </div>
-
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">...when... (cue)</p>
-              <Input
-                value={habitCue}
-                onChange={e => setHabitCue(e.target.value)}
-                placeholder="e.g. triggering/reminding action"
-                className="text-sm"
-              />
-            </div>
-
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">...in the...</p>
-              <Select value={habitTimeOfDay} onValueChange={setHabitTimeOfDay}>
-                <SelectTrigger className="text-sm">
-                  <SelectValue placeholder="Select time of day" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TIME_OF_DAY_CATEGORIES.map(t => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <RecurrenceBuilder
-              value={habitRecurrence}
-              onChange={setHabitRecurrence}
-              requireRecurrence
-            />
-
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">...because...</p>
-              <Input
-                value={habitBecause}
-                onChange={e => setHabitBecause(e.target.value)}
-                placeholder="e.g. what's attractive about it? why crave it?"
-                className="text-sm"
-              />
-            </div>
-
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">...I'll be rewarded by...</p>
-              <Input
-                value={habitReward}
-                onChange={e => setHabitReward(e.target.value)}
-                placeholder="e.g. describe how it satisfies you"
-                className="text-sm"
-              />
-            </div>
-
-            <Button
-              className="w-full h-9 bg-amber-600 hover:bg-amber-700 text-white"
-              disabled={!habitName.trim()}
-              onClick={() => handleCreateHabit(addingHabitForIdentity)}
-            >
-              Create Habit
-            </Button>
-          </CardContent>
-        </Card>
       )}
+
+      {/* Build new identity form */}
+      <Card className="border-amber-500/30 bg-amber-500/5">
+        <CardContent className="p-4 space-y-3">
+          <h4 className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+            Build Your Identity in {selectedArea?.name}
+          </h4>
+
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-1">I am the type of person who...</p>
+            <Input
+              value={identityText}
+              onChange={e => setIdentityText(e.target.value)}
+              placeholder="e.g. exercises daily, reads before bed"
+              className="text-sm"
+              data-testid="input-identity"
+            />
+          </div>
+
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-1">...when... (cue)</p>
+            <Input
+              value={habitCue}
+              onChange={e => setHabitCue(e.target.value)}
+              placeholder="e.g. triggering/reminding action"
+              className="text-sm"
+            />
+          </div>
+
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-1">...in the...</p>
+            <Select value={habitTimeOfDay} onValueChange={setHabitTimeOfDay}>
+              <SelectTrigger className="text-sm">
+                <SelectValue placeholder="Select time of day" />
+              </SelectTrigger>
+              <SelectContent>
+                {TIME_OF_DAY_CATEGORIES.map(t => (
+                  <SelectItem key={t.value} value={t.value}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <RecurrenceBuilder
+            value={habitRecurrence}
+            onChange={setHabitRecurrence}
+            requireRecurrence
+          />
+
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-1">...because...</p>
+            <Input
+              value={habitBecause}
+              onChange={e => setHabitBecause(e.target.value)}
+              placeholder="e.g. what's attractive about it? why crave it?"
+              className="text-sm"
+            />
+          </div>
+
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-1">...I'll be rewarded by...</p>
+            <Input
+              value={habitReward}
+              onChange={e => setHabitReward(e.target.value)}
+              placeholder="e.g. describe how it satisfies you"
+              className="text-sm"
+            />
+          </div>
+
+          <Button
+            className="w-full h-9 bg-amber-600 hover:bg-amber-700 text-white"
+            disabled={!identityText.trim() || !selectedAreaId}
+            onClick={() => onCreateIdentity({
+              statement: identityText,
+              areaId: selectedAreaId,
+              cue: habitCue || undefined,
+              timeOfDay: habitTimeOfDay || undefined,
+              frequency: habitRecurrence || undefined,
+              craving: habitBecause || undefined,
+              reward: habitReward || undefined,
+            })}
+          >
+            Create Identity
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

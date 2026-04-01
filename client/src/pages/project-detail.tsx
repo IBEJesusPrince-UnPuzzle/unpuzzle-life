@@ -12,13 +12,12 @@ import {
   Repeat, Archive, Sparkles, Trash2,
 } from "lucide-react";
 import { useState } from "react";
-import type { Habit, Identity, Area, RoutineItem, PlannerTask } from "@shared/schema";
+import type { Identity, Area, RoutineItem, PlannerTask } from "@shared/schema";
 import { formatRecurrence } from "./planner";
 
-interface HabitProjectDetails {
-  habitId: number;
-  habit: Habit;
-  identity: Identity | null;
+interface IdentityProjectDetails {
+  identityId: number;
+  identity: Identity;
   area: Area | null;
   areas: Area[];
   title: string;
@@ -43,9 +42,9 @@ const GENERIC_CATEGORIES = [
 ];
 
 export default function ProjectDetailPage({ id }: { id: number }) {
-  const { data, isLoading, error } = useQuery<HabitProjectDetails>({
-    queryKey: ["/api/habit-projects", id],
-    queryFn: () => apiRequest("GET", `/api/habit-projects/${id}`).then(r => r.json()),
+  const { data, isLoading, error } = useQuery<IdentityProjectDetails>({
+    queryKey: ["/api/identity-projects", id],
+    queryFn: () => apiRequest("GET", `/api/identity-projects/${id}`).then(r => r.json()),
     enabled: !!id && id > 0,
     retry: 3,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
@@ -70,7 +69,7 @@ export default function ProjectDetailPage({ id }: { id: number }) {
     );
   }
 
-  const { habit, identity, area, title, tag, routineItems, plannerTasks } = data;
+  const { identity, area, routineItems, plannerTasks } = data;
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
@@ -86,43 +85,41 @@ export default function ProjectDetailPage({ id }: { id: number }) {
         <div className="flex items-center gap-2">
           <FolderOpen className="w-5 h-5 text-primary" />
           <h1 className="text-lg font-semibold tracking-tight">
-            {identity?.statement || habit.name}{habit.cue ? ` when ${habit.cue}` : ""}
+            {identity.statement}{identity.cue ? ` when ${identity.cue}` : ""}
           </h1>
         </div>
       </div>
 
-      {/* Habit Details Card */}
+      {/* Identity Details Card */}
       <Card>
         <CardContent className="p-4 space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Habit Chain</p>
-          {identity && (
-            <p className="text-sm">
-              <span className="text-muted-foreground">I am the type of person who</span>{" "}
-              <span className="font-medium">{identity.statement}</span>
-            </p>
-          )}
-          {habit.cue && (
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Identity Chain</p>
+          <p className="text-sm">
+            <span className="text-muted-foreground">I am the type of person who</span>{" "}
+            <span className="font-medium">{identity.statement}</span>
+          </p>
+          {identity.cue && (
             <p className="text-sm">
               <span className="text-muted-foreground">When</span>{" "}
-              <span className="font-medium">{habit.cue}</span>
+              <span className="font-medium">{identity.cue}</span>
             </p>
           )}
-          {habit.craving && (
+          {identity.craving && (
             <p className="text-sm">
               <span className="text-muted-foreground">Because</span>{" "}
-              <span className="font-medium">{habit.craving}</span>
+              <span className="font-medium">{identity.craving}</span>
             </p>
           )}
-          {habit.reward && (
+          {identity.reward && (
             <p className="text-sm">
               <span className="text-muted-foreground">Rewarded by</span>{" "}
-              <span className="font-medium">{habit.reward}</span>
+              <span className="font-medium">{identity.reward}</span>
             </p>
           )}
           <div className="flex items-center gap-2 pt-1">
             <Badge variant="outline" className="text-[10px] h-4 px-1">
               <Repeat className="w-2.5 h-2.5 mr-0.5" />
-              {formatRecurrence(habit.frequency)}
+              {formatRecurrence(identity.frequency)}
             </Badge>
             {routineItems.length > 0 && (
               <Badge variant="outline" className="text-[10px] h-4 px-1 text-violet-600 dark:text-violet-400 border-violet-500/30">

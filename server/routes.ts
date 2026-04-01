@@ -136,27 +136,23 @@ export function registerRoutes(server: Server, app: Express) {
     });
   });
 
-  // Habit-based project detail: builds project view from habit chain
-  app.get("/api/habit-projects/:habitId", (req, res) => {
-    const habitId = Number(req.params.habitId);
-    const habit = storage.getHabits().find(h => h.id === habitId);
-    if (!habit) return res.status(404).json({ error: "Habit not found" });
+  // Identity-based project detail: builds project view from identity chain
+  app.get("/api/identity-projects/:identityId", (req, res) => {
+    const identityId = Number(req.params.identityId);
+    const identity = storage.getIdentities().find(i => i.id === identityId);
+    if (!identity) return res.status(404).json({ error: "Identity not found" });
 
-    const identity = habit.identityId ? storage.getIdentities().find(i => i.id === habit.identityId) : null;
-    const area = habit.areaId ? storage.getAreas().find(a => a.id === habit.areaId) : null;
+    const area = identity.areaId ? storage.getAreas().find(a => a.id === identity.areaId) : null;
     const areas = storage.getAreas();
-    const routineItems = storage.getRoutineItems().filter(r => r.habitId === habitId);
-    const plannerTasks = storage.getAllPlannerTasks().filter(t => t.habitId === habitId);
+    // habitId column on routineItems/plannerTasks now stores identityId
+    const routineItems = storage.getRoutineItems().filter(r => r.habitId === identityId);
+    const plannerTasks = storage.getAllPlannerTasks().filter(t => t.habitId === identityId);
 
-    // Build project title from identity + cue
-    const identityPart = identity?.statement || habit.name;
-    const cuePart = habit.cue || "";
-    const title = cuePart ? `${identityPart}...${cuePart}` : identityPart;
+    const title = identity.cue ? `${identity.statement} when ${identity.cue}` : identity.statement;
     const tag = area ? `${area.category || ""}.${area.name}` : "";
 
     res.json({
-      habitId: habit.id,
-      habit,
+      identityId: identity.id,
       identity,
       area,
       areas,
@@ -167,30 +163,74 @@ export function registerRoutes(server: Server, app: Express) {
     });
   });
 
-  // Lightweight habit chain lookup for project task badges in agenda
-  app.get("/api/habit-chain/:habitId", (req, res) => {
-    const habitId = Number(req.params.habitId);
-    const habit = storage.getHabits().find(h => h.id === habitId);
-    if (!habit) return res.status(404).json({ error: "Habit not found" });
+  // Lightweight identity chain lookup for project task badges in agenda
+  app.get("/api/identity-chain/:identityId", (req, res) => {
+    const identityId = Number(req.params.identityId);
+    const identity = storage.getIdentities().find(i => i.id === identityId);
+    if (!identity) return res.status(404).json({ error: "Identity not found" });
 
-    const identity = habit.identityId ? storage.getIdentities().find(i => i.id === habit.identityId) : null;
-    const area = habit.areaId ? storage.getAreas().find(a => a.id === habit.areaId) : null;
+    const area = identity.areaId ? storage.getAreas().find(a => a.id === identity.areaId) : null;
 
-    const identityPart = identity?.statement || habit.name;
-    const cuePart = habit.cue || "";
-    const projectTitle = cuePart ? `${identityPart}...${cuePart}` : identityPart;
+    const projectTitle = identity.cue ? `${identity.statement} when ${identity.cue}` : identity.statement;
     const tag = area ? `${area.category || ""}.${area.name}` : "";
 
     res.json({
-      habitId: habit.id,
-      habitName: habit.name,
-      habitCue: habit.cue,
-      identityStatement: identity?.statement || null,
+      identityId: identity.id,
+      identityStatement: identity.statement,
+      cue: identity.cue || null,
       areaName: area?.name || null,
       areaCategory: area?.category || null,
       projectTitle,
       tag,
     });
+  });
+
+  // One-time migration: copy habit fields to linked identities, update FK references
+  app.post("/api/migrate-habits-to-identities", (_req, res) => {
+    const allHabits = storage.getHabits();
+    const allIdentities = storage.getIdentities();
+    const allRoutineItems = storage.getRoutineItems();
+    const allPlannerTasks = storage.getAllPlannerTasks();
+    let migratedIdentities = 0;
+    let migratedRoutineItems = 0;
+    let migratedPlannerTasks = 0;
+
+    for (const habit of allHabits) {
+      if (!habit.identityId) continue;
+      const identity = allIdentities.find(i => i.id === habit.identityId);
+      if (!identity) continue;
+
+      // Copy habit fields to identity
+      storage.updateIdentity(identity.id, {
+        cue: habit.cue || identity.cue || null,
+        craving: habit.craving || identity.craving || null,
+        reward: habit.reward || identity.reward || null,
+        frequency: habit.frequency || identity.frequency,
+        targetCount: habit.targetCount ?? identity.targetCount,
+        active: habit.active ?? identity.active,
+        timeOfDay: habit.timeOfDay || identity.timeOfDay || null,
+        areaId: habit.areaId || identity.areaId || null,
+      });
+      migratedIdentities++;
+
+      // Update routineItems: habitId was habit.id, now should be identity.id
+      for (const ri of allRoutineItems) {
+        if (ri.habitId === habit.id) {
+          storage.updateRoutineItem(ri.id, { habitId: habit.identityId });
+          migratedRoutineItems++;
+        }
+      }
+
+      // Update plannerTasks: habitId was habit.id, now should be identity.id
+      for (const pt of allPlannerTasks) {
+        if (pt.habitId === habit.id) {
+          storage.updatePlannerTask(pt.id, { habitId: habit.identityId });
+          migratedPlannerTasks++;
+        }
+      }
+    }
+
+    res.json({ migratedIdentities, migratedRoutineItems, migratedPlannerTasks });
   });
 
   // References: all filed references, optionally filtered by area or project
@@ -236,11 +276,55 @@ export function registerRoutes(server: Server, app: Express) {
   app.post("/api/identities", (req, res) => {
     const parsed = insertIdentitySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createIdentity(parsed.data));
+    const identity = storage.createIdentity(parsed.data);
+
+    // If identity has habit fields (cue/timeOfDay), create a draft routine item
+    if (identity.cue || identity.timeOfDay) {
+      const timeOfDayMap: Record<string, string> = {
+        early_morning: "03:00", morning: "07:00", late_morning: "10:00",
+        afternoon: "13:00", late_afternoon: "16:00", evening: "20:00", waking_hours: "12:00",
+      };
+      const placeholderTime = timeOfDayMap[identity.timeOfDay || ""] || "12:00";
+      storage.createRoutineItem({
+        sortOrder: 0,
+        time: placeholderTime,
+        durationMinutes: 10,
+        location: null,
+        cue: identity.cue || null,
+        craving: identity.craving || null,
+        response: identity.statement,
+        reward: identity.reward || null,
+        areaId: identity.areaId || null,
+        habitId: identity.id, // habitId column stores identityId
+        dayVariant: null,
+        active: 1,
+        isDraft: 1,
+        timeOfDay: identity.timeOfDay || null,
+      });
+    }
+
+    res.json(identity);
   });
   app.patch("/api/identities/:id", (req, res) => {
-    const result = storage.updateIdentity(Number(req.params.id), req.body);
+    const identityId = Number(req.params.id);
+    const result = storage.updateIdentity(identityId, req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
+
+    // Sync linked routine item — propagate changes
+    const allRoutineItems = storage.getRoutineItems();
+    const linkedItem = allRoutineItems.find(ri => ri.habitId === identityId);
+    if (linkedItem) {
+      const routineUpdate: Record<string, any> = {};
+      if (req.body.statement !== undefined) routineUpdate.response = req.body.statement;
+      if (req.body.craving !== undefined) routineUpdate.craving = req.body.craving;
+      if (req.body.reward !== undefined) routineUpdate.reward = req.body.reward;
+      if (req.body.areaId !== undefined) routineUpdate.areaId = req.body.areaId;
+      if (req.body.cue !== undefined) routineUpdate.cue = req.body.cue;
+      if (Object.keys(routineUpdate).length > 0) {
+        storage.updateRoutineItem(linkedItem.id, routineUpdate);
+      }
+    }
+
     res.json(result);
   });
   app.delete("/api/identities/:id", (req, res) => {
@@ -619,10 +703,10 @@ export function registerRoutes(server: Server, app: Express) {
     res.json(state);
   });
   app.post("/api/wizard/complete", (_req, res) => {
-    // For every active habit with identityId, create a draft routine_item
-    const allHabits = storage.getHabits();
+    // For every active identity with areaId, create a draft routine_item
+    const allIdentities = storage.getIdentities();
     const allRoutineItems = storage.getRoutineItems();
-    const habitsWithIdentity = allHabits.filter(h => h.active && h.identityId);
+    const activeIdentities = allIdentities.filter(i => i.active && i.areaId);
 
     const timeOfDayMap: Record<string, string> = {
       early_morning: "03:00",
@@ -635,27 +719,27 @@ export function registerRoutes(server: Server, app: Express) {
     };
 
     let created = 0;
-    for (const habit of habitsWithIdentity) {
-      // Skip if already has a linked routine item
-      const existing = allRoutineItems.find(r => r.habitId === habit.id);
+    for (const identity of activeIdentities) {
+      // Skip if already has a linked routine item (habitId column stores identityId)
+      const existing = allRoutineItems.find(r => r.habitId === identity.id);
       if (existing) continue;
 
-      const placeholderTime = timeOfDayMap[habit.timeOfDay || ""] || "12:00";
+      const placeholderTime = timeOfDayMap[identity.timeOfDay || ""] || "12:00";
       storage.createRoutineItem({
         sortOrder: 0,
         time: placeholderTime,
         durationMinutes: 10,
         location: null,
-        cue: habit.cue || null,
-        craving: habit.craving || null,
-        response: habit.name,
-        reward: habit.reward || null,
-        areaId: habit.areaId || null,
-        habitId: habit.id,
+        cue: identity.cue || null,
+        craving: identity.craving || null,
+        response: identity.statement,
+        reward: identity.reward || null,
+        areaId: identity.areaId || null,
+        habitId: identity.id, // habitId column repurposed to store identityId
         dayVariant: null,
         active: 1,
         isDraft: 1,
-        timeOfDay: habit.timeOfDay || null,
+        timeOfDay: identity.timeOfDay || null,
       });
       created++;
     }
@@ -675,16 +759,14 @@ export function registerRoutes(server: Server, app: Express) {
   app.get("/api/stats", (_req, res) => {
     const allActions = storage.getActions();
     const allProjects = storage.getProjects();
-    const allHabits = storage.getHabits();
+    const allIdentities = storage.getIdentities();
     const allRoutineItems = storage.getRoutineItems();
     const inboxCount = storage.getInboxItems().filter(i => !i.processed).length;
     const now = new Date();
     const today = now.toISOString().split("T")[0];
-    const currentHHMM = now.toTimeString().slice(0, 5); // "HH:MM"
-    const todayLogs = storage.getHabitLogsByDate(today);
-    const activeHabits = allHabits.filter(h => h.active);
+    const currentHHMM = now.toTimeString().slice(0, 5);
+    const activeIdentities = allIdentities.filter(i => i.active);
 
-    // missedTasksCount: planned tasks with endTime in the past
     const allPlannerTasks = storage.getAllPlannerTasks();
     const missedTasksCount = allPlannerTasks.filter(t => {
       if (t.status !== "planned" || !t.endTime) return false;
@@ -693,18 +775,18 @@ export function registerRoutes(server: Server, app: Express) {
       return false;
     }).length;
 
-    // pendingActionsCount: draft routine items
     const pendingActionsCount = allRoutineItems.filter(r => r.isDraft === 1).length;
 
-    // identityVotePercent: habits linked to an identity → routine items → planner tasks with past endTime
-    const habitsWithIdentity = allHabits.filter(h => h.identityId != null);
+    // identityVotePercent: active identities with areaId → routine items → planner tasks
+    const identitiesWithArea = allIdentities.filter(i => i.active && i.areaId != null);
     let identityDone = 0;
     let identityTotal = 0;
-    for (const habit of habitsWithIdentity) {
-      const linkedRoutineItems = allRoutineItems.filter(r => r.habitId === habit.id);
+    for (const identity of identitiesWithArea) {
+      // habitId column stores identityId
+      const linkedRoutineItems = allRoutineItems.filter(r => r.habitId === identity.id);
       if (linkedRoutineItems.length === 0) continue;
       const linkedTasks = allPlannerTasks.filter(t => {
-        if (t.habitId !== habit.id) return false;
+        if (t.habitId !== identity.id) return false;
         if (!t.endTime) return false;
         const isPast = t.date < today || (t.date === today && t.endTime < currentHHMM);
         return isPast && (t.status === "done" || t.status === "planned");
@@ -721,8 +803,7 @@ export function registerRoutes(server: Server, app: Express) {
       completedToday: allActions.filter(a => a.completedAt?.startsWith(today)).length,
       activeProjects: allProjects.filter(p => p.status === "active").length,
       inboxCount,
-      habitsCompletedToday: todayLogs.length,
-      totalActiveHabits: activeHabits.length,
+      totalActiveIdentities: activeIdentities.length,
       missedTasksCount,
       pendingActionsCount,
       identityVotePercent,
@@ -737,22 +818,20 @@ export function registerRoutes(server: Server, app: Express) {
     const now = new Date();
     const currentHHMM = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
 
-    const allHabits = storage.getHabits();
     const allIdentities = storage.getIdentities();
     const allRoutineItems = storage.getRoutineItems();
     const allPlannerTasks = storage.getAllPlannerTasks();
     const allAreas = storage.getAreas();
 
-    const habitsWithIdentity = allHabits.filter(h => h.identityId != null && h.active);
+    const activeIdentities = allIdentities.filter(i => i.active && i.areaId != null);
 
-    const breakdown = habitsWithIdentity.map(habit => {
-      const identity = allIdentities.find(i => i.id === habit.identityId);
-      const area = allAreas.find(a => a.id === habit.areaId);
-      const linkedRoutineItems = allRoutineItems.filter(r => r.habitId === habit.id);
+    const breakdown = activeIdentities.map(identity => {
+      const area = allAreas.find(a => a.id === identity.areaId);
+      // habitId column stores identityId
+      const linkedRoutineItems = allRoutineItems.filter(r => r.habitId === identity.id);
 
-      // Past tasks (count toward vote)
       const pastTasks = allPlannerTasks.filter(t => {
-        if (t.habitId !== habit.id) return false;
+        if (t.habitId !== identity.id) return false;
         if (!t.endTime) return false;
         const isPast = t.date < today || (t.date === today && t.endTime < currentHHMM);
         return isPast && (t.status === "done" || t.status === "planned");
@@ -761,18 +840,17 @@ export function registerRoutes(server: Server, app: Express) {
       const done = pastTasks.filter(t => t.status === "done").length;
       const total = pastTasks.length;
 
-      // Upcoming tasks (actionable — user can complete these to increase vote)
       const upcomingTasks = allPlannerTasks.filter(t => {
-        if (t.habitId !== habit.id) return false;
+        if (t.habitId !== identity.id) return false;
         if (t.status === "done" || t.status === "skipped") return false;
         const isFuture = t.date > today || (t.date === today && (!t.endTime || t.endTime >= currentHHMM));
         return isFuture;
       });
 
       return {
-        habitId: habit.id,
-        habitName: habit.name,
-        identityStatement: identity?.statement || null,
+        identityId: identity.id,
+        identityStatement: identity.statement,
+        cue: identity.cue || null,
         areaName: area?.name || null,
         hasRoutine: linkedRoutineItems.length > 0,
         done,
@@ -795,18 +873,16 @@ export function registerRoutes(server: Server, app: Express) {
       };
     });
 
-    // Overall
     const totalDone = breakdown.reduce((s, b) => s + b.done, 0);
     const totalAll = breakdown.reduce((s, b) => s + b.total, 0);
     const overallPercent = totalAll > 0 ? Math.round((totalDone / totalAll) * 100) : 0;
 
-    // Habits with identity but no routine (can't contribute)
-    const habitsWithoutRoutine = habitsWithIdentity.filter(h => {
-      return !allRoutineItems.some(r => r.habitId === h.id);
-    }).map(h => ({
-      habitId: h.id,
-      habitName: h.name,
-      identityStatement: allIdentities.find(i => i.id === h.identityId)?.statement || null,
+    // Identities with area but no routine (can't contribute)
+    const identitiesWithoutRoutine = activeIdentities.filter(i => {
+      return !allRoutineItems.some(r => r.habitId === i.id);
+    }).map(i => ({
+      identityId: i.id,
+      identityStatement: i.statement,
     }));
 
     res.json({
@@ -814,7 +890,7 @@ export function registerRoutes(server: Server, app: Express) {
       totalDone,
       totalAll,
       breakdown,
-      habitsWithoutRoutine,
+      identitiesWithoutRoutine,
     });
   });
 
@@ -911,18 +987,18 @@ export function registerRoutes(server: Server, app: Express) {
             storage.createIdentity({ statement: row.statement, areaId: area?.id || null, visionId: null, createdAt: now });
             created++;
           } else if (type === "habits") {
+            // Legacy "habits" import now creates identities with habit fields
             if (!row.name) { errors.push(`Row ${rowNum}: missing name`); continue; }
             const area = row.area_name ? findAreaByName(row.area_name) : null;
-            const identity = row.identity_statement ? findIdentityByStatement(row.identity_statement) : null;
             const freqMap: Record<string, string> = {
               "daily": JSON.stringify({ type: "daily", interval: 1 }),
               "weekly": JSON.stringify({ type: "weekly", interval: 1, days: ["monday"] }),
               "weekdays": JSON.stringify({ type: "weekly", interval: 1, days: ["monday","tuesday","wednesday","thursday","friday"] }),
             };
-            storage.createHabit({
-              name: row.name,
-              description: null,
-              identityId: identity?.id || null,
+            storage.createIdentity({
+              statement: row.name,
+              areaId: area?.id || null,
+              visionId: null,
               cue: row.cue || null,
               craving: row.because || null,
               response: row.name,
@@ -931,7 +1007,6 @@ export function registerRoutes(server: Server, app: Express) {
               targetCount: 1,
               active: 1,
               createdAt: now,
-              areaId: area?.id || null,
               timeOfDay: row.time_of_day || null,
             });
             created++;

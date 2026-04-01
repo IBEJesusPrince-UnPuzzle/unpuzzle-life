@@ -19,10 +19,10 @@ interface VoteTask {
   status: string;
 }
 
-interface HabitBreakdown {
-  habitId: number;
-  habitName: string;
-  identityStatement: string | null;
+interface IdentityBreakdown {
+  identityId: number;
+  identityStatement: string;
+  cue: string | null;
   areaName: string | null;
   hasRoutine: boolean;
   done: number;
@@ -36,11 +36,10 @@ interface VoteDetails {
   overallPercent: number;
   totalDone: number;
   totalAll: number;
-  breakdown: HabitBreakdown[];
-  habitsWithoutRoutine: {
-    habitId: number;
-    habitName: string;
-    identityStatement: string | null;
+  breakdown: IdentityBreakdown[];
+  identitiesWithoutRoutine: {
+    identityId: number;
+    identityStatement: string;
   }[];
 }
 
@@ -85,7 +84,7 @@ export default function IdentityVotePage() {
     );
   }
 
-  const { overallPercent, totalDone, totalAll, breakdown, habitsWithoutRoutine } = data;
+  const { overallPercent, totalDone, totalAll, breakdown, identitiesWithoutRoutine } = data;
   const contributing = breakdown.filter(b => b.total > 0);
   const noTasks = breakdown.filter(b => b.total === 0 && b.hasRoutine);
 
@@ -119,7 +118,7 @@ export default function IdentityVotePage() {
               {totalAll === 0 && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
                   <AlertTriangle className="w-3 h-3" />
-                  No identity-linked tasks found yet. Create habits with identity statements and schedule routines.
+                  No identity-linked tasks found yet. Create identities with areas and schedule routines.
                 </p>
               )}
               {/* Progress bar */}
@@ -141,38 +140,39 @@ export default function IdentityVotePage() {
         <CardContent className="p-4">
           <p className="text-xs font-medium mb-2">How Identity Vote is calculated</p>
           <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
-            <li>You create an <span className="font-medium text-foreground">Identity Statement</span> ("I am the type of person who...")</li>
-            <li>You build a <span className="font-medium text-foreground">Habit</span> linked to that identity</li>
-            <li>That habit generates a <span className="font-medium text-foreground">Routine</span>, which creates scheduled tasks</li>
+            <li>You create an <span className="font-medium text-foreground">Identity</span> ("I am the type of person who...") in an area</li>
+            <li>That identity generates a <span className="font-medium text-foreground">Routine</span>, which creates scheduled tasks</li>
             <li>Each task whose end time has passed counts as a <span className="font-medium text-foreground">vote</span> — completed = vote for your identity, missed = vote against</li>
           </ol>
         </CardContent>
       </Card>
 
-      {/* Contributing Habits */}
+      {/* Contributing Identities */}
       {contributing.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-sm font-medium">Habits Contributing to Your Vote</h2>
+          <h2 className="text-sm font-medium">Identities Contributing to Your Vote</h2>
           {contributing.map(b => (
-            <HabitBreakdownCard key={b.habitId} habit={b} onMarkDone={(id) => markDone.mutate(id)} />
+            <IdentityBreakdownCard key={b.identityId} identity={b} onMarkDone={(id) => markDone.mutate(id)} />
           ))}
         </div>
       )}
 
-      {/* Habits with routines but no past tasks yet */}
+      {/* Identities with routines but no past tasks yet */}
       {noTasks.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-sm font-medium text-muted-foreground">Habits With Routines (No Past Tasks Yet)</h2>
+          <h2 className="text-sm font-medium text-muted-foreground">Identities With Routines (No Past Tasks Yet)</h2>
           {noTasks.map(b => (
-            <Card key={b.habitId} className="opacity-70">
+            <Card key={b.identityId} className="opacity-70">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2">
                   <Target className="w-4 h-4 text-muted-foreground" />
                   <div>
-                    <p className="text-sm font-medium">{b.habitName}</p>
-                    {b.identityStatement && (
+                    <p className="text-sm font-medium">
+                      "I am the type of person who {b.identityStatement}"
+                    </p>
+                    {b.cue && (
                       <p className="text-[11px] text-muted-foreground">
-                        "I am the type of person who {b.identityStatement}"
+                        when {b.cue}
                       </p>
                     )}
                     {b.areaName && <Badge variant="outline" className="text-[10px] h-4 px-1 mt-1">{b.areaName}</Badge>}
@@ -189,26 +189,23 @@ export default function IdentityVotePage() {
         </div>
       )}
 
-      {/* Habits without routines — can't contribute */}
-      {habitsWithoutRoutine.length > 0 && (
+      {/* Identities without routines — can't contribute */}
+      {identitiesWithoutRoutine.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-sm font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1">
             <AlertTriangle className="w-3.5 h-3.5" />
-            Habits Missing Routines
+            Identities Missing Routines
           </h2>
           <p className="text-xs text-muted-foreground -mt-1">
-            These habits have identity statements but no routine, so they can't generate tasks or votes.
+            These identities have no routine, so they can't generate tasks or votes.
           </p>
-          {habitsWithoutRoutine.map(h => (
-            <Card key={h.habitId} className="border-amber-500/30">
+          {identitiesWithoutRoutine.map(i => (
+            <Card key={i.identityId} className="border-amber-500/30">
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium">{h.habitName}</p>
-                  {h.identityStatement && (
-                    <p className="text-[11px] text-muted-foreground">
-                      "I am the type of person who {h.identityStatement}"
-                    </p>
-                  )}
+                  <p className="text-sm font-medium">
+                    "I am the type of person who {i.identityStatement}"
+                  </p>
                 </div>
                 <Link href="/routine">
                   <Button variant="outline" size="sm" className="text-xs h-7 gap-1">
@@ -224,9 +221,9 @@ export default function IdentityVotePage() {
   );
 }
 
-function HabitBreakdownCard({ habit, onMarkDone }: { habit: HabitBreakdown; onMarkDone: (id: number) => void }) {
+function IdentityBreakdownCard({ identity, onMarkDone }: { identity: IdentityBreakdown; onMarkDone: (id: number) => void }) {
   const [expanded, setExpanded] = useState(false);
-  const percent = habit.percent ?? 0;
+  const percent = identity.percent ?? 0;
   const barColor = percent >= 80 ? "bg-emerald-500" : percent >= 50 ? "bg-amber-500" : "bg-destructive";
 
   return (
@@ -241,16 +238,16 @@ function HabitBreakdownCard({ habit, onMarkDone }: { habit: HabitBreakdown; onMa
             {percent}%
           </div>
           <div className="flex-1 min-w-0">
-            {habit.identityStatement && (
-              <p className="text-[11px] text-muted-foreground">
-                "I am the type of person who {habit.identityStatement}"
-              </p>
+            <p className="text-sm font-medium">
+              "I am the type of person who {identity.identityStatement}"
+            </p>
+            {identity.cue && (
+              <p className="text-[11px] text-muted-foreground">when {identity.cue}</p>
             )}
-            <p className="text-sm font-medium">{habit.habitName}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              {habit.areaName && <Badge variant="outline" className="text-[10px] h-4 px-1">{habit.areaName}</Badge>}
+              {identity.areaName && <Badge variant="outline" className="text-[10px] h-4 px-1">{identity.areaName}</Badge>}
               <span className="text-[11px] text-muted-foreground">
-                {habit.done}/{habit.total} completed
+                {identity.done}/{identity.total} completed
               </span>
             </div>
             {/* Mini progress bar */}
@@ -266,14 +263,14 @@ function HabitBreakdownCard({ habit, onMarkDone }: { habit: HabitBreakdown; onMa
         {expanded && (
           <div className="mt-4 space-y-4 border-t pt-3">
             {/* Upcoming tasks — actionable */}
-            {habit.upcomingTasks.length > 0 && (
+            {identity.upcomingTasks.length > 0 && (
               <div>
                 <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mb-2">
                   <Zap className="w-3 h-3" />
                   Complete these to increase your vote
                 </p>
                 <div className="space-y-1.5">
-                  {habit.upcomingTasks.map(t => (
+                  {identity.upcomingTasks.map(t => (
                     <div key={t.id} className="flex items-center gap-2 text-sm">
                       <button
                         onClick={(e) => { e.stopPropagation(); onMarkDone(t.id); }}
@@ -296,11 +293,11 @@ function HabitBreakdownCard({ habit, onMarkDone }: { habit: HabitBreakdown; onMa
             )}
 
             {/* Recent past tasks — history */}
-            {habit.pastTasks.length > 0 && (
+            {identity.pastTasks.length > 0 && (
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-2">Recent votes</p>
                 <div className="space-y-1">
-                  {habit.pastTasks.map(t => (
+                  {identity.pastTasks.map(t => (
                     <div key={t.id} className="flex items-center gap-2 text-xs">
                       {t.status === "done" ? (
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
@@ -317,7 +314,7 @@ function HabitBreakdownCard({ habit, onMarkDone }: { habit: HabitBreakdown; onMa
               </div>
             )}
 
-            {habit.upcomingTasks.length === 0 && habit.pastTasks.length === 0 && (
+            {identity.upcomingTasks.length === 0 && identity.pastTasks.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-2">No tasks to show.</p>
             )}
           </div>
