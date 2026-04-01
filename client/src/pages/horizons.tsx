@@ -435,7 +435,7 @@ function AreaSection({ areas }: { areas: Area[] }) {
     "Routines": "Time-blocked rituals that structure your day",
     "Roles": "The people and roles you show up for every day",
     "Getting Things Done": "Context-based action lists for executing tasks",
-    "Other": "Uncategorized areas",
+    "Other": "Unassigned areas",
   };
 
   const groupedAreas = AREA_CATEGORY_ORDER.reduce<Record<string, Area[]>>((acc, cat) => {
@@ -493,7 +493,7 @@ function AreaSection({ areas }: { areas: Area[] }) {
                     <Card key={a.id}>
                       <CardContent className="p-4 space-y-2">
                         <Select value={editCategory} onValueChange={setEditCategory}>
-                          <SelectTrigger className="text-sm"><SelectValue placeholder="Category" /></SelectTrigger>
+                          <SelectTrigger className="text-sm"><SelectValue placeholder="Responsibility" /></SelectTrigger>
                           <SelectContent>
                             {AREA_CATEGORY_ORDER.filter(c => c !== "Other").map(c => (
                               <SelectItem key={c} value={c}>{c}</SelectItem>

@@ -41,7 +41,7 @@ export const areas = sqliteTable("areas", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   description: text("description"),
-  category: text("category"), // group: UnPuzzle, Chores, Routines, Life, Getting Things Done
+  category: text("category"), // responsibility: UnPuzzle, Chores, Routines, Roles, Getting Things Done
   icon: text("icon"), // lucide icon name
   sortOrder: integer("sort_order").notNull().default(0),
   archived: integer("archived").notNull().default(0), // 1 = archived, 0 = active

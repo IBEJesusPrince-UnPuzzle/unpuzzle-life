@@ -145,7 +145,7 @@ export default function WizardPage() {
     return true;
   };
 
-  // Group areas by category
+  // Group areas by responsibility
   const groupedAreas = useMemo(() => {
     const groups: Record<string, Area[]> = {};
     areas.forEach(a => {
@@ -435,7 +435,7 @@ function Phase1Purpose({
 }
 
 // ============================================================
-// PHASE 2: CATEGORIES & AREAS
+// PHASE 2: RESPONSIBILITIES & AREAS
 // ============================================================
 
 function Phase3Areas({

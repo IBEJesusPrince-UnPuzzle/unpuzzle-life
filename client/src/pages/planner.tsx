@@ -1164,7 +1164,7 @@ function AddTaskDialog({ open, onOpenChange, areas, defaultDate, defaultAreaId }
     return diff > 0 ? diff.toFixed(2) : "";
   }, [startTime, endTime]);
 
-  // Group areas by category
+  // Group areas by responsibility
   const groupedAreas = useMemo(() => {
     const groups: Record<string, Area[]> = {};
     areas.forEach(a => {

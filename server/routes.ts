@@ -979,7 +979,7 @@ export function registerRoutes(server: Server, app: Express) {
             created++;
           } else if (type === "areas") {
             if (!row.name) { errors.push(`Row ${rowNum}: missing name`); continue; }
-            storage.createArea({ name: row.name, description: row.description || null, category: row.category || null, icon: null, sortOrder: allAreas.length + created });
+            storage.createArea({ name: row.name, description: row.description || null, category: row.responsibility || row.category || null, icon: null, sortOrder: allAreas.length + created });
             created++;
           } else if (type === "identities") {
             if (!row.statement) { errors.push(`Row ${rowNum}: missing statement`); continue; }

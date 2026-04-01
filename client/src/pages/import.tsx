@@ -33,8 +33,8 @@ const IMPORT_TYPES = [
     value: "areas",
     label: "3. Responsibilities",
     description: "Responsibilities & areas of focus",
-    columns: "category (UnPuzzle/Chores/Routines/Roles/Getting Things Done), name (the area within the responsibility), description",
-    example: `category,name,description\n"UnPuzzle","Health","Physical wellness and fitness"\n"UnPuzzle","Finances","Budgeting and investments"\n"Roles","Father","Being present for my kids"\n"Chores","Yard Work","Lawn and landscaping upkeep"`,
+    columns: "responsibility (UnPuzzle/Chores/Routines/Roles/Getting Things Done), name (the area within the responsibility), description",
+    example: `responsibility,name,description\n"UnPuzzle","Health","Physical wellness and fitness"\n"UnPuzzle","Finances","Budgeting and investments"\n"Roles","Father","Being present for my kids"\n"Chores","Yard Work","Lawn and landscaping upkeep"`,
     order: 3,
   },
   {
