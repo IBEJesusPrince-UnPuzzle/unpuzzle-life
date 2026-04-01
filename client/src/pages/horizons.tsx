@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import {
   Compass, Eye, Target, FolderOpen, Plus, Trash2,
-  Fingerprint, CalendarDays, ArrowRight, Pencil, X, ArrowLeft,
+  Fingerprint, ArrowRight, Pencil, X, ArrowLeft, Repeat2,
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
@@ -66,11 +66,10 @@ export default function HorizonsPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-4 w-full">
+        <TabsList className="grid grid-cols-3 w-full">
           <TabsTrigger value="purpose" className="text-xs" data-testid="tab-purpose">Purpose</TabsTrigger>
           <TabsTrigger value="areas" className="text-xs" data-testid="tab-areas">Responsibility</TabsTrigger>
           <TabsTrigger value="identity" className="text-xs" data-testid="tab-identity">Identity</TabsTrigger>
-          <TabsTrigger value="projects" className="text-xs" data-testid="tab-projects">Projects</TabsTrigger>
         </TabsList>
 
         <TabsContent value="purpose" className="mt-4">
@@ -85,10 +84,6 @@ export default function HorizonsPage() {
 
         <TabsContent value="identity" className="mt-4">
           <IdentitySection identities={identities} areas={areas} />
-        </TabsContent>
-
-        <TabsContent value="projects" className="mt-4">
-          <ProjectSection identities={identities} areas={areas} />
         </TabsContent>
 
       </Tabs>
@@ -845,6 +840,18 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
                         <span className="text-[10px] text-muted-foreground">because: {id.craving}</span>
                       )}
                     </div>
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <Link href={`/projects/${id.id}`}>
+                        <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-chart-5/10 transition-colors text-chart-5 border-chart-5/30">
+                          <FolderOpen className="w-3 h-3" /> Project
+                        </Badge>
+                      </Link>
+                      <Link href={`/routine?id=${id.id}`}>
+                        <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30">
+                          <Repeat2 className="w-3 h-3" /> Routine
+                        </Badge>
+                      </Link>
+                    </div>
                   </div>
                   <div className="flex items-center gap-1 ml-2 shrink-0">
                     <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => startEdit(id)} data-testid={`edit-identity-${id.id}`}>
@@ -874,98 +881,3 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
   );
 }
 
-// ============================================================
-// PROJECTS (auto-generated from identity chain: Area > Identity)
-// ============================================================
-function ProjectSection({ identities, areas }: { identities: Identity[]; areas: Area[] }) {
-  const projectIdentities = identities.filter(i => i.active && i.areaId != null);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 mb-2">
-        <HorizonBadge level={1} label="Projects" />
-        <span className="text-xs text-muted-foreground">Auto-generated from your identity chain (Area › Identity).</span>
-      </div>
-
-      {projectIdentities.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center text-muted-foreground">
-            <FolderOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p className="text-sm font-medium">No projects yet</p>
-            <p className="text-xs mt-1">Projects are derived from active identities linked to an area. Add identities in the Identity tab.</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {projectIdentities.map((identity) => {
-            const area = areas.find(a => a.id === identity.areaId);
-            const category = area?.category || "";
-            const areaName = area?.name || "";
-            const areaLabel = category === "UnPuzzle"
-              ? `${category} ${areaName}`
-              : `${areaName} ${category}`;
-
-            return (
-              <Link key={identity.id} href={`/projects/${identity.id}`}>
-                <Card className="cursor-pointer hover:shadow-md transition-shadow">
-                  <CardContent className="p-4 space-y-1.5">
-                    {area && (
-                      <p className="text-[11px] text-muted-foreground">
-                        In the area of <span className="font-medium text-foreground">{areaLabel}</span>...
-                      </p>
-                    )}
-                    <p className="text-[11px] text-muted-foreground">
-                      I'm the type of person who...<span className="font-medium text-foreground">{identity.statement}</span>
-                    </p>
-                    <div className="flex items-start gap-2">
-                      <FolderOpen className="w-4 h-4 text-chart-5 mt-0.5 shrink-0" />
-                      <p className="font-medium text-sm hover:text-primary transition-colors">
-                        {identity.cue ? `when...${identity.cue}` : identity.statement}
-                      </p>
-                    </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2">
-                      {["People", "Places", "Things"].map((cat) => (
-                        <div key={cat} className="rounded border border-dashed p-2">
-                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">{cat}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================================
-// AGENDA (links to Daily Agenda page)
-// ============================================================
-function AgendaSection() {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 mb-2">
-        <CalendarDays className="w-4 h-4 text-primary" />
-        <span className="text-sm font-medium">Daily Agenda</span>
-        <span className="text-xs text-muted-foreground">Your daily plan and task tracker.</span>
-      </div>
-
-      <Card>
-        <CardContent className="p-6 text-center space-y-3">
-          <CalendarDays className="w-10 h-10 mx-auto text-primary/40" />
-          <p className="text-sm text-muted-foreground">
-            Plan your day, track tasks across all areas, and review what you've accomplished.
-          </p>
-          <Link href="/planner">
-            <Button variant="outline" className="gap-2">
-              Open Daily Agenda <ArrowRight className="w-4 h-4" />
-            </Button>
-          </Link>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}

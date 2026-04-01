@@ -13,6 +13,7 @@ import RoutinePage from "@/pages/routine";
 import IdentityVotePage from "@/pages/identity-vote";
 import ImportPage from "@/pages/import";
 import ProjectDetailPage from "@/pages/project-detail";
+import ProjectsPage from "@/pages/projects";
 import WizardPage from "@/pages/wizard";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
@@ -62,6 +63,7 @@ function AppRouter() {
       <Route path="/review" component={ReviewPage} />
       <Route path="/identity-vote" component={IdentityVotePage} />
       <Route path="/import" component={ImportPage} />
+      <Route path="/projects" component={ProjectsPage} />
       <Route path="/projects/:id" component={ProjectDetailRoute} />
       <Route component={NotFound} />
     </Switch>

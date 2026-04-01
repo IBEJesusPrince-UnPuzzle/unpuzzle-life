@@ -91,6 +91,9 @@ export default function RoutinePage() {
     queryFn: () => apiRequest("GET", `/api/routine-logs?date=${today}`).then(r => r.json()),
   });
   const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
+  const { data: identities = [] } = useQuery<any[]>({
+    queryKey: ["/api/identities"],
+  });
 
   const activeItems = items.filter(i => i.active);
   const nonDraftItems = activeItems.filter(i => !(i as any).isDraft);
@@ -107,6 +110,22 @@ export default function RoutinePage() {
 
   const progressPct = nonDraftItems.length > 0 ? Math.round((completedCount / nonDraftItems.length) * 100) : 0;
 
+  // Group routines by identity (habitId stores identityId)
+  const routinesByIdentity = useMemo(() => {
+    const grouped = new Map<number, RoutineItem[]>();
+    const ungrouped: RoutineItem[] = [];
+    for (const item of items) {
+      if (item.habitId) {
+        const list = grouped.get(item.habitId) || [];
+        list.push(item);
+        grouped.set(item.habitId, list);
+      } else {
+        ungrouped.push(item);
+      }
+    }
+    return { grouped, ungrouped };
+  }, [items]);
+
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-5 overflow-y-auto h-full">
       <div className="flex justify-center mb-3">
@@ -116,9 +135,9 @@ export default function RoutinePage() {
       </div>
       {/* Header */}
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Daily Routine</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Routines</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Your 24-hour habit stack — the route to your horizons.
+          Manage all your routines — grouped by identity.
         </p>
       </div>
 

@@ -29,26 +29,12 @@ interface PrincipleCard {
   courseCorrect: string;
 }
 
-interface AnchorMoment {
-  lifePiece: string;
-  scene: string;
-}
-
-const ANCHOR_PIECES = [
-  { key: "mindfulness", emoji: "\u{1F9E0}", label: "Mindfulness", prompt: "Describe a moment in your ideal day that proves mindfulness is in place" },
-  { key: "finances", emoji: "\u{1F4B0}", label: "Finances", prompt: "Describe a moment that proves your finances support your ideal life" },
-  { key: "fitness", emoji: "\u{1F4AA}", label: "Physical Fitness", prompt: "Describe a moment that proves your body is performing at its best" },
-  { key: "career", emoji: "\u2728", label: "Career/Talents", prompt: "Describe a moment that proves your vocation supports your ideal life" },
-  { key: "joys", emoji: "\u{1F389}", label: "Joys/Pleasures", prompt: "Describe a moment that proves you're rewarding yourself for being you" },
-];
-
 const CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles", "Getting Things Done", "Other"];
 
 const PHASES = [
   { num: 1, title: "Purpose & Principles", subtitle: "The corner pieces and edge frame \u2014 the immutable laws everything else clicks into" },
-  { num: 2, title: "Vision", subtitle: "Step into your completed puzzle \u2014 walk through an ordinary day in your ideal life" },
-  { num: 3, title: "Responsibilities & Areas", subtitle: "The major sections and sub-assemblies \u2014 decide which parts of your life structure matter" },
-  { num: 4, title: "Identity", subtitle: "The detailed, interlocking pieces \u2014 where the science meets the art" },
+  { num: 2, title: "Responsibilities & Areas", subtitle: "The major sections and sub-assemblies \u2014 decide which parts of your life structure matter" },
+  { num: 3, title: "Identity", subtitle: "The detailed, interlocking pieces \u2014 where the science meets the art" },
 ];
 
 // ============================================================
@@ -65,14 +51,7 @@ export default function WizardPage() {
     statement: "", alwaysNever: "", testScenarios: ["", "", ""], violationSignal: "", courseCorrect: "",
   }]);
 
-  // Phase 2 state
-  const [visionTitle, setVisionTitle] = useState("");
-  const [visionJournal, setVisionJournal] = useState("");
-  const [anchorMoments, setAnchorMoments] = useState<AnchorMoment[]>(
-    ANCHOR_PIECES.map(p => ({ lifePiece: p.key, scene: "" }))
-  );
-
-  // Phase 4 state
+  // Phase 3 state (identity)
   const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null);
   const [identityText, setIdentityText] = useState("");
   const [habitCue, setHabitCue] = useState("");
@@ -99,19 +78,7 @@ export default function WizardPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/purposes"] }),
   });
 
-  // Phase 2: save vision
-  const saveVision = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/visions", {
-      title: visionTitle,
-      description: visionJournal,
-      status: "active",
-      createdAt: new Date().toISOString(),
-      anchorMoments: JSON.stringify(anchorMoments.filter(a => a.scene.trim())),
-    }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/visions"] }),
-  });
-
-  // Phase 3: toggle area archived
+  // Phase 2: toggle area archived
   const toggleArea = useMutation({
     mutationFn: ({ id, archived }: { id: number; archived: number }) =>
       apiRequest("PATCH", `/api/areas/${id}`, { archived }),
@@ -158,10 +125,7 @@ export default function WizardPage() {
     if (phase === 1 && purposeStatement.trim()) {
       await savePurpose.mutateAsync();
     }
-    if (phase === 2 && visionTitle.trim()) {
-      await saveVision.mutateAsync();
-    }
-    if (phase < 4) {
+    if (phase < 3) {
       const next = phase + 1;
       setPhase(next);
       saveWizardPhase.mutate(next);
@@ -178,7 +142,6 @@ export default function WizardPage() {
 
   const canAdvance = () => {
     if (phase === 1) return purposeStatement.trim().length > 0;
-    if (phase === 2) return visionTitle.trim().length > 0;
     return true;
   };
 
@@ -242,7 +205,7 @@ export default function WizardPage() {
             ))}
           </div>
           <p className="text-[10px] text-muted-foreground mt-2 text-center">
-            Phase {phase} of 4
+            Phase {phase} of 3
           </p>
         </div>
       </div>
@@ -268,22 +231,12 @@ export default function WizardPage() {
           />
         )}
         {phase === 2 && (
-          <Phase2Vision
-            visionTitle={visionTitle}
-            setVisionTitle={setVisionTitle}
-            visionJournal={visionJournal}
-            setVisionJournal={setVisionJournal}
-            anchorMoments={anchorMoments}
-            setAnchorMoments={setAnchorMoments}
-          />
-        )}
-        {phase === 3 && (
           <Phase3Areas
             groupedAreas={groupedAreas}
             onToggle={(id, archived) => toggleArea.mutate({ id, archived })}
           />
         )}
-        {phase === 4 && (
+        {phase === 3 && (
           <Phase4Identities
             activeGroupedAreas={activeGroupedAreas}
             selectedAreaId={selectedAreaId}
@@ -317,7 +270,7 @@ export default function WizardPage() {
               <ChevronLeft className="w-4 h-4 mr-1" /> Back
             </Button>
           )}
-          {phase < 4 ? (
+          {phase < 3 ? (
             <Button
               onClick={goNext}
               disabled={!canAdvance()}
@@ -479,83 +432,7 @@ function Phase1Purpose({
 }
 
 // ============================================================
-// PHASE 2: VISION
-// ============================================================
-
-function Phase2Vision({
-  visionTitle, setVisionTitle,
-  visionJournal, setVisionJournal,
-  anchorMoments, setAnchorMoments,
-}: {
-  visionTitle: string; setVisionTitle: (v: string) => void;
-  visionJournal: string; setVisionJournal: (v: string) => void;
-  anchorMoments: AnchorMoment[]; setAnchorMoments: (v: AnchorMoment[]) => void;
-}) {
-  const updateMoment = (idx: number, scene: string) => {
-    const next = [...anchorMoments];
-    next[idx] = { ...next[idx], scene };
-    setAnchorMoments(next);
-  };
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <label className="text-sm font-semibold text-foreground mb-2 block">
-          Give your ideal life a name
-        </label>
-        <Input
-          value={visionTitle}
-          onChange={e => setVisionTitle(e.target.value)}
-          placeholder="e.g. The Abundant Life, My Masterpiece, The Good Life"
-          className="text-sm"
-          data-testid="input-vision-title"
-        />
-      </div>
-
-      <div>
-        <label className="text-sm font-semibold text-foreground mb-2 block">
-          Day-in-the-Life Journal
-        </label>
-        <p className="text-xs text-muted-foreground mb-2">
-          Describe a full day in your ideal life, governed by your principles. What do you see, hear, and feel?
-        </p>
-        <Textarea
-          value={visionJournal}
-          onChange={e => setVisionJournal(e.target.value)}
-          placeholder="I wake up at 5:30am in a home filled with natural light..."
-          className="min-h-[160px] text-sm"
-        />
-      </div>
-
-      <div className="space-y-4">
-        <h3 className="text-sm font-semibold">5 Anchor Moments</h3>
-        <p className="text-xs text-muted-foreground -mt-2">
-          Paint a micro-scene for each life piece in your ideal day.
-        </p>
-
-        {ANCHOR_PIECES.map((piece, idx) => (
-          <Card key={piece.key} className="border-amber-500/20">
-            <CardContent className="p-4 space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">{piece.emoji}</span>
-                <span className="text-sm font-semibold">{piece.label}</span>
-              </div>
-              <Textarea
-                value={anchorMoments[idx]?.scene || ""}
-                onChange={e => updateMoment(idx, e.target.value)}
-                placeholder={piece.prompt}
-                className="min-h-[80px] text-sm"
-              />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// PHASE 3: CATEGORIES & AREAS
+// PHASE 2: CATEGORIES & AREAS
 // ============================================================
 
 function Phase3Areas({
@@ -610,7 +487,7 @@ function Phase3Areas({
 }
 
 // ============================================================
-// PHASE 4: IDENTITY (unified — no separate habits)
+// PHASE 3: IDENTITY (unified — no separate habits)
 // ============================================================
 
 function Phase4Identities({
