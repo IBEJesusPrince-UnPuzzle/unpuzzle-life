@@ -20,7 +20,6 @@ const navItems = [
   { title: "Weekly Review", url: "/review", icon: RotateCcw },
   { title: "Horizons", url: "/horizons", icon: Layers },
   { title: "Import", url: "/import", icon: Upload },
-  { title: "Build My Puzzle", url: "/wizard", icon: Puzzle },
 ];
 
 export function AppSidebar({ isDark, toggleTheme }: { isDark: boolean; toggleTheme: () => void }) {

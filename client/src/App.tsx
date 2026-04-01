@@ -14,7 +14,6 @@ import IdentityVotePage from "@/pages/identity-vote";
 import ImportPage from "@/pages/import";
 import ProjectDetailPage from "@/pages/project-detail";
 import ProjectsPage from "@/pages/projects";
-import WizardPage from "@/pages/wizard";
 import NotFound from "@/pages/not-found";
 import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
@@ -34,19 +33,19 @@ function ProjectDetailRoute({ params }: { params: { id?: string } }) {
 
 function DashboardWithRedirect() {
   const [, navigate] = useLocation();
-  const { data: wizardData, isLoading } = useQuery<{ currentPhase: number; completed: number }>({
-    queryKey: ["/api/wizard-state"],
-    queryFn: () => apiRequest("GET", "/api/wizard-state").then(r => r.json()),
+  const { data: stats, isLoading } = useQuery<{ totalActiveIdentities: number }>({
+    queryKey: ["/api/stats"],
+    queryFn: () => apiRequest("GET", "/api/stats").then(r => r.json()),
   });
 
   useEffect(() => {
-    if (!isLoading && wizardData && !wizardData.completed) {
-      navigate("/wizard");
+    if (!isLoading && stats && stats.totalActiveIdentities === 0) {
+      navigate("/horizons");
     }
-  }, [wizardData, isLoading, navigate]);
+  }, [stats, isLoading, navigate]);
 
   if (isLoading) return null;
-  if (wizardData && !wizardData.completed) return null;
+  if (stats && stats.totalActiveIdentities === 0) return null;
 
   return <Dashboard />;
 }
@@ -55,7 +54,6 @@ function AppRouter() {
   return (
     <Switch>
       <Route path="/" component={DashboardWithRedirect} />
-      <Route path="/wizard" component={WizardPage} />
       <Route path="/inbox" component={InboxPage} />
       <Route path="/horizons" component={HorizonsPage} />
       <Route path="/routine" component={RoutinePage} />
@@ -76,7 +74,6 @@ const navItems = [
   { title: "Weekly Review", url: "/review", icon: RotateCcw },
   { title: "Horizons", url: "/horizons", icon: Layers },
   { title: "Import", url: "/import", icon: Upload },
-  { title: "Build My Puzzle", url: "/wizard", icon: Puzzle },
 ];
 
 function SlideMenu({ open, onClose, isDark, toggleTheme }: {
@@ -176,7 +173,6 @@ function AppShell() {
   );
   const [menuOpen, setMenuOpen] = useState(false);
   const [location] = useLocation();
-  const isWizard = location === "/wizard";
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
@@ -188,18 +184,16 @@ function AppShell() {
         <AppRouter />
       </main>
 
-      {/* Floating menu button — hidden on wizard */}
-      {!isWizard && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30">
-          <button
-            onClick={() => setMenuOpen(true)}
-            className="w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-95 transition-all"
-            data-testid="menu-trigger"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-        </div>
-      )}
+      {/* Floating menu button */}
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30">
+        <button
+          onClick={() => setMenuOpen(true)}
+          className="w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-95 transition-all"
+          data-testid="menu-trigger"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+      </div>
 
       {/* Slide-out menu */}
       <SlideMenu
