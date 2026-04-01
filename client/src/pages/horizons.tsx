@@ -54,9 +54,9 @@ export default function HorizonsPage() {
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
       <div className="flex justify-center mb-3">
-        <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5">
+        <a href="#/" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5">
           <ArrowLeft className="w-4 h-4" /> Back to Dashboard
-        </Link>
+        </a>
       </div>
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Horizons of Focus</h1>
@@ -841,16 +841,16 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 mt-1.5">
-                      <Link href={`/projects/${id.id}`}>
+                      <a href={`#/projects/${id.id}`}>
                         <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-chart-5/10 transition-colors text-chart-5 border-chart-5/30">
                           <FolderOpen className="w-3 h-3" /> Project
                         </Badge>
-                      </Link>
-                      <Link href={`/routine?id=${id.id}`}>
+                      </a>
+                      <a href={`#/routine?id=${id.id}`}>
                         <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30">
                           <Repeat2 className="w-3 h-3" /> Routine
                         </Badge>
-                      </Link>
+                      </a>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 ml-2 shrink-0">
@@ -871,11 +871,11 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
 
       {/* Link to Routine */}
       <div className="pt-2">
-        <Link href="/routine">
+        <a href="#/routine">
           <span className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 cursor-pointer">
             Manage your routine <ArrowRight className="w-3 h-3" />
           </span>
-        </Link>
+        </a>
       </div>
     </div>
   );

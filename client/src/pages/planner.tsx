@@ -387,9 +387,9 @@ export function SorterView({ areas, onAreaClick }: { areas: Area[]; onAreaClick:
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4 overflow-y-auto h-full">
       <div className="flex justify-center mb-3">
-        <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5">
+        <a href="#/" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5">
           <ArrowLeft className="w-4 h-4" /> Back to Dashboard
-        </Link>
+        </a>
       </div>
       {/* Header */}
       <div>
@@ -717,14 +717,14 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
             {/* Project badge row */}
             {isProjectTask && chain && (
               <div className="mb-1">
-                <Link href={`/projects/${task.habitId}`}>
+                <a href={`#/projects/${task.habitId}`}>
                   <div className="flex items-center gap-1 cursor-pointer group/proj">
                     <FolderOpen className="w-3 h-3 text-chart-5 shrink-0" />
                     <span className="text-[10px] font-medium text-chart-5 group-hover/proj:underline truncate">
                       {chain.projectTitle}
                     </span>
                   </div>
-                </Link>
+                </a>
               </div>
             )}
 
