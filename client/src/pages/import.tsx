@@ -32,42 +32,26 @@ const IMPORT_TYPES = [
   {
     value: "areas",
     label: "3. Areas",
-    description: "Areas of focus / responsibility",
-    columns: "name, description, category (UnPuzzle/Chores/Routines/Life/Getting Things Done)",
-    example: `name,description,category\n"Health","Physical wellness","Roles"`,
+    description: "Responsibilities & areas of focus",
+    columns: "name, description, category (UnPuzzle/Chores/Routines/Roles/Getting Things Done)",
+    example: `name,description,category\n"Health","Physical wellness","UnPuzzle"`,
     order: 3,
   },
   {
     value: "identities",
     label: "4. Identities",
-    description: "Identity statements linked to areas",
+    description: "Identity statements linked to areas (generates projects & routines)",
     columns: "statement, area_name (must match an existing area)",
     example: `statement,area_name\n"exercises daily","Health"`,
     order: 4,
   },
   {
-    value: "habits",
-    label: "5. Habits",
-    description: "Habits linked to identities and areas",
-    columns: "name, identity_statement, area_name, cue, because, reward, time_of_day, frequency",
-    example: `name,identity_statement,area_name,cue,because,reward,time_of_day,frequency\n"Morning run","exercises daily","Health","alarm at 6am","energizes me","feeling accomplished","morning","daily"`,
-    order: 5,
-  },
-  {
-    value: "goals",
-    label: "6. Goals",
-    description: "1-2 year goals linked to visions",
-    columns: "title, description, vision_title (must match existing), target_date (YYYY-MM-DD)",
-    example: `title,description,vision_title,target_date\n"Lose 20 lbs","Get to 180 lbs","Run a marathon","2026-12-31"`,
-    order: 6,
-  },
-  {
     value: "tasks",
-    label: "7. Tasks",
+    label: "5. Tasks",
     description: "Daily agenda tasks",
     columns: "date (YYYY-MM-DD), goal, area_name, start_time (HH:MM), end_time (HH:MM)",
-    example: `date,goal,area_name,start_time,end_time\n"2026-03-31","Morning run","Health","06:00","06:45"`,
-    order: 7,
+    example: `date,goal,area_name,start_time,end_time\n"2026-04-01","Morning run","Health","06:00","06:45"`,
+    order: 5,
   },
 ];
 
@@ -191,8 +175,8 @@ export default function ImportPage() {
             <Info className="w-3 h-3" /> Recommended import order
           </p>
           <p className="text-xs text-muted-foreground">
-            Import in this order so references resolve correctly: Purposes → Visions → Areas → Identities → Habits → Goals → Tasks.
-            Each type can reference items from earlier types by name.
+            Import in this order so references resolve correctly: Purposes → Visions → Areas → Identities → Tasks.
+            Each type can reference items from earlier types by name. Projects & routines are auto-generated from identities.
           </p>
         </CardContent>
       </Card>

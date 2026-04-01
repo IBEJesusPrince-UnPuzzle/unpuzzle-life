@@ -12,7 +12,7 @@ import {
   Puzzle, ChevronRight, ChevronLeft, Plus, Sparkles, Trash2,
 } from "lucide-react";
 import { useState, useMemo } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import type { Area, Identity } from "@shared/schema";
 import { RecurrenceBuilder } from "./planner";
 import { TIME_OF_DAY_CATEGORIES } from "./habits";
@@ -218,6 +218,9 @@ export default function WizardPage() {
         <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
           {currentPhase.subtitle}
         </p>
+        <Link href="/import" className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 mt-2 transition-colors">
+          or import existing data →
+        </Link>
       </div>
 
       {/* Content area */}
