@@ -65,10 +65,10 @@ export default function Dashboard() {
       {/* Header */}
       <div className="space-y-1">
         <h1 className="text-xl font-semibold tracking-tight" data-testid="text-greeting">
-          {getGreeting()}
+          {getGreeting()}, IBEJesus
         </h1>
         <p className="text-sm text-muted-foreground">
-          {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+          <span className="font-bold">It's</span> {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
         </p>
       </div>
 
