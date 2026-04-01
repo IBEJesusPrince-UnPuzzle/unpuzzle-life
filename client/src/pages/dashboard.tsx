@@ -8,7 +8,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Fingerprint, Clock, AlertTriangle, Inbox as InboxIcon, Plus,
+  Fingerprint, Inbox as InboxIcon, Repeat2, FolderOpen, Plus,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -129,41 +129,41 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             </Link>
-            <Link href="/routine">
-              <Card className="cursor-pointer hover:shadow-md transition-shadow">
-                <CardContent className="p-4 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-chart-4/10 flex items-center justify-center">
-                    <Clock className="w-4 h-4 text-chart-4" />
-                  </div>
-                  <div>
-                    <p className="text-xl font-semibold tabular-nums">{stats?.pendingActionsCount || 0}</p>
-                    <p className="text-xs text-muted-foreground">Pending Actions</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-            <Link href="/planner">
-              <Card className="cursor-pointer hover:shadow-md transition-shadow">
-                <CardContent className="p-4 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-destructive/10 flex items-center justify-center">
-                    <AlertTriangle className="w-4 h-4 text-destructive" />
-                  </div>
-                  <div>
-                    <p className="text-xl font-semibold tabular-nums">{stats?.missedTasksCount || 0}</p>
-                    <p className="text-xs text-muted-foreground">Missed Tasks</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
             <Link href="/inbox">
               <Card className="cursor-pointer hover:shadow-md transition-shadow">
                 <CardContent className="p-4 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-chart-5/10 flex items-center justify-center">
-                    <InboxIcon className="w-4 h-4 text-chart-5" />
+                  <div className="w-9 h-9 rounded-lg bg-chart-4/10 flex items-center justify-center">
+                    <InboxIcon className="w-4 h-4 text-chart-4" />
                   </div>
                   <div>
                     <p className="text-xl font-semibold tabular-nums">{stats?.inboxCount || 0}</p>
-                    <p className="text-xs text-muted-foreground">In Inbox</p>
+                    <p className="text-xs text-muted-foreground">Inbox</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link href="/routine">
+              <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-chart-5/10 flex items-center justify-center">
+                    <Repeat2 className="w-4 h-4 text-chart-5" />
+                  </div>
+                  <div>
+                    <p className="text-xl font-semibold tabular-nums">{stats?.totalActiveIdentities || 0}</p>
+                    <p className="text-xs text-muted-foreground">Routines</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link href="/horizons">
+              <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <FolderOpen className="w-4 h-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-xl font-semibold tabular-nums">{stats?.activeProjects || 0}</p>
+                    <p className="text-xs text-muted-foreground">Projects</p>
                   </div>
                 </CardContent>
               </Card>

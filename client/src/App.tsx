@@ -70,9 +70,6 @@ function AppRouter() {
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Inbox", url: "/inbox", icon: Inbox },
-  { title: "Routine", url: "/routine", icon: Timer },
-  { title: "Agenda", url: "/planner", icon: CalendarDays },
   { title: "Weekly Review", url: "/review", icon: RotateCcw },
   { title: "Horizons", url: "/horizons", icon: Layers },
   { title: "Import", url: "/import", icon: Upload },
