@@ -15,6 +15,7 @@ import {
   Sparkles, ArrowRight, Eye, Zap, Heart, Trophy, FileEdit, Check, Trash2, ArrowLeft
 } from "lucide-react";
 import { useState, useMemo, useRef, useEffect } from "react";
+import { Link } from "wouter";
 import type { RoutineItem, RoutineLog, Area } from "@shared/schema";
 
 function getToday() {
@@ -80,7 +81,7 @@ function getCurrentProgress(items: RoutineItem[]): number {
   return -1;
 }
 
-export default function RoutinePage() {
+export default function RoutinePage({ filterIdentityId }: { filterIdentityId?: number } = {}) {
   const today = getToday();
   
   const { data: items = [] } = useQuery<RoutineItem[]>({
@@ -126,18 +127,42 @@ export default function RoutinePage() {
     return { grouped, ungrouped };
   }, [items]);
 
+  // Scroll to the filtered identity's first routine item
+  const scrollTargetRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (filterIdentityId && scrollTargetRef.current) {
+      scrollTargetRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [filterIdentityId, items]);
+
+  // Find the filtered identity name for the header
+  const filteredIdentity = filterIdentityId
+    ? identities.find((i: any) => i.id === filterIdentityId)
+    : null;
+
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-5 overflow-y-auto h-full">
       <div className="flex justify-center mb-3">
-        <a href="#/" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5">
+        <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5">
           <ArrowLeft className="w-4 h-4" /> Back to Dashboard
-        </a>
+        </Link>
       </div>
+
+      {/* Filtered identity banner */}
+      {filteredIdentity && (
+        <div ref={scrollTargetRef} className="rounded-lg border border-violet-500/30 bg-violet-500/10 p-3">
+          <p className="text-xs text-muted-foreground">Showing routines for</p>
+          <p className="text-sm font-medium text-violet-600 dark:text-violet-400">
+            I'm the type of person who {filteredIdentity.statement}
+          </p>
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Routines</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Manage all your routines — grouped by identity.
+          {filterIdentityId ? "Viewing identity-specific routines." : "Manage all your routines — grouped by identity."}
         </p>
       </div>
 

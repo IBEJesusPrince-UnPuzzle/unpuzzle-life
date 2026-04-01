@@ -59,6 +59,7 @@ function AppRouter() {
       <Route path="/inbox" component={InboxPage} />
       <Route path="/horizons" component={HorizonsPage} />
       <Route path="/routine" component={RoutinePage} />
+      <Route path="/routine/:id">{(params) => <RoutinePage filterIdentityId={Number(params.id)} />}</Route>
       <Route path="/planner" component={PlannerPage} />
       <Route path="/review" component={ReviewPage} />
       <Route path="/identity-vote" component={IdentityVotePage} />
