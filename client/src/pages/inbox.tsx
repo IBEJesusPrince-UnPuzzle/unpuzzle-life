@@ -72,6 +72,11 @@ export default function InboxPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6 overflow-y-auto h-full">
+      <div className="flex justify-center mb-3">
+        <a href="#/" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5">
+          <ArrowLeft className="w-4 h-4" /> Back to Dashboard
+        </a>
+      </div>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Inbox</h1>
