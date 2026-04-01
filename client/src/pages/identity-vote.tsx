@@ -5,10 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Fingerprint, CheckCircle2, Clock, AlertTriangle, ArrowRight,
-  Target, Zap, ChevronDown, ChevronRight,
+  Target, Zap, ChevronDown, ChevronRight, ArrowLeft,
 } from "lucide-react";
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 interface VoteTask {
   id: number;
@@ -59,6 +59,8 @@ function formatDateShort(dateStr: string) {
 }
 
 export default function IdentityVotePage() {
+  const [, navigate] = useLocation();
+
   const { data, isLoading } = useQuery<VoteDetails>({
     queryKey: ["/api/identity-vote-details"],
     queryFn: () => apiRequest("GET", "/api/identity-vote-details").then(r => r.json()),
@@ -90,6 +92,16 @@ export default function IdentityVotePage() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
+      {/* Back button */}
+      <button
+        onClick={() => navigate("/")}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors -mb-3"
+        data-testid="back-button"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        <span>Back to Dashboard</span>
+      </button>
+
       {/* Header */}
       <div>
         <h1 className="text-xl font-semibold tracking-tight flex items-center gap-2">

@@ -9,9 +9,10 @@ import {
 } from "@/components/ui/select";
 import {
   FolderOpen, Users, MapPin, Package, Plus, Clock, CheckCircle2,
-  Repeat, Archive, Sparkles, Trash2,
+  Repeat, Archive, Sparkles, Trash2, ArrowLeft,
 } from "lucide-react";
 import { useState } from "react";
+import { useLocation } from "wouter";
 import type { Identity, Area, RoutineItem, PlannerTask } from "@shared/schema";
 import { formatRecurrence } from "./planner";
 
@@ -42,6 +43,8 @@ const GENERIC_CATEGORIES = [
 ];
 
 export default function ProjectDetailPage({ id }: { id: number }) {
+  const [, navigate] = useLocation();
+
   const { data, isLoading, error } = useQuery<IdentityProjectDetails>({
     queryKey: ["/api/identity-projects", id],
     queryFn: () => apiRequest("GET", `/api/identity-projects/${id}`).then(r => r.json()),
@@ -73,6 +76,16 @@ export default function ProjectDetailPage({ id }: { id: number }) {
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
+      {/* Back button */}
+      <button
+        onClick={() => navigate("/horizons")}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors -mb-3"
+        data-testid="back-button"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        <span>Back to Projects</span>
+      </button>
+
       {/* Header */}
       <div>
         {area && (
