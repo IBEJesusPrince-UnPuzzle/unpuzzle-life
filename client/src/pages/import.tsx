@@ -31,10 +31,10 @@ const IMPORT_TYPES = [
   },
   {
     value: "areas",
-    label: "3. Areas",
+    label: "3. Responsibilities",
     description: "Responsibilities & areas of focus",
-    columns: "name, description, category (UnPuzzle/Chores/Routines/Roles/Getting Things Done)",
-    example: `name,description,category\n"Health","Physical wellness","UnPuzzle"`,
+    columns: "category (UnPuzzle/Chores/Routines/Roles/Getting Things Done), name (the area within the responsibility), description",
+    example: `category,name,description\n"UnPuzzle","Health","Physical wellness and fitness"\n"UnPuzzle","Finances","Budgeting and investments"\n"Roles","Father","Being present for my kids"\n"Chores","Yard Work","Lawn and landscaping upkeep"`,
     order: 3,
   },
   {
@@ -175,7 +175,7 @@ export default function ImportPage() {
             <Info className="w-3 h-3" /> Recommended import order
           </p>
           <p className="text-xs text-muted-foreground">
-            Import in this order so references resolve correctly: Purposes → Visions → Areas → Identities → Tasks.
+            Import in this order so references resolve correctly: Purposes → Visions → Responsibilities → Identities → Tasks.
             Each type can reference items from earlier types by name. Projects & routines are auto-generated from identities.
           </p>
         </CardContent>
