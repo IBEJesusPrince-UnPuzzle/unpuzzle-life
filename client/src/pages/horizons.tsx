@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 import type { Purpose, Vision, Area, Identity } from "@shared/schema";
 import { RecurrenceBuilder, formatRecurrence } from "./planner";
 import { TIME_OF_DAY_CATEGORIES } from "./habits";
@@ -560,6 +561,7 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
   const [editCraving, setEditCraving] = useState("");
   const [editReward, setEditReward] = useState("");
 
+  const { toast } = useToast();
   const activeIdentities = identities.filter(i => i.active);
 
   const AREA_CATEGORIES = ["UnPuzzle", "Chores", "Routines", "Roles", "Getting Things Done"];
@@ -584,6 +586,7 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
       setRecurrence(JSON.stringify({ type: "daily", interval: 1 }));
       setDialogOpen(false);
       queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
+      toast({ title: "Identity created", description: "Your new identity has been added. A project and routine link are now available." });
     },
   });
 
@@ -593,6 +596,7 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
     onSuccess: () => {
       setEditingId(null);
       queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
+      toast({ title: "Identity updated" });
     },
   });
 
