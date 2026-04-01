@@ -61,12 +61,11 @@ export default function HorizonsPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-5 w-full">
+        <TabsList className="grid grid-cols-4 w-full">
           <TabsTrigger value="purpose" className="text-xs" data-testid="tab-purpose">Purpose</TabsTrigger>
           <TabsTrigger value="areas" className="text-xs" data-testid="tab-areas">Responsibilities</TabsTrigger>
           <TabsTrigger value="identity" className="text-xs" data-testid="tab-identity">Identity</TabsTrigger>
           <TabsTrigger value="projects" className="text-xs" data-testid="tab-projects">Projects</TabsTrigger>
-          <TabsTrigger value="agenda" className="text-xs" data-testid="tab-agenda">Agenda</TabsTrigger>
         </TabsList>
 
         <TabsContent value="purpose" className="mt-4">
@@ -87,9 +86,6 @@ export default function HorizonsPage() {
           <ProjectSection identities={identities} areas={areas} />
         </TabsContent>
 
-        <TabsContent value="agenda" className="mt-4">
-          <AgendaSection />
-        </TabsContent>
       </Tabs>
     </div>
   );
