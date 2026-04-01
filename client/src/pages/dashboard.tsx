@@ -155,7 +155,7 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             </Link>
-            <Link href="/horizons">
+            <Link href="/horizons?tab=projects">
               <Card className="cursor-pointer hover:shadow-md transition-shadow">
                 <CardContent className="p-4 flex items-center gap-3">
                   <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">

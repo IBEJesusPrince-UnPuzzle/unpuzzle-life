@@ -39,7 +39,12 @@ function HorizonBadge({ level, label }: { level: number; label: string }) {
 }
 
 export default function HorizonsPage() {
-  const [activeTab, setActiveTab] = useState("purpose");
+  const initialTab = (() => {
+    const hash = window.location.hash || "";
+    const match = hash.match(/[?&]tab=([^&]*)/);
+    return match ? match[1] : "purpose";
+  })();
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   const { data: purposes = [] } = useQuery<Purpose[]>({ queryKey: ["/api/purposes"] });
   const { data: visions = [] } = useQuery<Vision[]>({ queryKey: ["/api/visions"] });
@@ -63,7 +68,7 @@ export default function HorizonsPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid grid-cols-4 w-full">
           <TabsTrigger value="purpose" className="text-xs" data-testid="tab-purpose">Purpose</TabsTrigger>
-          <TabsTrigger value="areas" className="text-xs" data-testid="tab-areas">Responsibilities</TabsTrigger>
+          <TabsTrigger value="areas" className="text-xs" data-testid="tab-areas">Responsibility</TabsTrigger>
           <TabsTrigger value="identity" className="text-xs" data-testid="tab-identity">Identity</TabsTrigger>
           <TabsTrigger value="projects" className="text-xs" data-testid="tab-projects">Projects</TabsTrigger>
         </TabsList>
