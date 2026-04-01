@@ -55,7 +55,7 @@ export default function HorizonsPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid grid-cols-5 w-full">
           <TabsTrigger value="purpose" className="text-xs" data-testid="tab-purpose">Purpose</TabsTrigger>
-          <TabsTrigger value="areas" className="text-xs" data-testid="tab-areas">Areas</TabsTrigger>
+          <TabsTrigger value="areas" className="text-xs" data-testid="tab-areas">Responsibilities</TabsTrigger>
           <TabsTrigger value="identity" className="text-xs" data-testid="tab-identity">Identity</TabsTrigger>
           <TabsTrigger value="projects" className="text-xs" data-testid="tab-projects">Projects</TabsTrigger>
           <TabsTrigger value="agenda" className="text-xs" data-testid="tab-agenda">Agenda</TabsTrigger>
@@ -423,13 +423,13 @@ function AreaSection({ areas }: { areas: Area[] }) {
     });
   }
 
-  const AREA_CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles & Responsibilities", "Getting Things Done", "Other"];
+  const AREA_CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles", "Getting Things Done", "Other"];
 
   const CATEGORY_DESCRIPTIONS: Record<string, string> = {
     "UnPuzzle": "The 5 core life puzzle pieces — mindfulness, fitness, career, finances, and joy",
     "Chores": "Recurring household tasks that keep your environment running",
     "Routines": "Time-blocked rituals that structure your day",
-    "Roles & Responsibilities": "The people and roles you show up for every day",
+    "Roles": "The people and roles you show up for every day",
     "Getting Things Done": "Context-based action lists for executing tasks",
     "Other": "Uncategorized areas",
   };
@@ -443,15 +443,15 @@ function AreaSection({ areas }: { areas: Area[] }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-2">
-        <HorizonBadge level={2} label="Areas of Focus" />
-        <span className="text-xs text-muted-foreground">What roles and responsibilities do I maintain?</span>
+        <HorizonBadge level={2} label="Responsibilities of Focus" />
+        <span className="text-xs text-muted-foreground">What responsibilities do I maintain?</span>
       </div>
 
       {/* Add Area form first */}
       <Card className="border-dashed">
         <CardContent className="p-4 space-y-3">
           <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger className="text-sm"><SelectValue placeholder="Select category..." /></SelectTrigger>
+            <SelectTrigger className="text-sm"><SelectValue placeholder="Select responsibility..." /></SelectTrigger>
             <SelectContent>
               {AREA_CATEGORY_ORDER.filter(c => c !== "Other").map(c => (
                 <SelectItem key={c} value={c}>
@@ -617,7 +617,7 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
                 <SelectValue placeholder="Select area" />
               </SelectTrigger>
               <SelectContent>
-                {["UnPuzzle", "Chores", "Routines", "Roles & Responsibilities", "Getting Things Done"].map(cat => {
+                {["UnPuzzle", "Chores", "Routines", "Roles", "Getting Things Done"].map(cat => {
                   const catAreas = areas.filter(a => (a.category || "Other") === cat);
                   if (catAreas.length === 0) return null;
                   return [
@@ -664,7 +664,7 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
                           <SelectValue placeholder="Select area" />
                         </SelectTrigger>
                         <SelectContent>
-                          {["UnPuzzle", "Chores", "Routines", "Roles & Responsibilities", "Getting Things Done"].map(cat => {
+                          {["UnPuzzle", "Chores", "Routines", "Roles", "Getting Things Done"].map(cat => {
                             const catAreas = areas.filter(a => (a.category || "Other") === cat);
                             if (catAreas.length === 0) return null;
                             return [
