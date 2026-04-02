@@ -14,12 +14,12 @@ import {
 import { Link } from "wouter";
 import type { Purpose, Vision, Area, Identity } from "@shared/schema";
 
-// Map import type → where the data lives in Clarity
+// Map import type → where the data lives in Clarity (with tab param)
 const VIEW_LINKS: Record<string, { label: string; path: string }> = {
-  purposes: { label: "Purpose & Principles", path: "/horizons" },
-  visions: { label: "Visions", path: "/horizons" },
-  areas: { label: "Responsibilities & Areas", path: "/horizons" },
-  identities: { label: "Identities", path: "/horizons" },
+  purposes: { label: "Purpose & Principles", path: "/horizons?tab=purpose" },
+  visions: { label: "Visions", path: "/horizons?tab=purpose" },
+  areas: { label: "Responsibilities & Areas", path: "/horizons?tab=areas" },
+  identities: { label: "Identities", path: "/horizons?tab=identity" },
   tasks: { label: "Weekly Planner", path: "/planner" },
 };
 
