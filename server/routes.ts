@@ -982,8 +982,18 @@ export function registerRoutes(server: Server, app: Express) {
             storage.createArea({ name: row.name, description: row.description || null, category: row.responsibility || row.category || null, icon: null, sortOrder: allAreas.length + created });
             created++;
           } else if (type === "identities") {
-            if (!row.statement) { errors.push(`Row ${rowNum}: missing statement`); continue; }
-            const area = row.area_name ? findAreaByName(row.area_name) : null;
+            // All 7 fields required
+            const missing: string[] = [];
+            if (!row.statement) missing.push("statement");
+            if (!row.area_name) missing.push("area_name");
+            if (!row.cue) missing.push("cue");
+            if (!row.time_of_day) missing.push("time_of_day");
+            if (!row.recurrence) missing.push("recurrence");
+            if (!row.craving) missing.push("craving");
+            if (!row.reward) missing.push("reward");
+            if (missing.length > 0) { errors.push(`Row ${rowNum}: missing ${missing.join(", ")}`); continue; }
+            const area = findAreaByName(row.area_name);
+            if (!area) { errors.push(`Row ${rowNum}: area "${row.area_name}" not found — import areas first`); continue; }
             // Map simple recurrence keywords to JSON patterns (matching RecurrenceBuilder output)
             const recurrenceMap: Record<string, string> = {
               "daily": JSON.stringify({ type: "daily", interval: 1 }),
@@ -992,26 +1002,25 @@ export function registerRoutes(server: Server, app: Express) {
               "quarterly": JSON.stringify({ type: "quarterly", interval: 1 }),
               "yearly": JSON.stringify({ type: "yearly", interval: 1 }),
             };
-            const freq = row.recurrence
-              ? (recurrenceMap[row.recurrence.toLowerCase().trim()] || recurrenceMap["daily"])
-              : JSON.stringify({ type: "daily", interval: 1 });
-            // Validate time_of_day if provided
+            const recKey = row.recurrence.toLowerCase().trim();
+            const freq = recurrenceMap[recKey];
+            if (!freq) { errors.push(`Row ${rowNum}: invalid recurrence "${row.recurrence}" — use daily, weekly, monthly, quarterly, or yearly`); continue; }
+            // Validate time_of_day
             const validTimes = ["early_morning", "morning", "late_morning", "afternoon", "late_afternoon", "evening", "waking_hours"];
-            const tod = row.time_of_day && validTimes.includes(row.time_of_day.toLowerCase().trim())
-              ? row.time_of_day.toLowerCase().trim()
-              : null;
+            const todKey = row.time_of_day.toLowerCase().trim();
+            if (!validTimes.includes(todKey)) { errors.push(`Row ${rowNum}: invalid time_of_day "${row.time_of_day}" — use ${validTimes.join(", ")}`); continue; }
             storage.createIdentity({
               statement: row.statement,
-              areaId: area?.id || null,
+              areaId: area.id,
               visionId: null,
-              cue: row.cue || null,
-              craving: row.craving || null,
+              cue: row.cue,
+              craving: row.craving,
               response: row.statement,
-              reward: row.reward || null,
+              reward: row.reward,
               frequency: freq,
               targetCount: 1,
               active: 1,
-              timeOfDay: tod,
+              timeOfDay: todKey,
               createdAt: now,
             });
             created++;

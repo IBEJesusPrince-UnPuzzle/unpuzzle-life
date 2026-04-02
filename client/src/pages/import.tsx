@@ -52,7 +52,7 @@ const IMPORT_TYPES = [
     value: "identities",
     label: "4. Identities",
     description: "Identity statements linked to areas (generates projects & routines)",
-    columns: "statement*, area_name* (must match existing area), cue, time_of_day (early_morning | morning | late_morning | afternoon | late_afternoon | evening | waking_hours), recurrence (daily | weekly | monthly | quarterly | yearly), craving, reward",
+    columns: "statement, area_name (must match existing area), cue, time_of_day (early_morning | morning | late_morning | afternoon | late_afternoon | evening | waking_hours), recurrence (daily | weekly | monthly | quarterly | yearly), craving, reward — all fields required",
     example: `statement,area_name,cue,time_of_day,recurrence,craving,reward\n"exercises every morning","Health","my alarm goes off at 6am","morning","daily","I want energy and strength","feeling alive and powerful after a great workout"\n"reads the Bible and prays","Faith","I sit down with my coffee","early_morning","daily","I crave spiritual clarity","peace and direction for my day"\n"reviews budget weekly","Finances","every Sunday evening","evening","weekly","I want financial control","confidence knowing my money is managed"`,
     order: 4,
   },
