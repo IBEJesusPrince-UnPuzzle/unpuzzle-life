@@ -1009,7 +1009,7 @@ export function registerRoutes(server: Server, app: Express) {
             const validTimes = ["early_morning", "morning", "late_morning", "afternoon", "late_afternoon", "evening", "waking_hours"];
             const todKey = row.time_of_day.toLowerCase().trim();
             if (!validTimes.includes(todKey)) { errors.push(`Row ${rowNum}: invalid time_of_day "${row.time_of_day}" — use ${validTimes.join(", ")}`); continue; }
-            storage.createIdentity({
+            const newIdentity = storage.createIdentity({
               statement: row.statement,
               areaId: area.id,
               visionId: null,
@@ -1023,6 +1023,30 @@ export function registerRoutes(server: Server, app: Express) {
               timeOfDay: todKey,
               createdAt: now,
             });
+            // Create linked routine item (same logic as POST /api/identities)
+            if (newIdentity.cue || newIdentity.timeOfDay) {
+              const timeOfDayMap: Record<string, string> = {
+                early_morning: "03:00", morning: "07:00", late_morning: "10:00",
+                afternoon: "13:00", late_afternoon: "16:00", evening: "20:00", waking_hours: "12:00",
+              };
+              const placeholderTime = timeOfDayMap[newIdentity.timeOfDay || ""] || "12:00";
+              storage.createRoutineItem({
+                sortOrder: 0,
+                time: placeholderTime,
+                durationMinutes: 10,
+                location: null,
+                cue: newIdentity.cue || null,
+                craving: newIdentity.craving || null,
+                response: newIdentity.statement,
+                reward: newIdentity.reward || null,
+                areaId: newIdentity.areaId || null,
+                habitId: newIdentity.id,
+                dayVariant: null,
+                active: 1,
+                isDraft: 1,
+                timeOfDay: newIdentity.timeOfDay || null,
+              });
+            }
             created++;
           } else if (type === "habits") {
             // Legacy "habits" import now creates identities with habit fields
