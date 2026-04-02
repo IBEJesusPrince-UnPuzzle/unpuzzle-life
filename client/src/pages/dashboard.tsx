@@ -10,7 +10,7 @@ import {
 import {
   Fingerprint, Inbox as InboxIcon, Repeat2, FolderOpen, Plus,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import type { Area } from "@shared/schema";
 import { SorterView } from "./planner";
@@ -30,6 +30,12 @@ export default function Dashboard() {
   const today = getToday();
   const [quickCapture, setQuickCapture] = useState("");
   const [captureAreaId, setCaptureAreaId] = useState<string>("");
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const { data: stats, isLoading: statsLoading } = useQuery<{
     identityVotePercent: number;
@@ -68,7 +74,7 @@ export default function Dashboard() {
           {getGreeting()}, IBEJesus
         </h1>
         <p className="text-sm text-muted-foreground">
-          <span className="font-bold">It's</span> {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+          <span className="font-bold">It's</span> {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}, {now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
         </p>
       </div>
 
