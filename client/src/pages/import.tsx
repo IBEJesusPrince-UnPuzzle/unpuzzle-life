@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,9 +9,19 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Download, Info, ArrowLeft,
+  Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Download, Info, ArrowLeft, ExternalLink,
 } from "lucide-react";
 import { Link } from "wouter";
+import type { Purpose, Vision, Area, Identity } from "@shared/schema";
+
+// Map import type → where the data lives in Clarity
+const VIEW_LINKS: Record<string, { label: string; hash: string }> = {
+  purposes: { label: "Purpose & Principles", hash: "/clarity#purpose" },
+  visions: { label: "Visions", hash: "/clarity#purpose" },
+  areas: { label: "Responsibilities & Areas", hash: "/clarity#areas" },
+  identities: { label: "Identities", hash: "/clarity#identity" },
+  tasks: { label: "Weekly Planner", hash: "/planner" },
+};
 
 const IMPORT_TYPES = [
   {
@@ -60,7 +70,6 @@ function parseCSV(text: string): Record<string, string>[] {
   const lines = text.trim().split("\n");
   if (lines.length < 2) return [];
 
-  // Parse header
   const headers = parseCSVLine(lines[0]);
   const rows: Record<string, string>[] = [];
 
@@ -101,13 +110,22 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
+type ImportResult = { created: number; errors: string[]; total: number };
+
 export default function ImportPage() {
   const { toast } = useToast();
   const [selectedType, setSelectedType] = useState("");
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [fileName, setFileName] = useState("");
   const [preview, setPreview] = useState<Record<string, string>[]>([]);
-  const [result, setResult] = useState<{ created: number; errors: string[]; total: number } | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
+  const [importPhase, setImportPhase] = useState<"idle" | "importing" | "done" | "error">("idle");
+
+  // Fetch existing data for live counts after import
+  const { data: purposes = [] } = useQuery<Purpose[]>({ queryKey: ["/api/purposes"] });
+  const { data: visions = [] } = useQuery<Vision[]>({ queryKey: ["/api/visions"] });
+  const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
+  const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
 
   const resetForm = () => {
     setFileContent(null);
@@ -115,59 +133,62 @@ export default function ImportPage() {
     setPreview([]);
   };
 
-  const importData = useMutation({
-    mutationFn: (data: { type: string; rows: Record<string, string>[] }) =>
-      apiRequest("POST", "/api/import", data).then(r => r.json()),
-    onSuccess: (data) => {
+  const resetAll = () => {
+    resetForm();
+    setResult(null);
+    setImportPhase("idle");
+  };
+
+  const handleImport = async () => {
+    if (!selectedType || preview.length === 0) return;
+    setImportPhase("importing");
+    setResult(null);
+
+    try {
+      const res = await apiRequest("POST", "/api/import", { type: selectedType, rows: preview });
+      const data: ImportResult = await res.json();
+
       setResult(data);
-      queryClient.invalidateQueries();
+      // Invalidate all queries so counts and pages update
+      await queryClient.invalidateQueries();
+
       const typeName = IMPORT_TYPES.find(t => t.value === selectedType)?.label || selectedType;
+
       if (data.errors.length === 0) {
+        setImportPhase("done");
         toast({
           title: "Import successful",
-          description: `${data.created} ${typeName.toLowerCase()} record${data.created !== 1 ? "s" : ""} imported. Your data is now live.`,
+          description: `${data.created} ${typeName.toLowerCase()} record${data.created !== 1 ? "s" : ""} imported.`,
         });
-        // Reset file/preview after success so user can import another file
         resetForm();
       } else {
+        setImportPhase("done");
         toast({
           title: "Import completed with issues",
-          description: `${data.created} of ${data.total} imported. ${data.errors.length} issue${data.errors.length !== 1 ? "s" : ""} found — see details below.`,
+          description: `${data.created} of ${data.total} imported. ${data.errors.length} issue${data.errors.length !== 1 ? "s" : ""} found.`,
           variant: "destructive",
         });
       }
-    },
-    onError: (error: Error) => {
+    } catch (err: any) {
+      setImportPhase("error");
+      setResult({ created: 0, errors: [err.message || "Request failed"], total: preview.length });
       toast({
         title: "Import failed",
-        description: error.message || "Something went wrong. Check your CSV format and try again.",
+        description: err.message || "Something went wrong. Check your CSV format and try again.",
         variant: "destructive",
       });
-    },
-  });
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setFileName(file.name);
-    setResult(null);
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      setFileContent(text);
-      const rows = parseCSV(text);
-      setPreview(rows);
-    };
-    reader.readAsText(file);
-  };
-
-  const handleImport = () => {
-    if (!selectedType || preview.length === 0) return;
-    importData.mutate({ type: selectedType, rows: preview });
+    }
   };
 
   const selectedTemplate = IMPORT_TYPES.find(t => t.value === selectedType);
+  const viewLink = selectedType ? VIEW_LINKS[selectedType] : null;
+
+  // Live record count for the selected type
+  const liveCount = selectedType === "purposes" ? purposes.length
+    : selectedType === "visions" ? visions.length
+    : selectedType === "areas" ? areas.length
+    : selectedType === "identities" ? identities.length
+    : null;
 
   const downloadTemplate = () => {
     if (!selectedTemplate) return;
@@ -193,7 +214,7 @@ export default function ImportPage() {
           Import Data
         </h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Upload CSV files to bulk-import your data into Momentum.
+          Upload CSV files to bulk-import your data into UnPuzzle Life.
         </p>
       </div>
 
@@ -210,10 +231,27 @@ export default function ImportPage() {
         </CardContent>
       </Card>
 
+      {/* Current data counts */}
+      <div className="grid grid-cols-4 gap-2">
+        {[
+          { label: "Purposes", count: purposes.length },
+          { label: "Visions", count: visions.length },
+          { label: "Areas", count: areas.length },
+          { label: "Identities", count: identities.length },
+        ].map(item => (
+          <Card key={item.label} className="bg-muted/20">
+            <CardContent className="p-3 text-center">
+              <p className="text-lg font-semibold">{item.count}</p>
+              <p className="text-[10px] text-muted-foreground">{item.label}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
       {/* Step 1: Select type */}
       <div className="space-y-3">
         <h2 className="text-sm font-medium">1. Select what to import</h2>
-        <Select value={selectedType} onValueChange={(v) => { setSelectedType(v); setPreview([]); setResult(null); setFileContent(null); setFileName(""); }}>
+        <Select value={selectedType} onValueChange={(v) => { setSelectedType(v); resetAll(); }}>
           <SelectTrigger className="w-full" data-testid="select-import-type">
             <SelectValue placeholder="Choose data type..." />
           </SelectTrigger>
@@ -237,6 +275,11 @@ export default function ImportPage() {
                 <div>
                   <p className="text-sm font-medium">{selectedTemplate.label}</p>
                   <p className="text-xs text-muted-foreground">{selectedTemplate.description}</p>
+                  {liveCount !== null && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Currently {liveCount} record{liveCount !== 1 ? "s" : ""} in database
+                    </p>
+                  )}
                 </div>
                 <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={downloadTemplate}>
                   <Download className="w-3 h-3" /> Template
@@ -256,25 +299,40 @@ export default function ImportPage() {
           </Card>
 
           {/* Step 2: Upload */}
-          <div className="space-y-3">
-            <h2 className="text-sm font-medium">2. Upload your CSV</h2>
-            <label className="flex items-center justify-center gap-2 p-6 border-2 border-dashed rounded-lg cursor-pointer hover:border-primary/50 transition-colors">
-              <FileSpreadsheet className="w-5 h-5 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">
-                {fileName || "Click to select a CSV file"}
-              </span>
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                onChange={handleFileUpload}
-                className="hidden"
-                data-testid="file-upload"
-              />
-            </label>
-          </div>
+          {importPhase !== "done" && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-medium">2. Upload your CSV</h2>
+              <label className="flex items-center justify-center gap-2 p-6 border-2 border-dashed rounded-lg cursor-pointer hover:border-primary/50 transition-colors">
+                <FileSpreadsheet className="w-5 h-5 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">
+                  {fileName || "Click to select a CSV file"}
+                </span>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setFileName(file.name);
+                    setResult(null);
+                    setImportPhase("idle");
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                      const text = ev.target?.result as string;
+                      setFileContent(text);
+                      setPreview(parseCSV(text));
+                    };
+                    reader.readAsText(file);
+                  }}
+                  className="hidden"
+                  data-testid="file-upload"
+                />
+              </label>
+            </div>
+          )}
 
           {/* Preview */}
-          {preview.length > 0 && (
+          {preview.length > 0 && importPhase !== "done" && (
             <div className="space-y-3">
               <h2 className="text-sm font-medium">
                 3. Preview
@@ -311,20 +369,25 @@ export default function ImportPage() {
               <Button
                 className="w-full"
                 onClick={handleImport}
-                disabled={importData.isPending}
+                disabled={importPhase === "importing"}
                 data-testid="button-import"
               >
-                {importData.isPending ? "Importing..." : `Import ${preview.length} ${selectedTemplate.label}`}
+                {importPhase === "importing" ? "Importing..." : `Import ${preview.length} ${selectedTemplate.label}`}
               </Button>
             </div>
           )}
 
           {/* Result */}
-          {result && (
-            <Card className={result.errors.length > 0 ? "border-amber-500/50 bg-amber-500/5" : "border-emerald-500/50 bg-emerald-500/5"}>
+          {result && importPhase !== "idle" && (
+            <Card className={result.errors.length > 0 && result.created === 0
+              ? "border-red-500/50 bg-red-500/5"
+              : result.errors.length > 0
+              ? "border-amber-500/50 bg-amber-500/5"
+              : "border-emerald-500/50 bg-emerald-500/5"
+            }>
               <CardContent className="p-4 space-y-3">
                 <div className="flex items-center gap-2">
-                  {result.errors.length === 0 ? (
+                  {result.created > 0 && result.errors.length === 0 ? (
                     <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                   ) : (
                     <AlertTriangle className="w-5 h-5 text-amber-500" />
@@ -332,13 +395,19 @@ export default function ImportPage() {
                   <p className="text-sm font-medium">
                     {result.errors.length === 0
                       ? `All ${result.created} record${result.created !== 1 ? "s" : ""} imported successfully`
-                      : `${result.created} of ${result.total} imported successfully`
+                      : result.created > 0
+                      ? `${result.created} of ${result.total} imported successfully`
+                      : `Import failed — ${result.errors.length} error${result.errors.length !== 1 ? "s" : ""}`
                     }
                   </p>
                 </div>
-                {result.errors.length === 0 && (
-                  <p className="text-xs text-muted-foreground">Your data is now live. You can view it in the app or import another file.</p>
+
+                {result.created > 0 && result.errors.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Your data is now live. Verify your records below or import another file.
+                  </p>
                 )}
+
                 {result.errors.length > 0 && (
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Issues:</p>
@@ -347,14 +416,94 @@ export default function ImportPage() {
                     ))}
                   </div>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full text-xs"
-                  onClick={() => { setResult(null); resetForm(); }}
-                >
-                  Import another file
-                </Button>
+
+                <div className="flex gap-2">
+                  {viewLink && result.created > 0 && (
+                    <Link href={viewLink.hash}>
+                      <Button variant="default" size="sm" className="text-xs gap-1">
+                        <ExternalLink className="w-3 h-3" /> View in {viewLink.label}
+                      </Button>
+                    </Link>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                    onClick={resetAll}
+                  >
+                    Import another file
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Live records summary after successful import */}
+          {result && result.created > 0 && result.errors.length === 0 && selectedType === "purposes" && purposes.length > 0 && (
+            <Card>
+              <CardContent className="p-4 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Active Purposes ({purposes.length})</p>
+                {purposes.map(p => (
+                  <div key={p.id} className="border rounded-md p-3 space-y-1">
+                    <p className="text-sm font-medium">{p.statement}</p>
+                    {p.principles && (
+                      <div className="flex flex-wrap gap-1">
+                        {(JSON.parse(p.principles) as string[]).map((pr, i) => (
+                          <Badge key={i} variant="secondary" className="text-[10px]">{pr}</Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {result && result.created > 0 && result.errors.length === 0 && selectedType === "visions" && visions.length > 0 && (
+            <Card>
+              <CardContent className="p-4 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Active Visions ({visions.length})</p>
+                {visions.map(v => (
+                  <div key={v.id} className="border rounded-md p-3 space-y-1">
+                    <p className="text-sm font-medium">{v.title}</p>
+                    {v.description && <p className="text-xs text-muted-foreground">{v.description}</p>}
+                    {v.timeframe && <Badge variant="secondary" className="text-[10px]">{v.timeframe}</Badge>}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {result && result.created > 0 && result.errors.length === 0 && selectedType === "areas" && areas.length > 0 && (
+            <Card>
+              <CardContent className="p-4 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Active Areas ({areas.length})</p>
+                {areas.map(a => (
+                  <div key={a.id} className="border rounded-md p-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">{a.name}</p>
+                      {a.description && <p className="text-xs text-muted-foreground">{a.description}</p>}
+                    </div>
+                    {a.category && <Badge variant="secondary" className="text-[10px]">{a.category}</Badge>}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {result && result.created > 0 && result.errors.length === 0 && selectedType === "identities" && identities.length > 0 && (
+            <Card>
+              <CardContent className="p-4 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Active Identities ({identities.length})</p>
+                {identities.map(id => {
+                  const area = areas.find(a => a.id === id.areaId);
+                  return (
+                    <div key={id.id} className="border rounded-md p-3 flex items-center justify-between">
+                      <p className="text-sm font-medium">{id.statement}</p>
+                      {area && <Badge variant="secondary" className="text-[10px]">{area.name}</Badge>}
+                    </div>
+                  );
+                })}
               </CardContent>
             </Card>
           )}
