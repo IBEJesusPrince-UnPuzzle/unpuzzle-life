@@ -32,21 +32,6 @@ function ProjectDetailRoute({ params }: { params: { id?: string } }) {
 }
 
 function DashboardWithRedirect() {
-  const [, navigate] = useLocation();
-  const { data: stats, isLoading } = useQuery<{ totalActiveIdentities: number }>({
-    queryKey: ["/api/stats"],
-    queryFn: () => apiRequest("GET", "/api/stats").then(r => r.json()),
-  });
-
-  useEffect(() => {
-    if (!isLoading && stats && stats.totalActiveIdentities === 0) {
-      navigate("/horizons");
-    }
-  }, [stats, isLoading, navigate]);
-
-  if (isLoading) return null;
-  if (stats && stats.totalActiveIdentities === 0) return null;
-
   return <Dashboard />;
 }
 
