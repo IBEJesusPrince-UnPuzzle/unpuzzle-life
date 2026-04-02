@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -101,19 +102,47 @@ function parseCSVLine(line: string): string[] {
 }
 
 export default function ImportPage() {
+  const { toast } = useToast();
   const [selectedType, setSelectedType] = useState("");
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [fileName, setFileName] = useState("");
   const [preview, setPreview] = useState<Record<string, string>[]>([]);
   const [result, setResult] = useState<{ created: number; errors: string[]; total: number } | null>(null);
 
+  const resetForm = () => {
+    setFileContent(null);
+    setFileName("");
+    setPreview([]);
+  };
+
   const importData = useMutation({
     mutationFn: (data: { type: string; rows: Record<string, string>[] }) =>
       apiRequest("POST", "/api/import", data).then(r => r.json()),
     onSuccess: (data) => {
       setResult(data);
-      // Invalidate all caches
       queryClient.invalidateQueries();
+      const typeName = IMPORT_TYPES.find(t => t.value === selectedType)?.label || selectedType;
+      if (data.errors.length === 0) {
+        toast({
+          title: "Import successful",
+          description: `${data.created} ${typeName.toLowerCase()} record${data.created !== 1 ? "s" : ""} imported. Your data is now live.`,
+        });
+        // Reset file/preview after success so user can import another file
+        resetForm();
+      } else {
+        toast({
+          title: "Import completed with issues",
+          description: `${data.created} of ${data.total} imported. ${data.errors.length} issue${data.errors.length !== 1 ? "s" : ""} found — see details below.`,
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Import failed",
+        description: error.message || "Something went wrong. Check your CSV format and try again.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -292,8 +321,8 @@ export default function ImportPage() {
 
           {/* Result */}
           {result && (
-            <Card className={result.errors.length > 0 ? "border-amber-500/50" : "border-emerald-500/50"}>
-              <CardContent className="p-4 space-y-2">
+            <Card className={result.errors.length > 0 ? "border-amber-500/50 bg-amber-500/5" : "border-emerald-500/50 bg-emerald-500/5"}>
+              <CardContent className="p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   {result.errors.length === 0 ? (
                     <CheckCircle2 className="w-5 h-5 text-emerald-500" />
@@ -301,9 +330,15 @@ export default function ImportPage() {
                     <AlertTriangle className="w-5 h-5 text-amber-500" />
                   )}
                   <p className="text-sm font-medium">
-                    {result.created} of {result.total} imported successfully
+                    {result.errors.length === 0
+                      ? `All ${result.created} record${result.created !== 1 ? "s" : ""} imported successfully`
+                      : `${result.created} of ${result.total} imported successfully`
+                    }
                   </p>
                 </div>
+                {result.errors.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Your data is now live. You can view it in the app or import another file.</p>
+                )}
                 {result.errors.length > 0 && (
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Issues:</p>
@@ -312,6 +347,14 @@ export default function ImportPage() {
                     ))}
                   </div>
                 )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full text-xs"
+                  onClick={() => { setResult(null); resetForm(); }}
+                >
+                  Import another file
+                </Button>
               </CardContent>
             </Card>
           )}
