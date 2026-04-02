@@ -57,7 +57,7 @@ export default function ProjectsPage() {
                       </p>
                     )}
                     <p className="text-[11px] text-muted-foreground">
-                      I'm the type of person who...<span className="font-medium text-foreground">{identity.statement}</span>
+                      I'm the type of person who will...<span className="font-medium text-foreground">{identity.statement}</span>
                     </p>
                     <div className="flex items-start gap-2">
                       <FolderOpen className="w-4 h-4 text-chart-5 mt-0.5 shrink-0" />

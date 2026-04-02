@@ -662,7 +662,7 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <ClarityBadge level={1} label="Identity" />
-          <span className="text-xs text-muted-foreground">"I am the type of person who..."</span>
+          <span className="text-xs text-muted-foreground">"I'm the type of person who will..."</span>
         </div>
         <Badge variant="secondary" className="text-xs">
           {activeIdentities.length} active
@@ -686,9 +686,9 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
               <AreaSelect value={areaId} onChange={setAreaId} />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground font-medium">I'm the type of person who... *</label>
+              <label className="text-xs text-muted-foreground font-medium">I'm the type of person who will... *</label>
               <Input
-                placeholder="e.g. exercises every morning"
+                placeholder="verb my noun e.g. change my oil, read my book of the month"
                 value={statement}
                 onChange={(e) => setStatement(e.target.value)}
                 className="text-sm mt-1"
@@ -696,9 +696,9 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
               />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground font-medium">when...</label>
+              <label className="text-xs text-muted-foreground font-medium">when I'm...</label>
               <Input
-                placeholder="e.g. my alarm goes off at 6am"
+                placeholder="e.g. triggering/reminding action"
                 value={cue}
                 onChange={(e) => setCue(e.target.value)}
                 className="text-sm mt-1"
@@ -726,7 +726,7 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
               </div>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground font-medium">because...</label>
+              <label className="text-xs text-muted-foreground font-medium">because it...</label>
               <Input
                 placeholder="e.g. what's attractive about it? why crave it?"
                 value={craving}
@@ -773,11 +773,11 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
                   <CardContent className="p-4 space-y-3">
                     <AreaSelect value={editAreaId} onChange={setEditAreaId} />
                     <div>
-                      <span className="text-xs text-muted-foreground">I'm the type of person who...</span>
+                      <span className="text-xs text-muted-foreground">I'm the type of person who will...</span>
                       <Input value={editStatement} onChange={(e) => setEditStatement(e.target.value)} className="text-sm mt-1" />
                     </div>
                     <div>
-                      <span className="text-xs text-muted-foreground">when...</span>
+                      <span className="text-xs text-muted-foreground">when I'm...</span>
                       <Input value={editCue} onChange={(e) => setEditCue(e.target.value)} className="text-sm mt-1" />
                     </div>
                     <div>
@@ -796,7 +796,7 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
                       <div className="mt-1"><RecurrenceBuilder value={editRecurrence} onChange={setEditRecurrence} requireRecurrence /></div>
                     </div>
                     <div>
-                      <span className="text-xs text-muted-foreground">because...</span>
+                      <span className="text-xs text-muted-foreground">because it...</span>
                       <Input value={editCraving} onChange={(e) => setEditCraving(e.target.value)} className="text-sm mt-1" />
                     </div>
                     <div>
@@ -823,7 +823,7 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
                       </p>
                     )}
                     <p className="text-sm font-medium" data-testid={`identity-${id.id}`}>
-                      I'm the type of person who {id.statement}
+                      I'm the type of person who will {id.statement}
                     </p>
                     {id.cue && (
                       <p className="text-[11px] text-muted-foreground mt-0.5">

@@ -854,7 +854,7 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
                 {chain.identityStatement && (
                   <p className="text-[11px] text-muted-foreground">
                     <span className="font-medium text-foreground">Identity:</span>{" "}
-                    I am the type of person who <span className="font-medium text-foreground">{chain.identityStatement}</span>
+                    I'm the type of person who will <span className="font-medium text-foreground">{chain.identityStatement}</span>
                   </p>
                 )}
                 {chain.habitCue && (
@@ -1566,7 +1566,7 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
           )}
 
           <div>
-            <p className="text-sm font-medium text-muted-foreground mb-1.5">...I am the type of person who...</p>
+            <p className="text-sm font-medium text-muted-foreground mb-1.5">...I'm the type of person who will...</p>
             <Input
               value={action}
               onChange={(e) => setAction(e.target.value)}

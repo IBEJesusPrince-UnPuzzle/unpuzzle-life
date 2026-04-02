@@ -147,7 +147,7 @@ export default function IdentityVotePage() {
         <CardContent className="p-4">
           <p className="text-xs font-medium mb-2">How Identity Vote is calculated</p>
           <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
-            <li>You create an <span className="font-medium text-foreground">Identity</span> ("I am the type of person who...") in an area</li>
+            <li>You create an <span className="font-medium text-foreground">Identity</span> ("I'm the type of person who will...") in an area</li>
             <li>That identity generates a <span className="font-medium text-foreground">Routine</span>, which creates scheduled tasks</li>
             <li>Each task whose end time has passed counts as a <span className="font-medium text-foreground">vote</span> — completed = vote for your identity, missed = vote against</li>
           </ol>
@@ -175,7 +175,7 @@ export default function IdentityVotePage() {
                   <Target className="w-4 h-4 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">
-                      "I am the type of person who {b.identityStatement}"
+                      "I'm the type of person who will {b.identityStatement}"
                     </p>
                     {b.cue && (
                       <p className="text-[11px] text-muted-foreground">
@@ -211,7 +211,7 @@ export default function IdentityVotePage() {
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium">
-                    "I am the type of person who {i.identityStatement}"
+                    "I'm the type of person who will {i.identityStatement}"
                   </p>
                 </div>
                 <Link href="/routine">
@@ -246,7 +246,7 @@ function IdentityBreakdownCard({ identity, onMarkDone }: { identity: IdentityBre
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium">
-              "I am the type of person who {identity.identityStatement}"
+              "I'm the type of person who will {identity.identityStatement}"
             </p>
             {identity.cue && (
               <p className="text-[11px] text-muted-foreground">when {identity.cue}</p>

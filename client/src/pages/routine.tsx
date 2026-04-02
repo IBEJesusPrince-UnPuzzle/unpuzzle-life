@@ -153,7 +153,7 @@ export default function RoutinePage({ filterIdentityId }: { filterIdentityId?: n
         <div ref={scrollTargetRef} className="rounded-lg border border-violet-500/30 bg-violet-500/10 p-3">
           <p className="text-xs text-muted-foreground">Showing routines for</p>
           <p className="text-sm font-medium text-violet-600 dark:text-violet-400">
-            I'm the type of person who {filteredIdentity.statement}
+            I'm the type of person who will {filteredIdentity.statement}
           </p>
         </div>
       )}

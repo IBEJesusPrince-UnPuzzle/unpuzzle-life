@@ -180,7 +180,7 @@ export default function ProjectDetailPage({ id }: { id: number }) {
         <CardContent className="p-4 space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Identity Chain</p>
           <p className="text-sm">
-            <span className="text-muted-foreground">I am the type of person who</span>{" "}
+            <span className="text-muted-foreground">I'm the type of person who will</span>{" "}
             <span className="font-medium">{identity.statement}</span>
           </p>
           {identity.cue && (
