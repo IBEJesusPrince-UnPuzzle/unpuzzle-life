@@ -233,6 +233,45 @@ export function registerRoutes(server: Server, app: Express) {
     res.json({ migratedIdentities, migratedRoutineItems, migratedPlannerTasks });
   });
 
+  // Backfill: create routine items for identities that don't have one
+  app.post("/api/backfill-routines", (_req, res) => {
+    const allIdentities = storage.getIdentities();
+    const allRoutineItems = storage.getRoutineItems();
+    const identityIdsWithRoutine = new Set(allRoutineItems.map(r => r.habitId));
+    let created = 0;
+
+    const timeOfDayMap: Record<string, string> = {
+      early_morning: "03:00", morning: "07:00", late_morning: "10:00",
+      afternoon: "13:00", late_afternoon: "16:00", evening: "20:00", waking_hours: "12:00",
+    };
+
+    for (const identity of allIdentities) {
+      if (!identity.active) continue;
+      if (identityIdsWithRoutine.has(identity.id)) continue;
+
+      const placeholderTime = timeOfDayMap[identity.timeOfDay || ""] || "12:00";
+      storage.createRoutineItem({
+        sortOrder: 0,
+        time: placeholderTime,
+        durationMinutes: 10,
+        location: null,
+        cue: identity.cue || null,
+        craving: identity.craving || null,
+        response: identity.statement,
+        reward: identity.reward || null,
+        areaId: identity.areaId || null,
+        habitId: identity.id,
+        dayVariant: null,
+        active: 1,
+        isDraft: 1,
+        timeOfDay: identity.timeOfDay || null,
+      });
+      created++;
+    }
+
+    res.json({ created, message: `Created ${created} routine items for identities that were missing them.` });
+  });
+
   // References: all filed references, optionally filtered by area or project
   app.get("/api/references", (req, res) => {
     const allInbox = storage.getInboxItems();
