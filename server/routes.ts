@@ -553,7 +553,7 @@ export function registerRoutes(server: Server, app: Express) {
       const all = storage.getAllPlannerTasks();
       res.json(all.filter(t => t.habitId === Number(habitId)));
     } else {
-      res.json([]);
+      res.json(storage.getAllPlannerTasks());
     }
   });
   app.post("/api/planner-tasks", (req, res) => {

@@ -12,7 +12,7 @@ import {
   Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Download, Info, ArrowLeft, ExternalLink,
 } from "lucide-react";
 import { Link } from "wouter";
-import type { Purpose, Vision, Area, Identity } from "@shared/schema";
+import type { Purpose, Vision, Area, Identity, PlannerTask } from "@shared/schema";
 
 // Map import type → where the data lives in Clarity (with tab param)
 const VIEW_LINKS: Record<string, { label: string; path: string }> = {
@@ -126,6 +126,7 @@ export default function ImportPage() {
   const { data: visions = [] } = useQuery<Vision[]>({ queryKey: ["/api/visions"] });
   const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
   const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
+  const { data: tasks = [] } = useQuery<PlannerTask[]>({ queryKey: ["/api/planner-tasks"] });
 
   const resetForm = () => {
     setFileContent(null);
@@ -188,6 +189,7 @@ export default function ImportPage() {
     : selectedType === "visions" ? visions.length
     : selectedType === "areas" ? areas.length
     : selectedType === "identities" ? identities.length
+    : selectedType === "tasks" ? tasks.length
     : null;
 
   const downloadTemplate = () => {
@@ -232,12 +234,13 @@ export default function ImportPage() {
       </Card>
 
       {/* Current data counts */}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-5 gap-2">
         {[
           { label: "Purposes", count: purposes.length },
           { label: "Visions", count: visions.length },
           { label: "Areas", count: areas.length },
           { label: "Identities", count: identities.length },
+          { label: "Tasks", count: tasks.length },
         ].map(item => (
           <Card key={item.label} className="bg-muted/20">
             <CardContent className="p-3 text-center">
