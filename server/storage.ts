@@ -27,29 +27,40 @@ const sqlite = new Database(dbPath);
 sqlite.pragma("journal_mode = WAL");
 
 // Auto-create tables if they don't exist (handles fresh Render deploys)
+// Must match shared/schema.ts exactly
+// Also adds missing columns to existing tables for schema evolution
+function addColumnIfMissing(table: string, column: string, definition: string) {
+  try {
+    const cols = sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!cols.find(c => c.name === column)) {
+      sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
+  } catch (_) { /* table doesn't exist yet, CREATE TABLE will handle it */ }
+}
 sqlite.exec(`
   CREATE TABLE IF NOT EXISTS purposes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     statement TEXT NOT NULL,
     principles TEXT,
-    created_at TEXT
+    created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS visions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
     description TEXT,
     timeframe TEXT,
-    status TEXT DEFAULT 'active',
-    created_at TEXT
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL,
+    anchor_moments TEXT
   );
   CREATE TABLE IF NOT EXISTS goals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
     description TEXT,
-    vision_id INTEGER,
+    vision_id INTEGER REFERENCES visions(id),
     target_date TEXT,
-    status TEXT DEFAULT 'active',
-    created_at TEXT
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS areas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,115 +68,174 @@ sqlite.exec(`
     description TEXT,
     category TEXT,
     icon TEXT,
-    sort_order INTEGER DEFAULT 0
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    archived INTEGER NOT NULL DEFAULT 0
   );
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
+    title TEXT NOT NULL,
     description TEXT,
-    area_id INTEGER,
-    identity_id INTEGER,
-    status TEXT DEFAULT 'active',
-    created_at TEXT
+    area_id INTEGER REFERENCES areas(id),
+    goal_id INTEGER REFERENCES goals(id),
+    status TEXT NOT NULL DEFAULT 'active',
+    due_date TEXT,
+    created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS actions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
-    project_id INTEGER,
+    notes TEXT,
+    project_id INTEGER REFERENCES projects(id),
+    area_id INTEGER REFERENCES areas(id),
     context TEXT,
     energy TEXT,
     time_estimate INTEGER,
-    status TEXT DEFAULT 'active',
-    created_at TEXT
+    due_date TEXT,
+    completed INTEGER NOT NULL DEFAULT 0,
+    completed_at TEXT,
+    created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS identities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     statement TEXT NOT NULL,
-    area_id INTEGER,
-    vision_id INTEGER,
+    area_id INTEGER REFERENCES areas(id),
+    vision_id INTEGER REFERENCES visions(id),
     cue TEXT,
     craving TEXT,
     response TEXT,
     reward TEXT,
-    frequency TEXT,
-    target_count INTEGER DEFAULT 1,
-    active INTEGER DEFAULT 1,
+    frequency TEXT NOT NULL DEFAULT 'daily',
+    target_count INTEGER NOT NULL DEFAULT 1,
+    active INTEGER NOT NULL DEFAULT 1,
     time_of_day TEXT,
-    created_at TEXT
+    created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS habits (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     description TEXT,
-    area_id INTEGER,
+    identity_id INTEGER REFERENCES identities(id),
     cue TEXT,
-    routine TEXT,
+    craving TEXT,
+    response TEXT,
     reward TEXT,
-    frequency TEXT,
-    target_count INTEGER DEFAULT 1,
-    active INTEGER DEFAULT 1,
-    time_of_day TEXT,
-    created_at TEXT
+    frequency TEXT NOT NULL DEFAULT 'daily',
+    target_count INTEGER NOT NULL DEFAULT 1,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    area_id INTEGER REFERENCES areas(id),
+    time_of_day TEXT
   );
   CREATE TABLE IF NOT EXISTS habit_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    habit_id INTEGER,
+    habit_id INTEGER NOT NULL REFERENCES habits(id),
     date TEXT NOT NULL,
-    completed INTEGER DEFAULT 0,
-    count INTEGER DEFAULT 0,
-    notes TEXT
+    count INTEGER NOT NULL DEFAULT 1,
+    note TEXT
   );
   CREATE TABLE IF NOT EXISTS routine_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    identity_id INTEGER,
-    time_of_day TEXT,
-    sort_order INTEGER DEFAULT 0
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    time TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL DEFAULT 10,
+    location TEXT,
+    cue TEXT,
+    craving TEXT,
+    response TEXT NOT NULL,
+    reward TEXT,
+    area_id INTEGER REFERENCES areas(id),
+    habit_id INTEGER REFERENCES habits(id),
+    day_variant TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    is_draft INTEGER NOT NULL DEFAULT 0,
+    time_of_day TEXT
   );
   CREATE TABLE IF NOT EXISTS routine_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    routine_item_id INTEGER,
+    routine_item_id INTEGER NOT NULL REFERENCES routine_items(id),
     date TEXT NOT NULL,
-    completed INTEGER DEFAULT 0
+    completed_at TEXT,
+    note TEXT
   );
   CREATE TABLE IF NOT EXISTS planner_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date TEXT NOT NULL,
-    area_id INTEGER,
-    goal TEXT,
+    area_id INTEGER REFERENCES areas(id),
+    goal TEXT NOT NULL,
     start_time TEXT,
     end_time TEXT,
     hours TEXT,
     result TEXT,
-    status TEXT DEFAULT 'planned',
+    status TEXT NOT NULL DEFAULT 'planned',
     recurrence TEXT,
-    habit_id INTEGER,
-    is_draft INTEGER DEFAULT 0,
-    source_type TEXT DEFAULT 'manual'
+    habit_id INTEGER REFERENCES habits(id),
+    is_draft INTEGER NOT NULL DEFAULT 0,
+    source_type TEXT
   );
   CREATE TABLE IF NOT EXISTS inbox_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    text TEXT NOT NULL,
-    processed INTEGER DEFAULT 0,
-    area_id INTEGER,
-    created_at TEXT
+    content TEXT NOT NULL,
+    notes TEXT,
+    processed INTEGER NOT NULL DEFAULT 0,
+    processed_as TEXT,
+    deleted_at TEXT,
+    reference_area_id INTEGER REFERENCES areas(id),
+    reference_project_id INTEGER REFERENCES projects(id),
+    area_id INTEGER REFERENCES areas(id),
+    created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS weekly_reviews (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    week_start TEXT NOT NULL,
+    week_of TEXT NOT NULL,
     wins TEXT,
-    struggles TEXT,
     lessons TEXT,
     next_week_focus TEXT,
-    completed INTEGER DEFAULT 0,
-    created_at TEXT
+    inbox_cleared INTEGER NOT NULL DEFAULT 0,
+    projects_reviewed INTEGER NOT NULL DEFAULT 0,
+    habits_reviewed INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS wizard_state (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    step INTEGER DEFAULT 0,
-    data TEXT,
-    completed INTEGER DEFAULT 0
+    current_phase INTEGER NOT NULL DEFAULT 1,
+    completed INTEGER NOT NULL DEFAULT 0,
+    completed_at TEXT
   );
 `);
+
+// Migrate missing columns on existing tables
+addColumnIfMissing("areas", "archived", "INTEGER NOT NULL DEFAULT 0");
+addColumnIfMissing("visions", "anchor_moments", "TEXT");
+addColumnIfMissing("projects", "due_date", "TEXT");
+addColumnIfMissing("actions", "notes", "TEXT");
+addColumnIfMissing("actions", "due_date", "TEXT");
+addColumnIfMissing("actions", "completed", "INTEGER NOT NULL DEFAULT 0");
+addColumnIfMissing("actions", "completed_at", "TEXT");
+addColumnIfMissing("habits", "identity_id", "INTEGER");
+addColumnIfMissing("habits", "craving", "TEXT");
+addColumnIfMissing("routine_items", "time", "TEXT DEFAULT '08:00'");
+addColumnIfMissing("routine_items", "duration_minutes", "INTEGER NOT NULL DEFAULT 10");
+addColumnIfMissing("routine_items", "location", "TEXT");
+addColumnIfMissing("routine_items", "cue", "TEXT");
+addColumnIfMissing("routine_items", "craving", "TEXT");
+addColumnIfMissing("routine_items", "response", "TEXT DEFAULT ''");
+addColumnIfMissing("routine_items", "reward", "TEXT");
+addColumnIfMissing("routine_items", "area_id", "INTEGER");
+addColumnIfMissing("routine_items", "habit_id", "INTEGER");
+addColumnIfMissing("routine_items", "day_variant", "TEXT");
+addColumnIfMissing("routine_items", "active", "INTEGER NOT NULL DEFAULT 1");
+addColumnIfMissing("routine_items", "is_draft", "INTEGER NOT NULL DEFAULT 0");
+addColumnIfMissing("routine_items", "time_of_day", "TEXT");
+addColumnIfMissing("routine_logs", "completed_at", "TEXT");
+addColumnIfMissing("routine_logs", "note", "TEXT");
+addColumnIfMissing("inbox_items", "notes", "TEXT");
+addColumnIfMissing("inbox_items", "processed_as", "TEXT");
+addColumnIfMissing("inbox_items", "deleted_at", "TEXT");
+addColumnIfMissing("inbox_items", "reference_area_id", "INTEGER");
+addColumnIfMissing("inbox_items", "reference_project_id", "INTEGER");
+addColumnIfMissing("weekly_reviews", "inbox_cleared", "INTEGER NOT NULL DEFAULT 0");
+addColumnIfMissing("weekly_reviews", "projects_reviewed", "INTEGER NOT NULL DEFAULT 0");
+addColumnIfMissing("weekly_reviews", "habits_reviewed", "INTEGER NOT NULL DEFAULT 0");
 
 export const db = drizzle(sqlite);
 
