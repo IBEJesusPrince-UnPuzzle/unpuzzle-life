@@ -48,9 +48,9 @@ const IMPORT_TYPES = [
   {
     value: "tasks",
     label: "5. Tasks",
-    description: "Daily agenda tasks",
-    columns: "date (YYYY-MM-DD), goal, area_name, start_time (HH:MM), end_time (HH:MM)",
-    example: `date,goal,area_name,start_time,end_time\n"2026-04-01","Morning run","Health","06:00","06:45"`,
+    description: "Project-derived agenda tasks",
+    columns: "date (YYYY-MM-DD), task, area_name, start_time (HH:MM), end_time (HH:MM)",
+    example: `date,task,area_name,start_time,end_time\n"2026-04-01","Morning run","Health","06:00","06:45"`,
     order: 5,
   },
 ];
@@ -176,7 +176,7 @@ export default function ImportPage() {
           </p>
           <p className="text-xs text-muted-foreground">
             Import in this order so references resolve correctly: Purposes → Visions → Responsibilities → Identities → Tasks.
-            Each type can reference items from earlier types by name. Projects & routines are auto-generated from identities.
+            Each type can reference items from earlier types by name. Projects & routines are auto-generated from identities. Tasks are derived from projects.
           </p>
         </CardContent>
       </Card>

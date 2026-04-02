@@ -1016,7 +1016,8 @@ export function registerRoutes(server: Server, app: Express) {
             storage.createGoal({ title: row.title, description: row.description || null, visionId: vision?.id || null, targetDate: row.target_date || null, status: "active", createdAt: now });
             created++;
           } else if (type === "tasks") {
-            if (!row.goal || !row.date) { errors.push(`Row ${rowNum}: missing goal or date`); continue; }
+            const taskText = row.task || row.goal; // accept 'task' or legacy 'goal' column
+            if (!taskText || !row.date) { errors.push(`Row ${rowNum}: missing task or date`); continue; }
             const area = row.area_name ? findAreaByName(row.area_name) : null;
             let hours: string | null = null;
             if (row.start_time && row.end_time) {
@@ -1028,7 +1029,7 @@ export function registerRoutes(server: Server, app: Express) {
             storage.createPlannerTask({
               date: row.date,
               areaId: area?.id || null,
-              goal: row.goal,
+              goal: taskText,
               startTime: row.start_time || null,
               endTime: row.end_time || null,
               hours,

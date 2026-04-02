@@ -162,7 +162,7 @@ export const plannerTasks = sqliteTable("planner_tasks", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   date: text("date").notNull(), // YYYY-MM-DD
   areaId: integer("area_id").references(() => areas.id),
-  goal: text("goal").notNull(), // What to do
+  goal: text("goal").notNull(), // task description (what to do)
   startTime: text("start_time"), // HH:MM format
   endTime: text("end_time"), // HH:MM format
   hours: text("hours"), // decimal hours as string
