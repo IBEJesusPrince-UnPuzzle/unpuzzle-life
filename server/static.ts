@@ -12,7 +12,8 @@ export function serveStatic(app: Express) {
 
   // Serve JS files with __PORT_5000__ replaced to empty string
   // so API calls go to /api/... on the same origin (needed for Render)
-  app.get("*.js", (req, res, next) => {
+  app.use((req, res, next) => {
+    if (!req.path.endsWith(".js")) return next();
     const filePath = path.join(distPath, req.path);
     if (!fs.existsSync(filePath)) return next();
     let content = fs.readFileSync(filePath, "utf-8");
