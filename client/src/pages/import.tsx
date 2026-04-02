@@ -15,12 +15,12 @@ import { Link } from "wouter";
 import type { Purpose, Vision, Area, Identity } from "@shared/schema";
 
 // Map import type → where the data lives in Clarity
-const VIEW_LINKS: Record<string, { label: string; hash: string }> = {
-  purposes: { label: "Purpose & Principles", hash: "/clarity#purpose" },
-  visions: { label: "Visions", hash: "/clarity#purpose" },
-  areas: { label: "Responsibilities & Areas", hash: "/clarity#areas" },
-  identities: { label: "Identities", hash: "/clarity#identity" },
-  tasks: { label: "Weekly Planner", hash: "/planner" },
+const VIEW_LINKS: Record<string, { label: string; path: string }> = {
+  purposes: { label: "Purpose & Principles", path: "/horizons" },
+  visions: { label: "Visions", path: "/horizons" },
+  areas: { label: "Responsibilities & Areas", path: "/horizons" },
+  identities: { label: "Identities", path: "/horizons" },
+  tasks: { label: "Weekly Planner", path: "/planner" },
 };
 
 const IMPORT_TYPES = [
@@ -419,7 +419,7 @@ export default function ImportPage() {
 
                 <div className="flex gap-2">
                   {viewLink && result.created > 0 && (
-                    <Link href={viewLink.hash}>
+                    <Link href={viewLink.path}>
                       <Button variant="default" size="sm" className="text-xs gap-1">
                         <ExternalLink className="w-3 h-3" /> View in {viewLink.label}
                       </Button>
