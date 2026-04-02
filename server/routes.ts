@@ -984,7 +984,36 @@ export function registerRoutes(server: Server, app: Express) {
           } else if (type === "identities") {
             if (!row.statement) { errors.push(`Row ${rowNum}: missing statement`); continue; }
             const area = row.area_name ? findAreaByName(row.area_name) : null;
-            storage.createIdentity({ statement: row.statement, areaId: area?.id || null, visionId: null, createdAt: now });
+            // Map simple recurrence keywords to JSON patterns (matching RecurrenceBuilder output)
+            const recurrenceMap: Record<string, string> = {
+              "daily": JSON.stringify({ type: "daily", interval: 1 }),
+              "weekly": JSON.stringify({ type: "weekly", interval: 1, days: ["monday"] }),
+              "monthly": JSON.stringify({ type: "monthly", interval: 1, dayOfMonth: 1 }),
+              "quarterly": JSON.stringify({ type: "quarterly", interval: 1 }),
+              "yearly": JSON.stringify({ type: "yearly", interval: 1 }),
+            };
+            const freq = row.recurrence
+              ? (recurrenceMap[row.recurrence.toLowerCase().trim()] || recurrenceMap["daily"])
+              : JSON.stringify({ type: "daily", interval: 1 });
+            // Validate time_of_day if provided
+            const validTimes = ["early_morning", "morning", "late_morning", "afternoon", "late_afternoon", "evening", "waking_hours"];
+            const tod = row.time_of_day && validTimes.includes(row.time_of_day.toLowerCase().trim())
+              ? row.time_of_day.toLowerCase().trim()
+              : null;
+            storage.createIdentity({
+              statement: row.statement,
+              areaId: area?.id || null,
+              visionId: null,
+              cue: row.cue || null,
+              craving: row.craving || null,
+              response: row.statement,
+              reward: row.reward || null,
+              frequency: freq,
+              targetCount: 1,
+              active: 1,
+              timeOfDay: tod,
+              createdAt: now,
+            });
             created++;
           } else if (type === "habits") {
             // Legacy "habits" import now creates identities with habit fields
