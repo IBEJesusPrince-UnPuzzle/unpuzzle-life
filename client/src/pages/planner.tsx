@@ -20,6 +20,11 @@ import { useState, useMemo, useEffect } from "react";
 import type { PlannerTask, Area, RoutineItem, RoutineLog } from "@shared/schema";
 import { EditRoutineDialog } from "./routine";
 import { Link } from "wouter";
+import {
+  parsePerson, formatPersonAgenda,
+  parsePlace, formatPlaceAgenda,
+  parseThing, formatThingAgenda,
+} from "./project-detail";
 
 // Identity chain info for project tasks
 interface IdentityChain {
@@ -660,6 +665,58 @@ function EditTaskDialog({ task, areas, open, onOpenChange }: {
   );
 }
 
+// Renders structured project task goal in collapsed agenda view
+function ProjectTaskGoal({ goal, sourceType, isDone }: { goal: string; sourceType: string | null; isDone: boolean }) {
+  const strikeClass = isDone ? "line-through" : "";
+
+  // Try parsing as structured project data
+  if (sourceType === "project_people") {
+    const person = parsePerson(goal);
+    if (person) {
+      const { line1, line2 } = formatPersonAgenda(person);
+      return (
+        <div className={`space-y-0.5 ${strikeClass}`}>
+          <p className="text-sm font-medium leading-snug">{line1}</p>
+          {line2 && <p className="text-[11px] text-muted-foreground">{line2}</p>}
+        </div>
+      );
+    }
+  }
+
+  if (sourceType === "project_places") {
+    const place = parsePlace(goal);
+    if (place) {
+      const { line1, line2 } = formatPlaceAgenda(place);
+      return (
+        <div className={`space-y-0.5 ${strikeClass}`}>
+          <p className="text-sm font-medium leading-snug">{line1}</p>
+          {line2 && <p className="text-[11px] text-muted-foreground">{line2}</p>}
+        </div>
+      );
+    }
+  }
+
+  if (sourceType === "project_things") {
+    const thing = parseThing(goal);
+    if (thing) {
+      const { line1, line2 } = formatThingAgenda(thing);
+      return (
+        <div className={`space-y-0.5 ${strikeClass}`}>
+          <p className="text-sm font-medium leading-snug">{line1}</p>
+          {line2 && <p className="text-[11px] text-muted-foreground">{line2}</p>}
+        </div>
+      );
+    }
+  }
+
+  // Fallback: plain text goal
+  return (
+    <p className={`text-sm font-medium leading-snug ${strikeClass}`}>
+      {goal}
+    </p>
+  );
+}
+
 function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area[]; onAreaClick: (id: number) => void }) {
   const area = areas.find(a => a.id === task.areaId);
   const isDone = task.status === "done";
@@ -737,10 +794,8 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
                   In the area of <span className="font-medium text-foreground">{displayAreaName}</span> I will...
                 </p>
               )}
-              {/* Line 2: Task name */}
-              <p className={`text-sm font-medium leading-snug ${isDone ? "line-through" : ""}`}>
-                {task.goal}
-              </p>
+              {/* Line 2: Task name — structured for project tasks */}
+              <ProjectTaskGoal goal={task.goal} sourceType={task.sourceType} isDone={isDone} />
               {/* Line 3: Time + Duration + Flags */}
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 {task.startTime && (
