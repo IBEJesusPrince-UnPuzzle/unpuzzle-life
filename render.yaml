@@ -6,8 +6,6 @@ services:
     buildCommand: npm install && npm run build
     startCommand: NODE_ENV=production node dist/index.cjs
     envVars:
-      - key: NODE_ENV
-        value: production
       - key: DATABASE_PATH
         value: /opt/render/data/data.db
     disk:
