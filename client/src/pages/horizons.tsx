@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import {
   Compass, Eye, Target, FolderOpen, Plus, Trash2,
-  Fingerprint, ArrowRight, Pencil, X, ArrowLeft, Repeat2,
+  ArrowRight, Pencil, X, ArrowLeft, Repeat2,
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
@@ -23,7 +23,7 @@ import type { Purpose, Vision, Area, Identity } from "@shared/schema";
 import { RecurrenceBuilder, formatRecurrence } from "./planner";
 import { TIME_OF_DAY_CATEGORIES } from "./habits";
 
-function HorizonBadge({ level, label }: { level: number; label: string }) {
+function ClarityBadge({ level, label }: { level: number; label: string }) {
   const colors: Record<number, string> = {
     5: "bg-chart-4/10 text-chart-4",
     4: "bg-chart-2/10 text-chart-2",
@@ -34,7 +34,7 @@ function HorizonBadge({ level, label }: { level: number; label: string }) {
   };
   return (
     <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${colors[level] || colors[0]}`}>
-      H{level} · {label}
+      C{level} · {label}
     </span>
   );
 }
@@ -60,7 +60,7 @@ export default function HorizonsPage() {
         </Link>
       </div>
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Horizons of Focus</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Clarity of Life</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           From your life's purpose down to today's next action.
         </p>
@@ -150,7 +150,7 @@ function PurposeSection({ purposes }: { purposes: Purpose[] }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-2">
-        <HorizonBadge level={5} label="Purpose & Principles" />
+        <ClarityBadge level={5} label="Purpose & Principles" />
         <span className="text-xs text-muted-foreground">Why do I exist? What do I stand for?</span>
       </div>
 
@@ -298,7 +298,7 @@ function VisionSection({ visions }: { visions: Vision[] }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-2">
-        <HorizonBadge level={4} label="Vision" />
+        <ClarityBadge level={4} label="Vision" />
         <span className="text-xs text-muted-foreground">What does my ideal life look like in 3-5 years?</span>
       </div>
 
@@ -447,7 +447,9 @@ function AreaSection({ areas }: { areas: Area[] }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-2">
-        <HorizonBadge level={2} label="Responsibilities of Focus" />
+        <ClarityBadge level={3} label="Responsibility" />
+        <span className="text-muted-foreground text-[10px]">&</span>
+        <ClarityBadge level={2} label="Areas" />
         <span className="text-xs text-muted-foreground">What responsibilities do I maintain?</span>
       </div>
 
@@ -659,8 +661,7 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <Fingerprint className="w-4 h-4 text-primary" />
-          <span className="text-sm font-medium">Identity & Habits</span>
+          <ClarityBadge level={1} label="Identity" />
           <span className="text-xs text-muted-foreground">"I am the type of person who..."</span>
         </div>
         <Badge variant="secondary" className="text-xs">

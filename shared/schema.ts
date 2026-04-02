@@ -3,10 +3,10 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // ============================================================
-// GTD HORIZONS (Top-down clarity)
+// CLARITY OF LIFE (Top-down clarity)
 // ============================================================
 
-// Horizon 5: Purpose & Principles
+// C5: Purpose & Principles
 export const purposes = sqliteTable("purposes", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   statement: text("statement").notNull(),
@@ -14,7 +14,7 @@ export const purposes = sqliteTable("purposes", {
   createdAt: text("created_at").notNull(),
 });
 
-// Horizon 4: Vision (3-5 year picture)
+// C4: Vision (3-5 year picture)
 export const visions = sqliteTable("visions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),
@@ -25,7 +25,7 @@ export const visions = sqliteTable("visions", {
   anchorMoments: text("anchor_moments"), // JSON array of {lifePiece, scene}
 });
 
-// Horizon 3: Goals (1-2 year objectives)
+// C3: Responsibility
 export const goals = sqliteTable("goals", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),
@@ -36,7 +36,7 @@ export const goals = sqliteTable("goals", {
   createdAt: text("created_at").notNull(),
 });
 
-// Horizon 2: Areas of Focus & Responsibility
+// C2: Areas of Focus
 export const areas = sqliteTable("areas", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -47,7 +47,7 @@ export const areas = sqliteTable("areas", {
   archived: integer("archived").notNull().default(0), // 1 = archived, 0 = active
 });
 
-// Horizon 1: Projects (multi-step outcomes)
+// C1: Identity (projects & routines derived from identities)
 export const projects = sqliteTable("projects", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),

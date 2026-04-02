@@ -34,7 +34,7 @@ export default function ProjectsPage() {
           <CardContent className="p-8 text-center text-muted-foreground">
             <FolderOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="text-sm font-medium">No projects yet</p>
-            <p className="text-xs mt-1">Projects are derived from active identities linked to an area. Add identities in Horizons.</p>
+            <p className="text-xs mt-1">Projects are derived from active identities linked to an area. Add identities in Clarity.</p>
           </CardContent>
         </Card>
       ) : (
