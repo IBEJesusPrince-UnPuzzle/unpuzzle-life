@@ -25,6 +25,148 @@ import {
 const dbPath = process.env.DATABASE_PATH || "data.db";
 const sqlite = new Database(dbPath);
 sqlite.pragma("journal_mode = WAL");
+
+// Auto-create tables if they don't exist (handles fresh Render deploys)
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS purposes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    statement TEXT NOT NULL,
+    principles TEXT,
+    created_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS visions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    timeframe TEXT,
+    status TEXT DEFAULT 'active',
+    created_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS goals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    vision_id INTEGER,
+    target_date TEXT,
+    status TEXT DEFAULT 'active',
+    created_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS areas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    category TEXT,
+    icon TEXT,
+    sort_order INTEGER DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    area_id INTEGER,
+    identity_id INTEGER,
+    status TEXT DEFAULT 'active',
+    created_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    project_id INTEGER,
+    context TEXT,
+    energy TEXT,
+    time_estimate INTEGER,
+    status TEXT DEFAULT 'active',
+    created_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS identities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    statement TEXT NOT NULL,
+    area_id INTEGER,
+    vision_id INTEGER,
+    cue TEXT,
+    craving TEXT,
+    response TEXT,
+    reward TEXT,
+    frequency TEXT,
+    target_count INTEGER DEFAULT 1,
+    active INTEGER DEFAULT 1,
+    time_of_day TEXT,
+    created_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS habits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    area_id INTEGER,
+    cue TEXT,
+    routine TEXT,
+    reward TEXT,
+    frequency TEXT,
+    target_count INTEGER DEFAULT 1,
+    active INTEGER DEFAULT 1,
+    time_of_day TEXT,
+    created_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS habit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    habit_id INTEGER,
+    date TEXT NOT NULL,
+    completed INTEGER DEFAULT 0,
+    count INTEGER DEFAULT 0,
+    notes TEXT
+  );
+  CREATE TABLE IF NOT EXISTS routine_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    identity_id INTEGER,
+    time_of_day TEXT,
+    sort_order INTEGER DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS routine_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    routine_item_id INTEGER,
+    date TEXT NOT NULL,
+    completed INTEGER DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS planner_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    area_id INTEGER,
+    goal TEXT,
+    start_time TEXT,
+    end_time TEXT,
+    hours TEXT,
+    result TEXT,
+    status TEXT DEFAULT 'planned',
+    recurrence TEXT,
+    habit_id INTEGER,
+    is_draft INTEGER DEFAULT 0,
+    source_type TEXT DEFAULT 'manual'
+  );
+  CREATE TABLE IF NOT EXISTS inbox_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL,
+    processed INTEGER DEFAULT 0,
+    area_id INTEGER,
+    created_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS weekly_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    week_start TEXT NOT NULL,
+    wins TEXT,
+    struggles TEXT,
+    lessons TEXT,
+    next_week_focus TEXT,
+    completed INTEGER DEFAULT 0,
+    created_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS wizard_state (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    step INTEGER DEFAULT 0,
+    data TEXT,
+    completed INTEGER DEFAULT 0
+  );
+`);
+
 export const db = drizzle(sqlite);
 
 export interface IStorage {
