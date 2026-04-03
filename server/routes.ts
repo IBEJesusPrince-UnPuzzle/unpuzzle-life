@@ -796,14 +796,16 @@ export function registerRoutes(server: Server, app: Express) {
   // DASHBOARD STATS
   // ============================================================
   app.get("/api/stats", (_req, res) => {
+    try {
     // Wrap legacy table queries in try/catch — production DB may lack newer columns
     let allActions: any[] = [];
     try { allActions = storage.getActions(); } catch {}
     let allProjects: any[] = [];
     try { allProjects = storage.getProjects(); } catch {}
+    let inboxCount = 0;
+    try { inboxCount = storage.getInboxItems().filter(i => !i.processed).length; } catch {}
     const allIdentities = storage.getIdentities();
     const allRoutineItems = storage.getRoutineItems();
-    const inboxCount = storage.getInboxItems().filter(i => !i.processed).length;
     const now = new Date();
     const today = now.toISOString().split("T")[0];
     const currentHHMM = now.toTimeString().slice(0, 5);
@@ -850,12 +852,17 @@ export function registerRoutes(server: Server, app: Express) {
       pendingActionsCount,
       identityVotePercent,
     });
+    } catch (err: any) {
+      console.error("Stats error:", err?.message || err);
+      res.status(500).json({ message: err?.message || "Internal server error" });
+    }
   });
 
   // ============================================================
   // COMBINED DASHBOARD DATA
   // ============================================================
   app.get("/api/dashboard-data", (_req, res) => {
+    try {
     const now = new Date();
     const today = now.toISOString().split("T")[0];
     const currentHHMM = now.toTimeString().slice(0, 5);
@@ -863,10 +870,11 @@ export function registerRoutes(server: Server, app: Express) {
     // Wrap legacy table queries in try/catch — production DB may lack newer columns
     let allActions: any[] = [];
     try { allActions = storage.getActions(); } catch {}
+    let inboxCount = 0;
+    try { inboxCount = storage.getInboxItems().filter(i => !i.processed).length; } catch {}
     const allIdentities = storage.getIdentities();
     const allRoutineItems = storage.getRoutineItems();
     const allAreas = storage.getAreas();
-    const inboxCount = storage.getInboxItems().filter(i => !i.processed).length;
     const activeIdentities = allIdentities.filter(i => i.active);
     const allPlannerTasks = storage.getAllPlannerTasks();
 
@@ -878,7 +886,7 @@ export function registerRoutes(server: Server, app: Express) {
     const dayName = DAY_NAMES[dow];
     const existingForDate = storage.getPlannerTasksByDate(today);
 
-    function getNthWeekdayOfMonthDash(year: number, month: number, dayIndex: number, nth: number): number | null {
+    const getNthWeekdayOfMonthDash = (year: number, month: number, dayIndex: number, nth: number): number | null => {
       const first = new Date(year, month, 1);
       const last = new Date(year, month + 1, 0);
       const dates: number[] = [];
@@ -1003,6 +1011,10 @@ export function registerRoutes(server: Server, app: Express) {
       routineLogs,
       recurringCreated,
     });
+    } catch (err: any) {
+      console.error("Dashboard data error:", err?.message || err);
+      res.status(500).json({ message: err?.message || "Internal server error" });
+    }
   });
 
   // ============================================================
