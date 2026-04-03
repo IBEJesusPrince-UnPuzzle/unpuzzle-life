@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Link } from "wouter";
+import { navigate } from "wouter/use-hash-location";
 import type { RoutineItem, RoutineLog, Area } from "@shared/schema";
 
 function getToday() {
@@ -435,11 +436,9 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
               )}
               {item.habitId && (
                 <div className="flex items-center gap-1.5 mt-1" onClick={(e) => e.stopPropagation()}>
-                  <a href="#/horizons?tab=identity">
-                    <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30">
-                      <Fingerprint className="w-3 h-3" /> Identity
-                    </Badge>
-                  </a>
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30" onClick={() => navigate("/horizons?tab=identity")}>
+                    <Fingerprint className="w-3 h-3" /> Identity
+                  </Badge>
                   <Link href={`/projects/${item.habitId}`}>
                     <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-chart-5/10 transition-colors text-chart-5 border-chart-5/30">
                       <FolderOpen className="w-3 h-3" /> Project

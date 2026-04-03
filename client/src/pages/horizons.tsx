@@ -41,18 +41,17 @@ function ClarityBadge({ level, label }: { level: number; label: string }) {
 
 export default function HorizonsPage() {
   const initialTab = (() => {
-    const hash = window.location.hash || "";
-    const match = hash.match(/[?&]tab=([^&]*)/);
-    return match ? match[1] : "purpose";
+    const params = new URLSearchParams(window.location.search);
+    return params.get("tab") || "purpose";
   })();
   const [activeTab, setActiveTab] = useState(initialTab);
 
   // Sync tab from URL when navigating to this page with ?tab=
   useEffect(() => {
-    const hash = window.location.hash || "";
-    const match = hash.match(/[?&]tab=([^&]*)/);
-    if (match && match[1] !== activeTab) {
-      setActiveTab(match[1]);
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (tab && tab !== activeTab) {
+      setActiveTab(tab);
     }
   }, []);
 

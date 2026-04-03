@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
+import { navigate } from "wouter/use-hash-location";
 import type { Identity, Area, RoutineItem, PlannerTask } from "@shared/schema";
 import { formatRecurrence } from "./planner";
 
@@ -174,11 +175,9 @@ export default function ProjectDetailPage({ id }: { id: number }) {
           </h1>
         </div>
         <div className="flex items-center gap-1.5 mt-1.5">
-          <a href="#/horizons?tab=identity">
-            <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30">
-              <Fingerprint className="w-3 h-3" /> Identity
-            </Badge>
-          </a>
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30" onClick={() => navigate("/horizons?tab=identity")}>
+            <Fingerprint className="w-3 h-3" /> Identity
+          </Badge>
           <Link href={`/routine/${identity.id}`}>
             <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30">
               <Repeat2 className="w-3 h-3" /> Routine
