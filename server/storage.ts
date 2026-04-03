@@ -37,6 +37,21 @@ function addColumnIfMissing(table: string, column: string, definition: string) {
     }
   } catch (_) { /* table doesn't exist yet, CREATE TABLE will handle it */ }
 }
+function renameColumnIfExists(table: string, oldName: string, newName: string) {
+  try {
+    const cols = sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    const hasOld = cols.find(c => c.name === oldName);
+    const hasNew = cols.find(c => c.name === newName);
+    if (hasOld && !hasNew) {
+      sqlite.exec(`ALTER TABLE ${table} RENAME COLUMN ${oldName} TO ${newName}`);
+    } else if (hasOld && hasNew) {
+      // Both exist (e.g. from a previous partial migration that added newName)
+      // Copy data from old to new where new is empty, then drop old column
+      sqlite.exec(`UPDATE ${table} SET ${newName} = ${oldName} WHERE ${newName} = '' OR ${newName} IS NULL`);
+      sqlite.exec(`ALTER TABLE ${table} DROP COLUMN ${oldName}`);
+    }
+  } catch (_) { /* ignore if table doesn't exist or rename fails */ }
+}
 sqlite.exec(`
   CREATE TABLE IF NOT EXISTS purposes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -203,6 +218,11 @@ sqlite.exec(`
   );
 `);
 
+// Migrate renamed columns (old schema → new schema)
+renameColumnIfExists("inbox_items", "text", "content");
+renameColumnIfExists("projects", "name", "title");
+renameColumnIfExists("weekly_reviews", "week_start", "week_of");
+
 // Migrate missing columns on existing tables
 // Core columns that may be missing on production DBs created before schema evolution
 addColumnIfMissing("inbox_items", "content", "TEXT NOT NULL DEFAULT ''");
@@ -211,6 +231,7 @@ addColumnIfMissing("inbox_items", "created_at", "TEXT NOT NULL DEFAULT ''");
 addColumnIfMissing("projects", "title", "TEXT NOT NULL DEFAULT ''");
 addColumnIfMissing("projects", "status", "TEXT NOT NULL DEFAULT 'active'");
 addColumnIfMissing("projects", "created_at", "TEXT NOT NULL DEFAULT ''");
+addColumnIfMissing("projects", "goal_id", "INTEGER");
 addColumnIfMissing("actions", "area_id", "INTEGER");
 addColumnIfMissing("actions", "title", "TEXT NOT NULL DEFAULT ''");
 addColumnIfMissing("actions", "created_at", "TEXT NOT NULL DEFAULT ''");
