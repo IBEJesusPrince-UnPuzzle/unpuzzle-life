@@ -204,6 +204,16 @@ sqlite.exec(`
 `);
 
 // Migrate missing columns on existing tables
+// Core columns that may be missing on production DBs created before schema evolution
+addColumnIfMissing("inbox_items", "content", "TEXT NOT NULL DEFAULT ''");
+addColumnIfMissing("inbox_items", "area_id", "INTEGER");
+addColumnIfMissing("inbox_items", "created_at", "TEXT NOT NULL DEFAULT ''");
+addColumnIfMissing("projects", "title", "TEXT NOT NULL DEFAULT ''");
+addColumnIfMissing("projects", "status", "TEXT NOT NULL DEFAULT 'active'");
+addColumnIfMissing("projects", "created_at", "TEXT NOT NULL DEFAULT ''");
+addColumnIfMissing("actions", "area_id", "INTEGER");
+addColumnIfMissing("actions", "title", "TEXT NOT NULL DEFAULT ''");
+addColumnIfMissing("actions", "created_at", "TEXT NOT NULL DEFAULT ''");
 addColumnIfMissing("areas", "archived", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("visions", "anchor_moments", "TEXT");
 addColumnIfMissing("projects", "due_date", "TEXT");
