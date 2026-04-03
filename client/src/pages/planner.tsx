@@ -387,7 +387,7 @@ export function SorterView({ areas, onAreaClick, embedded }: { areas: Area[]; on
   // Stats
   const totalTasks = tasks.length;
   const doneTasks = tasks.filter(t => t.status === "done").length;
-  const totalHours = tasks.reduce((sum, t) => sum + parseFloat(t.hours || "0"), 0);
+  const totalHours = tasks.reduce((sum, t) => sum + (parseFloat(t.hours || "0") || 0), 0);
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4 overflow-y-auto h-full">
@@ -857,10 +857,10 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
                     I'm the type of person who will <span className="font-medium text-foreground">{chain.identityStatement}</span>
                   </p>
                 )}
-                {chain.habitCue && (
+                {chain.cue && (
                   <p className="text-[11px] text-muted-foreground">
-                    <span className="font-medium text-foreground">Habit:</span>{" "}
-                    When <span className="font-medium text-foreground">{chain.habitCue}</span>
+                    <span className="font-medium text-foreground">Triggered:</span>{" "}
+                    <span className="font-medium text-foreground">{chain.cue}</span>
                   </p>
                 )}
               </div>
@@ -992,12 +992,12 @@ function RoutineItemCard({ item, areas, isComplete, date, logId }: {
               <div className="mt-2 space-y-1 text-[11px]">
                 {item.cue && (
                   <p className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
-                    <Eye className="w-3 h-3 shrink-0" /> I'll {item.cue}
+                    <Eye className="w-3 h-3 shrink-0" /> When I'm {item.cue}
                   </p>
                 )}
                 {item.craving && (
                   <p className="flex items-center gap-1 text-rose-600 dark:text-rose-400">
-                    <Heart className="w-3 h-3 shrink-0" /> and because {item.craving}
+                    <Heart className="w-3 h-3 shrink-0" /> because I'm {item.craving}
                   </p>
                 )}
                 <p className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
@@ -1005,7 +1005,7 @@ function RoutineItemCard({ item, areas, isComplete, date, logId }: {
                 </p>
                 {item.reward && (
                   <p className="flex items-center gap-1 text-primary">
-                    <Trophy className="w-3 h-3 shrink-0" /> and I'll be rewarded by {item.reward}
+                    <Trophy className="w-3 h-3 shrink-0" /> so that I'll be {item.reward}
                   </p>
                 )}
               </div>
@@ -1344,7 +1344,7 @@ function AreaDetailView({ areaId, areas, onBack }: { areaId: number; areas: Area
   // Stats
   const totalTasks = tasks.length;
   const doneTasks = tasks.filter(t => t.status === "done").length;
-  const totalHours = tasks.reduce((sum, t) => sum + parseFloat(t.hours || "0"), 0);
+  const totalHours = tasks.reduce((sum, t) => sum + (parseFloat(t.hours || "0") || 0), 0);
 
   const updateStatus = useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) =>

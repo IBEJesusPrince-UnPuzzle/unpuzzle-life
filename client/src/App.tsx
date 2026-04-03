@@ -15,7 +15,7 @@ import ImportPage from "@/pages/import";
 import ProjectDetailPage from "@/pages/project-detail";
 import ProjectsPage from "@/pages/projects";
 import NotFound from "@/pages/not-found";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -70,10 +70,14 @@ function SlideMenu({ open, onClose, isDark, toggleTheme }: {
     queryFn: () => apiRequest("GET", "/api/stats").then(r => r.json()),
   });
 
-  // Close menu on navigation
+  // Close menu on navigation (only when location actually changes)
+  const prevLocation = useRef(location);
   useEffect(() => {
-    if (open) onClose();
-  }, [location]);
+    if (prevLocation.current !== location && open) {
+      onClose();
+    }
+    prevLocation.current = location;
+  }, [location, open, onClose]);
 
   return (
     <>

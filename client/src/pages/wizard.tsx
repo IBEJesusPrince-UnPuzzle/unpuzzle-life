@@ -591,10 +591,10 @@ function Phase4Identities({
                   <span className="font-medium">{id.statement}</span>
                 </p>
                 {id.cue && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5">when {id.cue}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">triggered {id.cue}</p>
                 )}
                 {id.craving && (
-                  <p className="text-[11px] text-muted-foreground/70 mt-0.5 italic">because {id.craving}</p>
+                  <p className="text-[11px] text-muted-foreground/70 mt-0.5 italic">because I {id.craving}</p>
                 )}
               </CardContent>
             </Card>
@@ -621,11 +621,11 @@ function Phase4Identities({
           </div>
 
           <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1">...when... (cue)</p>
+            <p className="text-xs font-medium text-muted-foreground mb-1">...triggered...</p>
             <Input
               value={habitCue}
               onChange={e => setHabitCue(e.target.value)}
-              placeholder="e.g. triggering/reminding action"
+              placeholder="before/after an event/action e.g. before bed, after work, while driving"
               className="text-sm"
             />
           </div>
@@ -653,21 +653,21 @@ function Phase4Identities({
           />
 
           <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1">...because...</p>
+            <p className="text-xs font-medium text-muted-foreground mb-1">...because I...</p>
             <Input
               value={habitBecause}
               onChange={e => setHabitBecause(e.target.value)}
-              placeholder="e.g. what's attractive about it? why crave it?"
+              placeholder="why do you want the change? e.g. avoid surprises, keep it manageable, understand better"
               className="text-sm"
             />
           </div>
 
           <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1">...I'll be rewarded by...</p>
+            <p className="text-xs font-medium text-muted-foreground mb-1">...so this makes sure I'll have...</p>
             <Input
               value={habitReward}
               onChange={e => setHabitReward(e.target.value)}
-              placeholder="e.g. describe how it satisfies you"
+              placeholder="tangible outcome e.g. clean floors, balanced books, 10% fat loss"
               className="text-sm"
             />
           </div>

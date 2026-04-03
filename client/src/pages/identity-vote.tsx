@@ -249,7 +249,7 @@ function IdentityBreakdownCard({ identity, onMarkDone }: { identity: IdentityBre
               "I'm the type of person who will {identity.identityStatement}"
             </p>
             {identity.cue && (
-              <p className="text-[11px] text-muted-foreground">when {identity.cue}</p>
+              <p className="text-[11px] text-muted-foreground">triggered {identity.cue}</p>
             )}
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               {identity.areaName && <Badge variant="outline" className="text-[10px] h-4 px-1">{identity.areaName}</Badge>}

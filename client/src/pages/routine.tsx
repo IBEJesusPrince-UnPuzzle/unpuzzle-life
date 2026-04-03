@@ -448,50 +448,115 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
           {expanded && (
             <div className="px-3.5 pb-3.5 pt-0 border-t border-border/50">
               <div className="grid grid-cols-1 gap-2 mt-2.5">
-                {prevReward && (
-                  <div className="flex items-start gap-2 text-xs">
-                    <ArrowRight className="w-3.5 h-3.5 text-primary/60 mt-0.5 shrink-0" />
-                    <div>
-                      <span className="font-medium text-primary/70">After...</span>
-                      <p className="text-muted-foreground mt-0.5 leading-relaxed">{prevReward}</p>
-                    </div>
-                  </div>
-                )}
-                {item.cue && (
-                  <div className="flex items-start gap-2 text-xs">
-                    <Eye className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 mt-0.5 shrink-0" />
-                    <div>
-                      <span className="font-medium text-amber-600 dark:text-amber-400">I'll...</span>
-                      <p className="text-muted-foreground mt-0.5 leading-relaxed">{item.cue}</p>
-                    </div>
-                  </div>
-                )}
-                {item.craving && (
-                  <div className="flex items-start gap-2 text-xs">
-                    <Heart className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400 mt-0.5 shrink-0" />
-                    <div>
-                      <span className="font-medium text-rose-600 dark:text-rose-400">and because...</span>
-                      <p className="text-muted-foreground mt-0.5 leading-relaxed">{item.craving}</p>
-                    </div>
-                  </div>
-                )}
-                {item.response && (
-                  <div className="flex items-start gap-2 text-xs">
-                    <Zap className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 mt-0.5 shrink-0" />
-                    <div>
-                      <span className="font-medium text-emerald-600 dark:text-emerald-400">I will...</span>
-                      <p className="text-muted-foreground mt-0.5 leading-relaxed">{item.response}</p>
-                    </div>
-                  </div>
-                )}
-                {item.reward && (
-                  <div className="flex items-start gap-2 text-xs">
-                    <Trophy className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
-                    <div>
-                      <span className="font-medium text-primary">and I'll be rewarded by...</span>
-                      <p className="text-muted-foreground mt-0.5 leading-relaxed">{item.reward}</p>
-                    </div>
-                  </div>
+                {itemIsDraft ? (
+                  /* Draft expanded view — full identity context */
+                  <>
+                    {area && (
+                      <div className="flex items-start gap-2 text-xs">
+                        <Zap className="w-3.5 h-3.5 text-primary/60 mt-0.5 shrink-0" />
+                        <div>
+                          <span className="font-medium text-primary/70">In the area of</span>
+                          <p className="text-muted-foreground mt-0.5 leading-relaxed">
+                            <span className="font-medium text-foreground">{area.category === "UnPuzzle" ? `${area.category} ${area.name}` : `${area.name} ${area.category || ""}`}</span>
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {item.response && (
+                      <div className="flex items-start gap-2 text-xs">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 mt-0.5 shrink-0" />
+                        <div>
+                          <span className="font-medium text-emerald-600 dark:text-emerald-400">I'm the type of person who will...</span>
+                          <p className="text-muted-foreground mt-0.5 leading-relaxed">{item.response}</p>
+                        </div>
+                      </div>
+                    )}
+                    {item.cue && (
+                      <div className="flex items-start gap-2 text-xs">
+                        <Eye className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 mt-0.5 shrink-0" />
+                        <div>
+                          <span className="font-medium text-amber-600 dark:text-amber-400">When I'm...</span>
+                          <p className="text-muted-foreground mt-0.5 leading-relaxed">{item.cue}</p>
+                        </div>
+                      </div>
+                    )}
+                    {(item as any).timeOfDay && (
+                      <div className="flex items-start gap-2 text-xs">
+                        <Clock className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 mt-0.5 shrink-0" />
+                        <div>
+                          <span className="font-medium text-blue-600 dark:text-blue-400">in the...</span>
+                          <p className="text-muted-foreground mt-0.5 leading-relaxed">{(item as any).timeOfDay}</p>
+                        </div>
+                      </div>
+                    )}
+                    {item.craving && (
+                      <div className="flex items-start gap-2 text-xs">
+                        <Heart className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400 mt-0.5 shrink-0" />
+                        <div>
+                          <span className="font-medium text-rose-600 dark:text-rose-400">because I'm...</span>
+                          <p className="text-muted-foreground mt-0.5 leading-relaxed">{item.craving}</p>
+                        </div>
+                      </div>
+                    )}
+                    {item.reward && (
+                      <div className="flex items-start gap-2 text-xs">
+                        <Trophy className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
+                        <div>
+                          <span className="font-medium text-primary">so that I'll be...</span>
+                          <p className="text-muted-foreground mt-0.5 leading-relaxed">{item.reward}</p>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* Published routine expanded view — habit stack chain */
+                  <>
+                    {prevReward && (
+                      <div className="flex items-start gap-2 text-xs">
+                        <ArrowRight className="w-3.5 h-3.5 text-primary/60 mt-0.5 shrink-0" />
+                        <div>
+                          <span className="font-medium text-primary/70">After...</span>
+                          <p className="text-muted-foreground mt-0.5 leading-relaxed">{prevReward}</p>
+                        </div>
+                      </div>
+                    )}
+                    {item.cue && (
+                      <div className="flex items-start gap-2 text-xs">
+                        <Eye className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 mt-0.5 shrink-0" />
+                        <div>
+                          <span className="font-medium text-amber-600 dark:text-amber-400">I'll...</span>
+                          <p className="text-muted-foreground mt-0.5 leading-relaxed">{item.cue}</p>
+                        </div>
+                      </div>
+                    )}
+                    {item.craving && (
+                      <div className="flex items-start gap-2 text-xs">
+                        <Heart className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400 mt-0.5 shrink-0" />
+                        <div>
+                          <span className="font-medium text-rose-600 dark:text-rose-400">and because...</span>
+                          <p className="text-muted-foreground mt-0.5 leading-relaxed">{item.craving}</p>
+                        </div>
+                      </div>
+                    )}
+                    {item.response && (
+                      <div className="flex items-start gap-2 text-xs">
+                        <Zap className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 mt-0.5 shrink-0" />
+                        <div>
+                          <span className="font-medium text-emerald-600 dark:text-emerald-400">I will...</span>
+                          <p className="text-muted-foreground mt-0.5 leading-relaxed">{item.response}</p>
+                        </div>
+                      </div>
+                    )}
+                    {item.reward && (
+                      <div className="flex items-start gap-2 text-xs">
+                        <Trophy className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
+                        <div>
+                          <span className="font-medium text-primary">and I'll be rewarded by...</span>
+                          <p className="text-muted-foreground mt-0.5 leading-relaxed">{item.reward}</p>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 

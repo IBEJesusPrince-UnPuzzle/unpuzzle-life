@@ -62,7 +62,7 @@ export default function ProjectsPage() {
                     <div className="flex items-start gap-2">
                       <FolderOpen className="w-4 h-4 text-chart-5 mt-0.5 shrink-0" />
                       <p className="font-medium text-sm hover:text-primary transition-colors">
-                        {identity.cue ? `when...${identity.cue}` : identity.statement}
+                        {identity.cue ? `triggered...${identity.cue}` : identity.statement}
                       </p>
                     </div>
                     {identity.timeOfDay && (

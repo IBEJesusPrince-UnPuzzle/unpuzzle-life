@@ -170,7 +170,7 @@ export default function ProjectDetailPage({ id }: { id: number }) {
         <div className="flex items-center gap-2">
           <FolderOpen className="w-5 h-5 text-primary" />
           <h1 className="text-lg font-semibold tracking-tight">
-            {identity.statement}{identity.cue ? ` when ${identity.cue}` : ""}
+            {identity.statement}
           </h1>
         </div>
       </div>
@@ -185,19 +185,19 @@ export default function ProjectDetailPage({ id }: { id: number }) {
           </p>
           {identity.cue && (
             <p className="text-sm">
-              <span className="text-muted-foreground">When</span>{" "}
+              <span className="text-muted-foreground">Triggered</span>{" "}
               <span className="font-medium">{identity.cue}</span>
             </p>
           )}
           {identity.craving && (
             <p className="text-sm">
-              <span className="text-muted-foreground">Because</span>{" "}
+              <span className="text-muted-foreground">Because I</span>{" "}
               <span className="font-medium">{identity.craving}</span>
             </p>
           )}
           {identity.reward && (
             <p className="text-sm">
-              <span className="text-muted-foreground">Rewarded by</span>{" "}
+              <span className="text-muted-foreground">So this makes sure I'll have</span>{" "}
               <span className="font-medium">{identity.reward}</span>
             </p>
           )}

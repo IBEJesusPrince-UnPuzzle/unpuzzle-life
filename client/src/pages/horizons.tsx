@@ -696,9 +696,9 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
               />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground font-medium">when I'm...</label>
+              <label className="text-xs text-muted-foreground font-medium">triggered...</label>
               <Input
-                placeholder="e.g. triggering/reminding action"
+                placeholder="before/after an event/action e.g. before bed, after work, while driving"
                 value={cue}
                 onChange={(e) => setCue(e.target.value)}
                 className="text-sm mt-1"
@@ -726,18 +726,18 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
               </div>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground font-medium">because it...</label>
+              <label className="text-xs text-muted-foreground font-medium">because I...</label>
               <Input
-                placeholder="e.g. what's attractive about it? why crave it?"
+                placeholder="why do you want the change? e.g. avoid surprises, keep it manageable, understand better"
                 value={craving}
                 onChange={(e) => setCraving(e.target.value)}
                 className="text-sm mt-1"
               />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground font-medium">I'll be rewarded by...</label>
+              <label className="text-xs text-muted-foreground font-medium">so this makes sure I'll have...</label>
               <Input
-                placeholder="e.g. describe how it satisfies you"
+                placeholder="tangible outcome e.g. clean floors, balanced books, 10% fat loss"
                 value={reward}
                 onChange={(e) => setReward(e.target.value)}
                 className="text-sm mt-1"
@@ -777,8 +777,8 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
                       <Input value={editStatement} onChange={(e) => setEditStatement(e.target.value)} className="text-sm mt-1" />
                     </div>
                     <div>
-                      <span className="text-xs text-muted-foreground">when I'm...</span>
-                      <Input value={editCue} onChange={(e) => setEditCue(e.target.value)} className="text-sm mt-1" />
+                      <span className="text-xs text-muted-foreground">triggered...</span>
+                      <Input value={editCue} onChange={(e) => setEditCue(e.target.value)} className="text-sm mt-1" placeholder="before/after an event/action e.g. before bed, after work, while driving" />
                     </div>
                     <div>
                       <span className="text-xs text-muted-foreground">in the...</span>
@@ -796,12 +796,12 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
                       <div className="mt-1"><RecurrenceBuilder value={editRecurrence} onChange={setEditRecurrence} requireRecurrence /></div>
                     </div>
                     <div>
-                      <span className="text-xs text-muted-foreground">because it...</span>
-                      <Input value={editCraving} onChange={(e) => setEditCraving(e.target.value)} className="text-sm mt-1" />
+                      <span className="text-xs text-muted-foreground">because I...</span>
+                      <Input value={editCraving} onChange={(e) => setEditCraving(e.target.value)} className="text-sm mt-1" placeholder="why do you want the change?" />
                     </div>
                     <div>
-                      <span className="text-xs text-muted-foreground">I'll be rewarded by...</span>
-                      <Input value={editReward} onChange={(e) => setEditReward(e.target.value)} className="text-sm mt-1" />
+                      <span className="text-xs text-muted-foreground">so this makes sure I'll have...</span>
+                      <Input value={editReward} onChange={(e) => setEditReward(e.target.value)} className="text-sm mt-1" placeholder="tangible outcome e.g. clean floors, balanced books" />
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => saveEdit(id.id)} disabled={!editStatement.trim()}>Save</Button>
@@ -827,7 +827,7 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
                     </p>
                     {id.cue && (
                       <p className="text-[11px] text-muted-foreground mt-0.5">
-                        when <span className="font-medium text-foreground">{id.cue}</span>
+                        triggered <span className="font-medium text-foreground">{id.cue}</span>
                       </p>
                     )}
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
@@ -842,7 +842,7 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
                         </Badge>
                       )}
                       {id.craving && (
-                        <span className="text-[10px] text-muted-foreground">because: {id.craving}</span>
+                        <span className="text-[10px] text-muted-foreground">because I: {id.craving}</span>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 mt-1.5">
