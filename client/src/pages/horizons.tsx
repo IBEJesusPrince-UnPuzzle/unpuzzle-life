@@ -16,7 +16,7 @@ import {
   Compass, Eye, Target, FolderOpen, Plus, Trash2,
   ArrowRight, Pencil, X, ArrowLeft, Repeat2,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import type { Purpose, Vision, Area, Identity } from "@shared/schema";
@@ -46,6 +46,15 @@ export default function HorizonsPage() {
     return match ? match[1] : "purpose";
   })();
   const [activeTab, setActiveTab] = useState(initialTab);
+
+  // Sync tab from URL when navigating to this page with ?tab=
+  useEffect(() => {
+    const hash = window.location.hash || "";
+    const match = hash.match(/[?&]tab=([^&]*)/);
+    if (match && match[1] !== activeTab) {
+      setActiveTab(match[1]);
+    }
+  }, []);
 
   const { data: purposes = [] } = useQuery<Purpose[]>({ queryKey: ["/api/purposes"] });
   const { data: visions = [] } = useQuery<Vision[]>({ queryKey: ["/api/visions"] });
