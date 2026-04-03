@@ -6,11 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
   FolderOpen, Users, MapPin, Package, Plus, Clock, CheckCircle2,
-  Repeat, Archive, Sparkles, Trash2, ArrowLeft,
+  Repeat, Archive, Sparkles, Trash2, ArrowLeft, Fingerprint, Repeat2,
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
@@ -172,6 +172,18 @@ export default function ProjectDetailPage({ id }: { id: number }) {
           <h1 className="text-lg font-semibold tracking-tight">
             {identity.statement}
           </h1>
+        </div>
+        <div className="flex items-center gap-1.5 mt-1.5">
+          <Link href="/clarity?tab=identity">
+            <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30">
+              <Fingerprint className="w-3 h-3" /> Identity
+            </Badge>
+          </Link>
+          <Link href={`/routine/${identity.id}`}>
+            <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30">
+              <Repeat2 className="w-3 h-3" /> Routine
+            </Badge>
+          </Link>
         </div>
       </div>
 
@@ -372,14 +384,14 @@ function PeopleSection({ habitId }: { habitId: number }) {
                 <SelectValue placeholder="Contact method" />
               </SelectTrigger>
               <SelectContent>
-                {CONTACT_METHOD_GROUPS.map(group => (
-                  <SelectGroup key={group.label}>
-                    <SelectLabel className="text-xs font-semibold">{group.label}</SelectLabel>
-                    {group.options.map(opt => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
-                  </SelectGroup>
-                ))}
+                {CONTACT_METHOD_GROUPS.map(group => [
+                  <SelectItem key={`hdr-${group.label}`} value={`__hdr_${group.label}`} disabled className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/5 border-b border-primary/10">
+                    {group.label}
+                  </SelectItem>,
+                  ...group.options.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  )),
+                ])}
               </SelectContent>
             </Select>
           </div>
@@ -586,20 +598,16 @@ function PlacesSection({ habitId }: { habitId: number }) {
                 <SelectValue placeholder="Travel method" />
               </SelectTrigger>
               <SelectContent>
-                {TRAVEL_METHOD_GROUPS.map((group, gi) => (
-                  group.label ? (
-                    <SelectGroup key={group.label}>
-                      <SelectLabel className="text-xs font-semibold">{group.label}</SelectLabel>
-                      {group.options.map(opt => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectGroup>
-                  ) : (
-                    group.options.map(opt => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                    ))
-                  )
-                ))}
+                {TRAVEL_METHOD_GROUPS.map((group) => [
+                  ...(group.label ? [
+                    <SelectItem key={`hdr-${group.label}`} value={`__hdr_${group.label}`} disabled className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/5 border-b border-primary/10">
+                      {group.label}
+                    </SelectItem>
+                  ] : []),
+                  ...group.options.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  )),
+                ])}
               </SelectContent>
             </Select>
           </div>

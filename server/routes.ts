@@ -840,12 +840,163 @@ export function registerRoutes(server: Server, app: Express) {
     res.json({
       pendingActions: allActions.filter(a => !a.completed).length,
       completedToday: allActions.filter(a => a.completedAt?.startsWith(today)).length,
-      activeProjects: allProjects.filter(p => p.status === "active").length,
+      activeProjects: allIdentities.filter(i => i.active && i.areaId != null).length,
       inboxCount,
-      totalActiveIdentities: activeIdentities.length,
+      totalActiveIdentities: allRoutineItems.filter(r => r.active && r.isDraft !== 1).length,
       missedTasksCount,
       pendingActionsCount,
       identityVotePercent,
+    });
+  });
+
+  // ============================================================
+  // COMBINED DASHBOARD DATA
+  // ============================================================
+  app.get("/api/dashboard-data", (_req, res) => {
+    const now = new Date();
+    const today = now.toISOString().split("T")[0];
+    const currentHHMM = now.toTimeString().slice(0, 5);
+
+    const allActions = storage.getActions();
+    const allIdentities = storage.getIdentities();
+    const allRoutineItems = storage.getRoutineItems();
+    const allAreas = storage.getAreas();
+    const inboxCount = storage.getInboxItems().filter(i => !i.processed).length;
+    const activeIdentities = allIdentities.filter(i => i.active);
+    const allPlannerTasks = storage.getAllPlannerTasks();
+
+    // Generate recurring tasks for today (same logic as generate-recurring endpoint)
+    const templates = allPlannerTasks.filter(t => t.recurrence);
+    const DAY_NAMES = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+    const d = new Date(today + "T12:00:00");
+    const dow = d.getDay();
+    const dayName = DAY_NAMES[dow];
+    const existingForDate = storage.getPlannerTasksByDate(today);
+
+    function getNthWeekdayOfMonthDash(year: number, month: number, dayIndex: number, nth: number): number | null {
+      const first = new Date(year, month, 1);
+      const last = new Date(year, month + 1, 0);
+      const dates: number[] = [];
+      for (let dd = first.getDate(); dd <= last.getDate(); dd++) {
+        const test = new Date(year, month, dd);
+        if (test.getDay() === dayIndex) dates.push(dd);
+      }
+      if (nth === 5) return dates[dates.length - 1] || null;
+      return dates[nth - 1] || null;
+    }
+
+    let recurringCreated = 0;
+    for (const tpl of templates) {
+      const rec = tpl.recurrence!;
+      let matches = false;
+      let pattern: any = null;
+      try { pattern = JSON.parse(rec); } catch {}
+
+      if (pattern && pattern.type) {
+        const origDate = new Date(tpl.date + "T12:00:00");
+        const daysDiff = Math.floor((d.getTime() - origDate.getTime()) / 86400000);
+        if (pattern.type === "daily") {
+          matches = daysDiff >= 0 && daysDiff % pattern.interval === 0;
+        } else if (pattern.type === "weekly") {
+          const days: string[] = pattern.days || [];
+          if (pattern.interval > 1) {
+            const origWeekStart = new Date(origDate);
+            origWeekStart.setDate(origWeekStart.getDate() - origWeekStart.getDay());
+            const curWeekStart = new Date(d);
+            curWeekStart.setDate(curWeekStart.getDate() - curWeekStart.getDay());
+            const weeksBetween = Math.round((curWeekStart.getTime() - origWeekStart.getTime()) / (7 * 86400000));
+            matches = weeksBetween >= 0 && weeksBetween % pattern.interval === 0 && days.includes(dayName);
+          } else {
+            const weeksDiff = Math.floor(daysDiff / 7);
+            matches = daysDiff >= 0 && weeksDiff % pattern.interval === 0 && days.includes(dayName);
+          }
+        } else if (pattern.type === "monthly") {
+          const monthsDiff = (d.getFullYear() - origDate.getFullYear()) * 12 + d.getMonth() - origDate.getMonth();
+          const monthAligned = monthsDiff >= 0 && monthsDiff % (pattern.interval || 1) === 0;
+          if (monthAligned) {
+            if (pattern.weekOfMonth && pattern.dayOfWeek) {
+              const targetDayIndex = DAY_NAMES.indexOf(pattern.dayOfWeek);
+              const targetDate = getNthWeekdayOfMonthDash(d.getFullYear(), d.getMonth(), targetDayIndex, pattern.weekOfMonth);
+              matches = targetDate === d.getDate();
+            } else if (pattern.dayOfMonth) {
+              matches = d.getDate() === pattern.dayOfMonth;
+            }
+          }
+        }
+      } else {
+        if (rec === "daily") matches = true;
+        else if (rec === "weekdays") matches = dow >= 1 && dow <= 5;
+        else if (rec === "weekend") matches = dow === 0 || dow === 6;
+        else if (rec.startsWith("weekly:")) matches = dayName === rec.split(":")[1];
+        else if (rec === "monthly") {
+          const origDay = parseInt(tpl.date.split("-")[2]);
+          matches = d.getDate() === origDay;
+        }
+      }
+      if (!matches) continue;
+      const dup = existingForDate.find(e => e.goal === tpl.goal && e.areaId === tpl.areaId);
+      if (dup) continue;
+      storage.createPlannerTask({
+        date: today,
+        areaId: tpl.areaId,
+        goal: tpl.goal,
+        startTime: tpl.startTime,
+        endTime: tpl.endTime,
+        hours: tpl.hours,
+        status: "planned",
+        recurrence: tpl.recurrence,
+      });
+      recurringCreated++;
+    }
+
+    // Stats computation
+    const missedTasksCount = allPlannerTasks.filter(t => {
+      if (t.status !== "planned" || !t.endTime) return false;
+      if (t.date < today) return true;
+      if (t.date === today && t.endTime < currentHHMM) return true;
+      return false;
+    }).length;
+    const pendingActionsCount = allRoutineItems.filter(r => r.isDraft === 1).length;
+
+    const identitiesWithArea = allIdentities.filter(i => i.active && i.areaId != null);
+    let identityDone = 0;
+    let identityTotal = 0;
+    for (const identity of identitiesWithArea) {
+      const linkedRoutineItems = allRoutineItems.filter(r => r.habitId === identity.id);
+      if (linkedRoutineItems.length === 0) continue;
+      const linkedTasks = allPlannerTasks.filter(t => {
+        if (t.habitId !== identity.id) return false;
+        if (!t.endTime) return false;
+        const isPast = t.date < today || (t.date === today && t.endTime < currentHHMM);
+        return isPast && (t.status === "done" || t.status === "planned");
+      });
+      for (const t of linkedTasks) {
+        identityTotal++;
+        if (t.status === "done") identityDone++;
+      }
+    }
+    const identityVotePercent = identityTotal > 0 ? Math.round((identityDone / identityTotal) * 100) : 0;
+
+    // Fetch today's data
+    const todaysTasks = recurringCreated > 0 ? storage.getPlannerTasksByDate(today) : existingForDate;
+    const routineLogs = storage.getRoutineLogsByDate(today);
+
+    res.json({
+      stats: {
+        pendingActions: allActions.filter(a => !a.completed).length,
+        completedToday: allActions.filter(a => a.completedAt?.startsWith(today)).length,
+        activeProjects: allIdentities.filter(i => i.active && i.areaId != null).length,
+        inboxCount,
+        totalActiveIdentities: allRoutineItems.filter(r => r.active && r.isDraft !== 1).length,
+        missedTasksCount,
+        pendingActionsCount,
+        identityVotePercent,
+      },
+      areas: allAreas,
+      todaysTasks,
+      routineItems: allRoutineItems,
+      routineLogs,
+      recurringCreated,
     });
   });
 

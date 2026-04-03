@@ -1,13 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FolderOpen, ArrowLeft } from "lucide-react";
-import { Link } from "wouter";
+import { FolderOpen, ArrowLeft, Fingerprint, Repeat2 } from "lucide-react";
+import { Link, useLocation } from "wouter";
 import type { Identity, Area } from "@shared/schema";
 
 export default function ProjectsPage() {
   const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
   const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
+  const [, setLocation] = useLocation();
 
   const projectIdentities = identities.filter(i => i.active && i.areaId != null);
 
@@ -70,6 +71,22 @@ export default function ProjectsPage() {
                         {identity.timeOfDay}
                       </Badge>
                     )}
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30"
+                        onClick={(e) => { e.stopPropagation(); e.preventDefault(); setLocation("/clarity?tab=identity"); }}
+                      >
+                        <Fingerprint className="w-3 h-3" /> Identity
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30"
+                        onClick={(e) => { e.stopPropagation(); e.preventDefault(); setLocation(`/routine/${identity.id}`); }}
+                      >
+                        <Repeat2 className="w-3 h-3" /> Routine
+                      </Badge>
+                    </div>
                   </CardContent>
                 </Card>
               </Link>

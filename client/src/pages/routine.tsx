@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/select";
 import {
   Clock, MapPin, CheckCircle2, ChevronDown, ChevronRight,
-  Sparkles, ArrowRight, Eye, Zap, Heart, Trophy, FileEdit, Check, Trash2, ArrowLeft
+  Sparkles, ArrowRight, Eye, Zap, Heart, Trophy, FileEdit, Check, Trash2, ArrowLeft,
+  Fingerprint, FolderOpen
 } from "lucide-react";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Link } from "wouter";
@@ -432,6 +433,20 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
                   )}
                 </div>
               )}
+              {item.habitId && (
+                <div className="flex items-center gap-1.5 mt-1" onClick={(e) => e.stopPropagation()}>
+                  <Link href="/clarity?tab=identity">
+                    <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30">
+                      <Fingerprint className="w-3 h-3" /> Identity
+                    </Badge>
+                  </Link>
+                  <Link href={`/projects/${item.habitId}`}>
+                    <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-chart-5/10 transition-colors text-chart-5 border-chart-5/30">
+                      <FolderOpen className="w-3 h-3" /> Project
+                    </Badge>
+                  </Link>
+                </div>
+              )}
             </div>
 
             {/* Expand indicator */}
@@ -475,7 +490,7 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
                       <div className="flex items-start gap-2 text-xs">
                         <Eye className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 mt-0.5 shrink-0" />
                         <div>
-                          <span className="font-medium text-amber-600 dark:text-amber-400">When I'm...</span>
+                          <span className="font-medium text-amber-600 dark:text-amber-400">triggered...</span>
                           <p className="text-muted-foreground mt-0.5 leading-relaxed">{item.cue}</p>
                         </div>
                       </div>
@@ -493,7 +508,7 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
                       <div className="flex items-start gap-2 text-xs">
                         <Heart className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400 mt-0.5 shrink-0" />
                         <div>
-                          <span className="font-medium text-rose-600 dark:text-rose-400">because I'm...</span>
+                          <span className="font-medium text-rose-600 dark:text-rose-400">because I...</span>
                           <p className="text-muted-foreground mt-0.5 leading-relaxed">{item.craving}</p>
                         </div>
                       </div>
@@ -502,7 +517,7 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
                       <div className="flex items-start gap-2 text-xs">
                         <Trophy className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
                         <div>
-                          <span className="font-medium text-primary">so that I'll be...</span>
+                          <span className="font-medium text-primary">so this makes sure I'll have...</span>
                           <p className="text-muted-foreground mt-0.5 leading-relaxed">{item.reward}</p>
                         </div>
                       </div>

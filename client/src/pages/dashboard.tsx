@@ -37,18 +37,26 @@ export default function Dashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  const { data: stats, isLoading: statsLoading } = useQuery<{
-    identityVotePercent: number;
-    pendingActionsCount: number;
-    missedTasksCount: number;
-    inboxCount: number;
-    pendingActions: number;
-    completedToday: number;
-    activeProjects: number;
-    totalActiveIdentities: number;
-  }>({ queryKey: ["/api/stats"] });
+  const { data: dashboardData, isLoading: statsLoading } = useQuery<{
+    stats: {
+      identityVotePercent: number;
+      pendingActionsCount: number;
+      missedTasksCount: number;
+      inboxCount: number;
+      pendingActions: number;
+      completedToday: number;
+      activeProjects: number;
+      totalActiveIdentities: number;
+    };
+    areas: Area[];
+    todaysTasks: any[];
+    routineItems: any[];
+    routineLogs: any[];
+    recurringCreated: number;
+  }>({ queryKey: ["/api/dashboard-data"] });
 
-  const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
+  const stats = dashboardData?.stats;
+  const areas = dashboardData?.areas || [];
 
   const [, setLocation] = useLocation();
 

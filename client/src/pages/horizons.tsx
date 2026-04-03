@@ -681,12 +681,13 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
             <DialogTitle>Build Your Identity</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
+            <p className="text-[10px] text-muted-foreground italic">* All fields are required</p>
             <div>
-              <label className="text-xs text-muted-foreground font-medium">In the area of... *</label>
+              <label className="text-xs text-muted-foreground font-medium">In the area of...</label>
               <AreaSelect value={areaId} onChange={setAreaId} />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground font-medium">I'm the type of person who will... *</label>
+              <label className="text-xs text-muted-foreground font-medium">I'm the type of person who will...</label>
               <Input
                 placeholder="verb my noun e.g. change my oil, read my book of the month"
                 value={statement}
@@ -771,37 +772,43 @@ function IdentitySection({ identities, areas }: { identities: Identity[]; areas:
               return (
                 <Card key={id.id} className="bg-primary/[0.03]">
                   <CardContent className="p-4 space-y-3">
-                    <AreaSelect value={editAreaId} onChange={setEditAreaId} />
+                    <p className="text-[10px] text-muted-foreground italic">* All fields are required</p>
                     <div>
-                      <span className="text-xs text-muted-foreground">I'm the type of person who will...</span>
-                      <Input value={editStatement} onChange={(e) => setEditStatement(e.target.value)} className="text-sm mt-1" />
+                      <label className="text-xs text-muted-foreground font-medium">In the area of...</label>
+                      <AreaSelect value={editAreaId} onChange={setEditAreaId} />
                     </div>
                     <div>
-                      <span className="text-xs text-muted-foreground">triggered...</span>
+                      <label className="text-xs text-muted-foreground font-medium">I'm the type of person who will...</label>
+                      <Input value={editStatement} onChange={(e) => setEditStatement(e.target.value)} className="text-sm mt-1" placeholder="verb my noun e.g. change my oil, read my book of the month" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground font-medium">triggered...</label>
                       <Input value={editCue} onChange={(e) => setEditCue(e.target.value)} className="text-sm mt-1" placeholder="before/after an event/action e.g. before bed, after work, while driving" />
                     </div>
                     <div>
-                      <span className="text-xs text-muted-foreground">in the...</span>
+                      <label className="text-xs text-muted-foreground font-medium">in the...</label>
                       <Select value={editTimeOfDay} onValueChange={setEditTimeOfDay}>
-                        <SelectTrigger className="text-sm mt-1"><SelectValue placeholder="Time of day" /></SelectTrigger>
+                        <SelectTrigger className="text-sm mt-1"><SelectValue placeholder="Select time of day" /></SelectTrigger>
                         <SelectContent>
                           {TIME_OF_DAY_CATEGORIES.map(t => (
-                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                            <SelectItem key={t.value} value={t.value}>
+                              {t.label} <span className="text-[10px] text-muted-foreground ml-1">({t.range})</span>
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <span className="text-xs text-muted-foreground">Recurrence</span>
+                      <label className="text-xs text-muted-foreground font-medium">Recurrence</label>
                       <div className="mt-1"><RecurrenceBuilder value={editRecurrence} onChange={setEditRecurrence} requireRecurrence /></div>
                     </div>
                     <div>
-                      <span className="text-xs text-muted-foreground">because I...</span>
-                      <Input value={editCraving} onChange={(e) => setEditCraving(e.target.value)} className="text-sm mt-1" placeholder="why do you want the change?" />
+                      <label className="text-xs text-muted-foreground font-medium">because I...</label>
+                      <Input value={editCraving} onChange={(e) => setEditCraving(e.target.value)} className="text-sm mt-1" placeholder="why do you want the change? e.g. avoid surprises, keep it manageable, understand better" />
                     </div>
                     <div>
-                      <span className="text-xs text-muted-foreground">so this makes sure I'll have...</span>
-                      <Input value={editReward} onChange={(e) => setEditReward(e.target.value)} className="text-sm mt-1" placeholder="tangible outcome e.g. clean floors, balanced books" />
+                      <label className="text-xs text-muted-foreground font-medium">so this makes sure I'll have...</label>
+                      <Input value={editReward} onChange={(e) => setEditReward(e.target.value)} className="text-sm mt-1" placeholder="tangible outcome e.g. clean floors, balanced books, 10% fat loss" />
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => saveEdit(id.id)} disabled={!editStatement.trim()}>Save</Button>
