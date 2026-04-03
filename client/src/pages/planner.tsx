@@ -313,9 +313,10 @@ export function SorterView({ areas, onAreaClick, embedded }: { areas: Area[]; on
   });
 
   // Auto-generate recurring tasks when navigating to a new date
+  // Skip when embedded in dashboard — dashboard-data endpoint already generates them
   const [generatedDates, setGeneratedDates] = useState<Set<string>>(new Set());
   useEffect(() => {
-    if (!isSuccess || generatedDates.has(selectedDate)) return;
+    if (embedded || !isSuccess || generatedDates.has(selectedDate)) return;
     setGeneratedDates(prev => new Set(prev).add(selectedDate));
     apiRequest("POST", "/api/planner-tasks/generate-recurring", {
       startDate: selectedDate,
@@ -325,7 +326,7 @@ export function SorterView({ areas, onAreaClick, embedded }: { areas: Area[]; on
         queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks", selectedDate] });
       }
     }).catch(() => {});
-  }, [selectedDate, isSuccess]);
+  }, [selectedDate, isSuccess, embedded]);
 
   // Quick date buttons
   const today = getToday();

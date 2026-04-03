@@ -796,8 +796,11 @@ export function registerRoutes(server: Server, app: Express) {
   // DASHBOARD STATS
   // ============================================================
   app.get("/api/stats", (_req, res) => {
-    const allActions = storage.getActions();
-    const allProjects = storage.getProjects();
+    // Wrap legacy table queries in try/catch — production DB may lack newer columns
+    let allActions: any[] = [];
+    try { allActions = storage.getActions(); } catch {}
+    let allProjects: any[] = [];
+    try { allProjects = storage.getProjects(); } catch {}
     const allIdentities = storage.getIdentities();
     const allRoutineItems = storage.getRoutineItems();
     const inboxCount = storage.getInboxItems().filter(i => !i.processed).length;
@@ -857,7 +860,9 @@ export function registerRoutes(server: Server, app: Express) {
     const today = now.toISOString().split("T")[0];
     const currentHHMM = now.toTimeString().slice(0, 5);
 
-    const allActions = storage.getActions();
+    // Wrap legacy table queries in try/catch — production DB may lack newer columns
+    let allActions: any[] = [];
+    try { allActions = storage.getActions(); } catch {}
     const allIdentities = storage.getIdentities();
     const allRoutineItems = storage.getRoutineItems();
     const allAreas = storage.getAreas();
