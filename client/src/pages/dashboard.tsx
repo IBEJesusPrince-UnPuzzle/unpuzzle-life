@@ -58,6 +58,15 @@ export default function Dashboard() {
   const stats = dashboardData?.stats;
   const areas = dashboardData?.areas || [];
 
+  // Seed SorterView query caches from the combined endpoint to avoid duplicate fetches
+  useEffect(() => {
+    if (!dashboardData) return;
+    queryClient.setQueryData(["/api/areas"], dashboardData.areas);
+    queryClient.setQueryData(["/api/routine-items"], dashboardData.routineItems);
+    queryClient.setQueryData(["/api/planner-tasks", today], dashboardData.todaysTasks);
+    queryClient.setQueryData(["/api/routine-logs", today], dashboardData.routineLogs);
+  }, [dashboardData]);
+
   const [, setLocation] = useLocation();
 
   const captureToInbox = useMutation({
@@ -70,7 +79,7 @@ export default function Dashboard() {
     onSuccess: () => {
       setQuickCapture("");
       setCaptureAreaId("");
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-data"] });
     },
   });
 
