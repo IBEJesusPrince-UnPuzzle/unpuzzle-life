@@ -164,14 +164,6 @@ export default function ProjectDetailPage({ id }: { id: number }) {
 
   return (
     <div className="max-w-4xl mx-auto overflow-y-auto h-full">
-      {/* Colored top accent bar — full width, flush to top */}
-      {identity.puzzlePiece && (
-        <div
-          className="h-1.5 w-full"
-          style={{ backgroundColor: pieceColor.accent }}
-        />
-      )}
-
       <div className="p-6 space-y-6">
       {/* Back button */}
       <div className="flex items-center gap-2 mb-4">
@@ -180,8 +172,11 @@ export default function ProjectDetailPage({ id }: { id: number }) {
         </Link>
       </div>
 
-      {/* Header */}
-      <div>
+      {/* Header — colored left border accent */}
+      <div
+        className="pl-4 border-l-4"
+        style={identity.puzzlePiece ? { borderLeftColor: pieceColor.accent } : {}}
+      >
         {/* Puzzle piece + area breadcrumb */}
         <div className="flex items-center gap-1.5 mb-1 flex-wrap">
           {identity.puzzlePiece && (
