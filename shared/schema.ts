@@ -42,6 +42,8 @@ export const areas = sqliteTable("areas", {
   name: text("name").notNull(),
   description: text("description"),
   category: text("category"), // responsibility: UnPuzzle, Chores, Routines, Roles, Getting Things Done
+  puzzlePiece: text("puzzle_piece"), // reason | finance | fitness | talent | pleasure
+  visionText: text("vision_text"), // the user's immersive area vision text
   icon: text("icon"), // lucide icon name
   sortOrder: integer("sort_order").notNull().default(0),
   archived: integer("archived").notNull().default(0), // 1 = archived, 0 = active
@@ -54,6 +56,8 @@ export const projects = sqliteTable("projects", {
   description: text("description"),
   areaId: integer("area_id").references(() => areas.id),
   goalId: integer("goal_id").references(() => goals.id),
+  puzzlePiece: text("puzzle_piece"), // inherited from identity on creation
+  identityId: integer("identity_id").references(() => identities.id), // link back to source identity
   status: text("status").notNull().default("active"), // active, completed, someday, deferred
   dueDate: text("due_date"),
   createdAt: text("created_at").notNull(),
@@ -93,6 +97,27 @@ export const identities = sqliteTable("identities", {
   targetCount: integer("target_count").notNull().default(1),
   active: integer("active").notNull().default(1),
   timeOfDay: text("time_of_day"),
+  puzzlePiece: text("puzzle_piece"),          // reason | finance | fitness | talent | pleasure
+  location: text("location"),                  // "where will this take place?"
+  environmentType: text("environment_type"),   // "person" | "place" | "thing"
+
+  // Person sub-fields
+  envPersonName: text("env_person_name"),
+  envPersonContactMethod: text("env_person_contact_method"), // call | text | email | in-person | video
+  envPersonContactInfo: text("env_person_contact_info"),
+  envPersonWhy: text("env_person_why"),
+
+  // Place sub-fields
+  envPlaceName: text("env_place_name"),
+  envPlaceAddress: text("env_place_address"),
+  envPlaceTravelMethod: text("env_place_travel_method"), // drive | walk | transit | remote
+  envPlaceWhy: text("env_place_why"),
+
+  // Thing sub-fields
+  envThingName: text("env_thing_name"),
+  envThingUsage: text("env_thing_usage"),   // "how you'll use it"
+  envThingWhy: text("env_thing_why"),
+
   createdAt: text("created_at").notNull(),
 });
 
@@ -204,6 +229,7 @@ export const weeklyReviews = sqliteTable("weekly_reviews", {
   inboxCleared: integer("inbox_cleared").notNull().default(0),
   projectsReviewed: integer("projects_reviewed").notNull().default(0),
   habitsReviewed: integer("habits_reviewed").notNull().default(0),
+  puzzlePieceRatings: text("puzzle_piece_ratings"), // JSON: {reason: 1-5, finance: 1-5, fitness: 1-5, talent: 1-5, pleasure: 1-5}
   createdAt: text("created_at").notNull(),
 });
 
@@ -216,6 +242,37 @@ export const wizardState = sqliteTable("wizard_state", {
   currentPhase: integer("current_phase").notNull().default(1), // 1-4
   completed: integer("completed").notNull().default(0),
   completedAt: text("completed_at"),
+});
+
+// ============================================================
+// ENVIRONMENT ENTITIES
+// ============================================================
+
+export const environmentEntities = sqliteTable("environment_entities", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  identityId: integer("identity_id").references(() => identities.id),
+  areaId: integer("area_id").references(() => areas.id),
+  puzzlePiece: text("puzzle_piece"),
+  type: text("type").notNull(), // "person" | "place" | "thing"
+
+  // Person fields
+  personName: text("person_name"),
+  personContactMethod: text("person_contact_method"),
+  personContactInfo: text("person_contact_info"),
+  personWhy: text("person_why"),
+
+  // Place fields
+  placeName: text("place_name"),
+  placeAddress: text("place_address"),
+  placeTravelMethod: text("place_travel_method"),
+  placeWhy: text("place_why"),
+
+  // Thing fields
+  thingName: text("thing_name"),
+  thingUsage: text("thing_usage"),
+  thingWhy: text("thing_why"),
+
+  createdAt: text("created_at").notNull(),
 });
 
 // ============================================================
@@ -236,6 +293,7 @@ export const insertWeeklyReviewSchema = createInsertSchema(weeklyReviews).omit({
 export const insertRoutineItemSchema = createInsertSchema(routineItems).omit({ id: true });
 export const insertRoutineLogSchema = createInsertSchema(routineLogs).omit({ id: true });
 export const insertPlannerTaskSchema = createInsertSchema(plannerTasks).omit({ id: true });
+export const insertEnvironmentEntitySchema = createInsertSchema(environmentEntities).omit({ id: true });
 export const insertWizardStateSchema = createInsertSchema(wizardState).omit({ id: true });
 
 export type Purpose = typeof purposes.$inferSelect;
@@ -266,5 +324,7 @@ export type RoutineLog = typeof routineLogs.$inferSelect;
 export type InsertRoutineLog = z.infer<typeof insertRoutineLogSchema>;
 export type PlannerTask = typeof plannerTasks.$inferSelect;
 export type InsertPlannerTask = z.infer<typeof insertPlannerTaskSchema>;
+export type EnvironmentEntity = typeof environmentEntities.$inferSelect;
+export type InsertEnvironmentEntity = z.infer<typeof insertEnvironmentEntitySchema>;
 export type WizardState = typeof wizardState.$inferSelect;
 export type InsertWizardState = z.infer<typeof insertWizardStateSchema>;

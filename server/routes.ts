@@ -7,7 +7,7 @@ import {
   insertIdentitySchema, insertHabitSchema, insertHabitLogSchema,
   insertInboxItemSchema, insertWeeklyReviewSchema,
   insertRoutineItemSchema, insertRoutineLogSchema,
-  insertPlannerTaskSchema,
+  insertPlannerTaskSchema, insertEnvironmentEntitySchema,
 } from "@shared/schema";
 
 export function registerRoutes(server: Server, app: Express) {
@@ -116,7 +116,7 @@ export function registerRoutes(server: Server, app: Express) {
     res.json({ ok: true });
   });
 
-  // Project detail: actions + references + related tasks (legacy project ID)
+  // Project detail: actions + references + related tasks + identity + environment entity
   app.get("/api/projects/:id/details", (req, res) => {
     const projectId = Number(req.params.id);
     const project = storage.getProjects().find(p => p.id === projectId);
@@ -128,11 +128,18 @@ export function registerRoutes(server: Server, app: Express) {
     );
     const areas = storage.getAreas();
 
+    // Include linked identity and environment entity if this project was auto-created from an identity
+    const identityId = (project as any).identityId;
+    const identity = identityId ? storage.getIdentities().find(i => i.id === identityId) : null;
+    const environmentEntity = identity ? storage.getEnvironmentEntitiesByIdentity(identity.id)[0] || null : null;
+
     res.json({
       project,
       actions,
       references,
       areas,
+      identity: identity || null,
+      environmentEntity: environmentEntity || null,
     });
   });
 
@@ -317,32 +324,63 @@ export function registerRoutes(server: Server, app: Express) {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
     const identity = storage.createIdentity(parsed.data);
 
-    // If identity has habit fields (cue/timeOfDay), create a draft routine item
-    if (identity.cue || identity.timeOfDay) {
-      const timeOfDayMap: Record<string, string> = {
-        early_morning: "03:00", morning: "07:00", late_morning: "10:00",
-        afternoon: "13:00", late_afternoon: "16:00", evening: "20:00", waking_hours: "12:00",
-      };
-      const placeholderTime = timeOfDayMap[identity.timeOfDay || ""] || "12:00";
-      storage.createRoutineItem({
-        sortOrder: 0,
-        time: placeholderTime,
-        durationMinutes: 10,
-        location: null,
-        cue: identity.cue || null,
-        craving: identity.craving || null,
-        response: identity.statement,
-        reward: identity.reward || null,
+    // Auto-create a Project linked to the identity
+    const project = storage.createProject({
+      title: identity.response || identity.statement,
+      areaId: identity.areaId || null,
+      puzzlePiece: identity.puzzlePiece || null,
+      identityId: identity.id,
+      status: "active",
+      createdAt: new Date().toISOString(),
+    });
+
+    // Create a draft routine item linked to the project (habitId stores identityId for legacy compat)
+    let routineItem = null;
+    const timeOfDayMap: Record<string, string> = {
+      early_morning: "03:00", morning: "07:00", late_morning: "10:00",
+      afternoon: "13:00", late_afternoon: "16:00", evening: "20:00", waking_hours: "12:00",
+    };
+    const placeholderTime = timeOfDayMap[identity.timeOfDay || ""] || "12:00";
+    routineItem = storage.createRoutineItem({
+      sortOrder: 0,
+      time: placeholderTime,
+      durationMinutes: 10,
+      location: identity.location || null,
+      cue: identity.cue || null,
+      craving: identity.craving || null,
+      response: identity.response || identity.statement,
+      reward: identity.reward || null,
+      areaId: identity.areaId || null,
+      habitId: identity.id, // habitId column stores identityId
+      dayVariant: null,
+      active: 1,
+      isDraft: 1,
+      timeOfDay: identity.timeOfDay || null,
+    });
+
+    // If identity has environmentType set, auto-create an environmentEntity
+    if (identity.environmentType) {
+      storage.createEnvironmentEntity({
+        identityId: identity.id,
         areaId: identity.areaId || null,
-        habitId: identity.id, // habitId column stores identityId
-        dayVariant: null,
-        active: 1,
-        isDraft: 1,
-        timeOfDay: identity.timeOfDay || null,
+        puzzlePiece: identity.puzzlePiece || null,
+        type: identity.environmentType,
+        personName: identity.envPersonName || null,
+        personContactMethod: identity.envPersonContactMethod || null,
+        personContactInfo: identity.envPersonContactInfo || null,
+        personWhy: identity.envPersonWhy || null,
+        placeName: identity.envPlaceName || null,
+        placeAddress: identity.envPlaceAddress || null,
+        placeTravelMethod: identity.envPlaceTravelMethod || null,
+        placeWhy: identity.envPlaceWhy || null,
+        thingName: identity.envThingName || null,
+        thingUsage: identity.envThingUsage || null,
+        thingWhy: identity.envThingWhy || null,
+        createdAt: new Date().toISOString(),
       });
     }
 
-    res.json(identity);
+    res.json({ identity, project, routineItem });
   });
   app.patch("/api/identities/:id", (req, res) => {
     const identityId = Number(req.params.id);
@@ -359,8 +397,21 @@ export function registerRoutes(server: Server, app: Express) {
       if (req.body.reward !== undefined) routineUpdate.reward = req.body.reward;
       if (req.body.areaId !== undefined) routineUpdate.areaId = req.body.areaId;
       if (req.body.cue !== undefined) routineUpdate.cue = req.body.cue;
+      if (req.body.location !== undefined) routineUpdate.location = req.body.location;
       if (Object.keys(routineUpdate).length > 0) {
         storage.updateRoutineItem(linkedItem.id, routineUpdate);
+      }
+    }
+
+    // Sync linked project — propagate puzzlePiece and response changes
+    const allProjects = storage.getProjects();
+    const linkedProject = allProjects.find(p => (p as any).identityId === identityId);
+    if (linkedProject) {
+      const projectUpdate: Record<string, any> = {};
+      if (req.body.puzzlePiece !== undefined) projectUpdate.puzzlePiece = req.body.puzzlePiece;
+      if (req.body.response !== undefined) projectUpdate.title = req.body.response;
+      if (Object.keys(projectUpdate).length > 0) {
+        storage.updateProject(linkedProject.id, projectUpdate);
       }
     }
 
@@ -368,6 +419,39 @@ export function registerRoutes(server: Server, app: Express) {
   });
   app.delete("/api/identities/:id", (req, res) => {
     storage.deleteIdentity(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // ENVIRONMENT ENTITIES
+  // ============================================================
+  app.get("/api/environment-entities", (_req, res) => {
+    res.json(storage.getEnvironmentEntities());
+  });
+  app.get("/api/environment-entities/identity/:identityId", (req, res) => {
+    res.json(storage.getEnvironmentEntitiesByIdentity(Number(req.params.identityId)));
+  });
+  app.get("/api/environment-entities/area/:areaId", (req, res) => {
+    res.json(storage.getEnvironmentEntitiesByArea(Number(req.params.areaId)));
+  });
+  app.get("/api/environment-entities/:id", (req, res) => {
+    const all = storage.getEnvironmentEntities();
+    const entity = all.find(e => e.id === Number(req.params.id));
+    if (!entity) return res.status(404).json({ error: "Not found" });
+    res.json(entity);
+  });
+  app.post("/api/environment-entities", (req, res) => {
+    const parsed = insertEnvironmentEntitySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createEnvironmentEntity(parsed.data));
+  });
+  app.patch("/api/environment-entities/:id", (req, res) => {
+    const result = storage.updateEnvironmentEntity(Number(req.params.id), req.body);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/environment-entities/:id", (req, res) => {
+    storage.deleteEnvironmentEntity(Number(req.params.id));
     res.json({ ok: true });
   });
 
@@ -1186,7 +1270,7 @@ export function registerRoutes(server: Server, app: Express) {
             created++;
           } else if (type === "areas") {
             if (!row.name) { errors.push(`Row ${rowNum}: missing name`); continue; }
-            storage.createArea({ name: row.name, description: row.description || null, category: row.responsibility || row.category || null, icon: null, sortOrder: allAreas.length + created });
+            storage.createArea({ name: row.name, description: row.description || null, category: row.responsibility || row.category || null, puzzlePiece: row.puzzle_piece || null, icon: null, sortOrder: allAreas.length + created });
             created++;
           } else if (type === "identities") {
             // All 7 fields required
@@ -1228,6 +1312,7 @@ export function registerRoutes(server: Server, app: Express) {
               targetCount: 1,
               active: 1,
               timeOfDay: todKey,
+              puzzlePiece: row.puzzle_piece || null,
               createdAt: now,
             });
             // Create linked routine item (same logic as POST /api/identities)

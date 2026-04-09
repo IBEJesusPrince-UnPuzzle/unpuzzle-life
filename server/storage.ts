@@ -5,6 +5,7 @@ import {
   purposes, visions, goals, areas, projects, actions,
   identities, habits, habitLogs, inboxItems, weeklyReviews,
   routineItems, routineLogs, plannerTasks, wizardState,
+  environmentEntities,
   type Purpose, type InsertPurpose,
   type Vision, type InsertVision,
   type Goal, type InsertGoal,
@@ -19,6 +20,7 @@ import {
   type RoutineItem, type InsertRoutineItem,
   type RoutineLog, type InsertRoutineLog,
   type PlannerTask, type InsertPlannerTask,
+  type EnvironmentEntity, type InsertEnvironmentEntity,
   type WizardState, type InsertWizardState,
 } from "@shared/schema";
 
@@ -216,6 +218,25 @@ sqlite.exec(`
     completed INTEGER NOT NULL DEFAULT 0,
     completed_at TEXT
   );
+  CREATE TABLE IF NOT EXISTS environment_entities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    identity_id INTEGER REFERENCES identities(id),
+    area_id INTEGER REFERENCES areas(id),
+    puzzle_piece TEXT,
+    type TEXT NOT NULL,
+    person_name TEXT,
+    person_contact_method TEXT,
+    person_contact_info TEXT,
+    person_why TEXT,
+    place_name TEXT,
+    place_address TEXT,
+    place_travel_method TEXT,
+    place_why TEXT,
+    thing_name TEXT,
+    thing_usage TEXT,
+    thing_why TEXT,
+    created_at TEXT NOT NULL
+  );
 `);
 
 // Migrate renamed columns (old schema → new schema)
@@ -267,6 +288,27 @@ addColumnIfMissing("inbox_items", "reference_project_id", "INTEGER");
 addColumnIfMissing("weekly_reviews", "inbox_cleared", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("weekly_reviews", "projects_reviewed", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("weekly_reviews", "habits_reviewed", "INTEGER NOT NULL DEFAULT 0");
+
+// Phase 1: puzzle piece, environment entities, identity→project→routine chain
+addColumnIfMissing("areas", "puzzle_piece", "TEXT");
+addColumnIfMissing("areas", "vision_text", "TEXT");
+addColumnIfMissing("identities", "puzzle_piece", "TEXT");
+addColumnIfMissing("identities", "location", "TEXT");
+addColumnIfMissing("identities", "environment_type", "TEXT");
+addColumnIfMissing("identities", "env_person_name", "TEXT");
+addColumnIfMissing("identities", "env_person_contact_method", "TEXT");
+addColumnIfMissing("identities", "env_person_contact_info", "TEXT");
+addColumnIfMissing("identities", "env_person_why", "TEXT");
+addColumnIfMissing("identities", "env_place_name", "TEXT");
+addColumnIfMissing("identities", "env_place_address", "TEXT");
+addColumnIfMissing("identities", "env_place_travel_method", "TEXT");
+addColumnIfMissing("identities", "env_place_why", "TEXT");
+addColumnIfMissing("identities", "env_thing_name", "TEXT");
+addColumnIfMissing("identities", "env_thing_usage", "TEXT");
+addColumnIfMissing("identities", "env_thing_why", "TEXT");
+addColumnIfMissing("projects", "puzzle_piece", "TEXT");
+addColumnIfMissing("projects", "identity_id", "INTEGER");
+addColumnIfMissing("weekly_reviews", "puzzle_piece_ratings", "TEXT");
 
 export const db = drizzle(sqlite);
 
@@ -360,6 +402,14 @@ export interface IStorage {
   createPlannerTask(data: InsertPlannerTask): PlannerTask;
   updatePlannerTask(id: number, data: Partial<InsertPlannerTask>): PlannerTask | undefined;
   deletePlannerTask(id: number): void;
+
+  // Environment Entities
+  getEnvironmentEntities(): EnvironmentEntity[];
+  getEnvironmentEntitiesByIdentity(identityId: number): EnvironmentEntity[];
+  getEnvironmentEntitiesByArea(areaId: number): EnvironmentEntity[];
+  createEnvironmentEntity(data: InsertEnvironmentEntity): EnvironmentEntity;
+  updateEnvironmentEntity(id: number, data: Partial<InsertEnvironmentEntity>): EnvironmentEntity | undefined;
+  deleteEnvironmentEntity(id: number): void;
 
   // Wizard State
   getWizardState(): WizardState | undefined;
@@ -608,6 +658,26 @@ export class DatabaseStorage implements IStorage {
   }
   deletePlannerTask(id: number): void {
     db.delete(plannerTasks).where(eq(plannerTasks.id, id)).run();
+  }
+
+  // Environment Entities
+  getEnvironmentEntities(): EnvironmentEntity[] {
+    return db.select().from(environmentEntities).all();
+  }
+  getEnvironmentEntitiesByIdentity(identityId: number): EnvironmentEntity[] {
+    return db.select().from(environmentEntities).where(eq(environmentEntities.identityId, identityId)).all();
+  }
+  getEnvironmentEntitiesByArea(areaId: number): EnvironmentEntity[] {
+    return db.select().from(environmentEntities).where(eq(environmentEntities.areaId, areaId)).all();
+  }
+  createEnvironmentEntity(data: InsertEnvironmentEntity): EnvironmentEntity {
+    return db.insert(environmentEntities).values(data).returning().get();
+  }
+  updateEnvironmentEntity(id: number, data: Partial<InsertEnvironmentEntity>): EnvironmentEntity | undefined {
+    return db.update(environmentEntities).set(data).where(eq(environmentEntities.id, id)).returning().get();
+  }
+  deleteEnvironmentEntity(id: number): void {
+    db.delete(environmentEntities).where(eq(environmentEntities.id, id)).run();
   }
 
   // Wizard State
