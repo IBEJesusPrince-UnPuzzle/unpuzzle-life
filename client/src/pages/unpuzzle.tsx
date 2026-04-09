@@ -8,7 +8,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Puzzle, ChevronLeft, Plus, Brain, ChevronDown, ChevronUp, Star,
+  Puzzle, ChevronLeft, Plus, Brain, ChevronDown, ChevronUp, Star, Pencil, Trash2,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
@@ -461,7 +461,78 @@ function PieceDetailView({
   const [showAllAntiHabits, setShowAllAntiHabits] = useState(false);
   const [showAllLaws, setShowAllLaws] = useState(false);
 
+  const [editingIdentityId, setEditingIdentityId] = useState<number | null>(null);
+  const [deletingIdentityId, setDeletingIdentityId] = useState<number | null>(null);
+  const [editingBeliefId, setEditingBeliefId] = useState<number | null>(null);
+  const [deletingBeliefId, setDeletingBeliefId] = useState<number | null>(null);
+  const [editingAntiHabitId, setEditingAntiHabitId] = useState<number | null>(null);
+  const [deletingAntiHabitId, setDeletingAntiHabitId] = useState<number | null>(null);
+  const [editingLawId, setEditingLawId] = useState<number | null>(null);
+  const [deletingLawId, setDeletingLawId] = useState<number | null>(null);
+
   const activeAreas = useMemo(() => areas.filter(a => !a.archived), [areas]);
+
+  // ---- Mutations for edit/delete ----
+  const patchIdentity = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      apiRequest("PATCH", `/api/identities/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
+      setEditingIdentityId(null);
+    },
+  });
+  const deleteIdentity = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/identities/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
+      setDeletingIdentityId(null);
+    },
+  });
+  const patchBelief = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      apiRequest("PATCH", `/api/beliefs/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/beliefs"] });
+      setEditingBeliefId(null);
+    },
+  });
+  const deleteBelief = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/beliefs/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/beliefs"] });
+      setDeletingBeliefId(null);
+    },
+  });
+  const patchAntiHabit = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      apiRequest("PATCH", `/api/anti-habits/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/anti-habits"] });
+      setEditingAntiHabitId(null);
+    },
+  });
+  const deleteAntiHabit = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/anti-habits/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/anti-habits"] });
+      setDeletingAntiHabitId(null);
+    },
+  });
+  const patchLaw = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      apiRequest("PATCH", `/api/immutable-laws/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/immutable-laws"] });
+      setEditingLawId(null);
+    },
+  });
+  const deleteLaw = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/immutable-laws/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/immutable-laws"] });
+      setDeletingLawId(null);
+    },
+  });
 
   return (
     <div className="bg-background overflow-y-auto h-full">
@@ -488,11 +559,41 @@ function PieceDetailView({
           {(showAllIdentities ? pieceIdentities : pieceIdentities.slice(0, 3)).map(id => (
             <Card key={id.id} className="border-l-4" style={{ borderLeftColor: pieceInfo.color }}>
               <CardContent className="p-3">
-                <p className="text-sm">
-                  <span className="text-muted-foreground">I'm the type of person who</span>{" "}
-                  <span className="font-medium">{id.statement}</span>
-                </p>
-                {id.cue && <p className="text-[11px] text-muted-foreground mt-0.5">triggered {id.cue}</p>}
+                {editingIdentityId === id.id ? (
+                  <IdentityEditForm
+                    identity={id}
+                    onSave={(data) => patchIdentity.mutate({ id: id.id, data })}
+                    onCancel={() => setEditingIdentityId(null)}
+                    isPending={patchIdentity.isPending}
+                  />
+                ) : deletingIdentityId === id.id ? (
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Delete this identity?</p>
+                    <div className="flex gap-1.5">
+                      <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => deleteIdentity.mutate(id.id)} disabled={deleteIdentity.isPending}>
+                        {deleteIdentity.isPending ? "..." : "Delete"}
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDeletingIdentityId(null)}>Cancel</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{id.statement}</p>
+                      {id.cue && <p className="text-[11px] text-muted-foreground mt-0.5">triggered {id.cue}</p>}
+                      {id.timeOfDay && <p className="text-[11px] text-muted-foreground">in the {id.timeOfDay}</p>}
+                      {id.location && <p className="text-[11px] text-muted-foreground">at {id.location}</p>}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => setEditingIdentityId(id.id)} className="p-1 text-muted-foreground hover:text-foreground transition-colors">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => setDeletingIdentityId(id.id)} className="p-1 text-muted-foreground hover:text-red-500 transition-colors">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -522,9 +623,40 @@ function PieceDetailView({
           {(showAllBeliefs ? pieceBeliefs : pieceBeliefs.slice(0, 3)).map(b => (
             <Card key={b.id} className="border-l-4" style={{ borderLeftColor: pieceInfo.color }}>
               <CardContent className="p-3">
-                <p className="text-xs text-muted-foreground line-through">{b.oldBelief}</p>
-                <p className="text-sm font-medium mt-0.5">{b.newBelief}</p>
-                {b.whyItMatters && <p className="text-[11px] text-muted-foreground mt-0.5 italic">{b.whyItMatters}</p>}
+                {editingBeliefId === b.id ? (
+                  <BeliefEditForm
+                    belief={b}
+                    onSave={(data) => patchBelief.mutate({ id: b.id, data })}
+                    onCancel={() => setEditingBeliefId(null)}
+                    isPending={patchBelief.isPending}
+                  />
+                ) : deletingBeliefId === b.id ? (
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Delete this belief?</p>
+                    <div className="flex gap-1.5">
+                      <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => deleteBelief.mutate(b.id)} disabled={deleteBelief.isPending}>
+                        {deleteBelief.isPending ? "..." : "Delete"}
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDeletingBeliefId(null)}>Cancel</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-muted-foreground line-through">{b.oldBelief}</p>
+                      <p className="text-sm font-medium mt-0.5">{b.newBelief}</p>
+                      {b.whyItMatters && <p className="text-[11px] text-muted-foreground mt-0.5 italic">{b.whyItMatters}</p>}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => setEditingBeliefId(b.id)} className="p-1 text-muted-foreground hover:text-foreground transition-colors">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => setDeletingBeliefId(b.id)} className="p-1 text-muted-foreground hover:text-red-500 transition-colors">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -546,9 +678,40 @@ function PieceDetailView({
           {(showAllAntiHabits ? pieceAntiHabits : pieceAntiHabits.slice(0, 3)).map(a => (
             <Card key={a.id} className="border-l-4" style={{ borderLeftColor: pieceInfo.color }}>
               <CardContent className="p-3">
-                <p className="text-sm font-medium">{a.title}</p>
-                {a.makeInvisible && <p className="text-[11px] text-muted-foreground mt-0.5">Remove cue: {a.makeInvisible}</p>}
-                {a.makeDifficult && <p className="text-[11px] text-muted-foreground">Add friction: {a.makeDifficult}</p>}
+                {editingAntiHabitId === a.id ? (
+                  <AntiHabitEditForm
+                    antiHabit={a}
+                    onSave={(data) => patchAntiHabit.mutate({ id: a.id, data })}
+                    onCancel={() => setEditingAntiHabitId(null)}
+                    isPending={patchAntiHabit.isPending}
+                  />
+                ) : deletingAntiHabitId === a.id ? (
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Delete this anti-habit?</p>
+                    <div className="flex gap-1.5">
+                      <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => deleteAntiHabit.mutate(a.id)} disabled={deleteAntiHabit.isPending}>
+                        {deleteAntiHabit.isPending ? "..." : "Delete"}
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDeletingAntiHabitId(null)}>Cancel</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{a.title}</p>
+                      {a.makeInvisible && <p className="text-[11px] text-muted-foreground mt-0.5">Remove cue: {a.makeInvisible}</p>}
+                      {a.makeDifficult && <p className="text-[11px] text-muted-foreground">Add friction: {a.makeDifficult}</p>}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => setEditingAntiHabitId(a.id)} className="p-1 text-muted-foreground hover:text-foreground transition-colors">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => setDeletingAntiHabitId(a.id)} className="p-1 text-muted-foreground hover:text-red-500 transition-colors">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -577,20 +740,51 @@ function PieceDetailView({
             return (
               <Card key={law.id} className="border-l-4" style={{ borderLeftColor: pieceInfo.color }}>
                 <CardContent className="p-3">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="text-sm font-medium">{law.title}</p>
-                    <Badge variant="outline" className={`text-[9px] h-4 px-1 ${levelBadge.className}`}>
-                      {levelBadge.label}
-                    </Badge>
-                    {law.isRedLine === 1 && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" title="Red line" />
-                    )}
-                    {law.isPrimary === 1 && (
-                      <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                    )}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">{law.statement}</p>
-                  {law.whyItMatters && <p className="text-[11px] text-muted-foreground mt-0.5 italic">{law.whyItMatters}</p>}
+                  {editingLawId === law.id ? (
+                    <LawEditForm
+                      law={law}
+                      onSave={(data) => patchLaw.mutate({ id: law.id, data })}
+                      onCancel={() => setEditingLawId(null)}
+                      isPending={patchLaw.isPending}
+                    />
+                  ) : deletingLawId === law.id ? (
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-muted-foreground">Delete this law?</p>
+                      <div className="flex gap-1.5">
+                        <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => deleteLaw.mutate(law.id)} disabled={deleteLaw.isPending}>
+                          {deleteLaw.isPending ? "..." : "Delete"}
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDeletingLawId(null)}>Cancel</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-sm font-medium">{law.title}</p>
+                          <Badge variant="outline" className={`text-[9px] h-4 px-1 ${levelBadge.className}`}>
+                            {levelBadge.label}
+                          </Badge>
+                          {law.isRedLine === 1 && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" title="Red line" />
+                          )}
+                          {law.isPrimary === 1 && (
+                            <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">{law.statement}</p>
+                        {law.whyItMatters && <p className="text-[11px] text-muted-foreground mt-0.5 italic">{law.whyItMatters}</p>}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => setEditingLawId(law.id)} className="p-1 text-muted-foreground hover:text-foreground transition-colors">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => setDeletingLawId(law.id)} className="p-1 text-muted-foreground hover:text-red-500 transition-colors">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -602,6 +796,184 @@ function PieceDetailView({
             <LawForm piece={piece} color={pieceInfo.color} onSuccess={() => setShowLawForm(false)} />
           )}
         </Section>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// INLINE EDIT FORMS
+// ============================================================
+
+function IdentityEditForm({
+  identity,
+  onSave,
+  onCancel,
+  isPending,
+}: {
+  identity: Identity;
+  onSave: (data: Record<string, unknown>) => void;
+  onCancel: () => void;
+  isPending: boolean;
+}) {
+  const [statement, setStatement] = useState(identity.statement);
+  const [cue, setCue] = useState(identity.cue ?? "");
+  const [timeOfDay, setTimeOfDay] = useState(identity.timeOfDay ?? "");
+  const [location, setLocation] = useState(identity.location ?? "");
+  const [craving, setCraving] = useState(identity.craving ?? "");
+  const [reward, setReward] = useState(identity.reward ?? "");
+
+  return (
+    <div className="space-y-2">
+      <Input value={statement} onChange={e => setStatement(e.target.value)} placeholder="I'm the type of person who will..." className="text-sm" />
+      <Input value={cue} onChange={e => setCue(e.target.value)} placeholder="triggered..." className="text-sm" />
+      <Select value={timeOfDay} onValueChange={setTimeOfDay}>
+        <SelectTrigger className="text-sm"><SelectValue placeholder="Time of day" /></SelectTrigger>
+        <SelectContent>
+          {TIME_OF_DAY_OPTIONS.map(t => (
+            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Input value={location} onChange={e => setLocation(e.target.value)} placeholder="Where will this take place?" className="text-sm" />
+      <Input value={craving} onChange={e => setCraving(e.target.value)} placeholder="because I..." className="text-sm" />
+      <Input value={reward} onChange={e => setReward(e.target.value)} placeholder="so this makes sure I'll have..." className="text-sm" />
+      <div className="flex gap-2">
+        <Button size="sm" className="h-7 text-xs" disabled={!statement.trim() || isPending} onClick={() => onSave({ statement, cue: cue || null, timeOfDay: timeOfDay || null, location: location || null, craving: craving || null, reward: reward || null })}>
+          {isPending ? "Saving..." : "Save"}
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+function BeliefEditForm({
+  belief,
+  onSave,
+  onCancel,
+  isPending,
+}: {
+  belief: Belief;
+  onSave: (data: Record<string, unknown>) => void;
+  onCancel: () => void;
+  isPending: boolean;
+}) {
+  const [oldBelief, setOldBelief] = useState(belief.oldBelief);
+  const [newBelief, setNewBelief] = useState(belief.newBelief);
+  const [whyItMatters, setWhyItMatters] = useState(belief.whyItMatters ?? "");
+
+  return (
+    <div className="space-y-2">
+      <Input value={oldBelief} onChange={e => setOldBelief(e.target.value)} placeholder="A belief I'm replacing..." className="text-sm" />
+      <Input value={newBelief} onChange={e => setNewBelief(e.target.value)} placeholder="I now choose to believe..." className="text-sm" />
+      <Input value={whyItMatters} onChange={e => setWhyItMatters(e.target.value)} placeholder="Why this matters... (optional)" className="text-sm" />
+      <div className="flex gap-2">
+        <Button size="sm" className="h-7 text-xs" disabled={!oldBelief.trim() || !newBelief.trim() || isPending} onClick={() => onSave({ oldBelief, newBelief, whyItMatters: whyItMatters || null })}>
+          {isPending ? "Saving..." : "Save"}
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+function AntiHabitEditForm({
+  antiHabit,
+  onSave,
+  onCancel,
+  isPending,
+}: {
+  antiHabit: AntiHabit;
+  onSave: (data: Record<string, unknown>) => void;
+  onCancel: () => void;
+  isPending: boolean;
+}) {
+  const [name, setName] = useState(antiHabit.title);
+  const [trigger, setTrigger] = useState(antiHabit.makeInvisible ?? "");
+  const [whatToDoInstead, setWhatToDoInstead] = useState(antiHabit.makeDifficult ?? "");
+  const [whyItMatters, setWhyItMatters] = useState(antiHabit.description ?? "");
+
+  return (
+    <div className="space-y-2">
+      <Input value={name} onChange={e => setName(e.target.value)} placeholder="The habit I'm breaking..." className="text-sm" />
+      <Input value={trigger} onChange={e => setTrigger(e.target.value)} placeholder="It usually happens when..." className="text-sm" />
+      <Input value={whatToDoInstead} onChange={e => setWhatToDoInstead(e.target.value)} placeholder="Instead, I will..." className="text-sm" />
+      <Input value={whyItMatters} onChange={e => setWhyItMatters(e.target.value)} placeholder="Because... (optional)" className="text-sm" />
+      <div className="flex gap-2">
+        <Button size="sm" className="h-7 text-xs" disabled={!name.trim() || isPending} onClick={() => onSave({ title: name, makeInvisible: trigger || null, makeDifficult: whatToDoInstead || null, description: whyItMatters || null })}>
+          {isPending ? "Saving..." : "Save"}
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+function LawEditForm({
+  law,
+  onSave,
+  onCancel,
+  isPending,
+}: {
+  law: ImmutableLaw;
+  onSave: (data: Record<string, unknown>) => void;
+  onCancel: () => void;
+  isPending: boolean;
+}) {
+  const [title, setTitle] = useState(law.title);
+  const [statement, setStatement] = useState(law.statement);
+  const [whyItMatters, setWhyItMatters] = useState(law.whyItMatters ?? "");
+  const [enforcementLevel, setEnforcementLevel] = useState<1 | 2 | 3>((law.enforcementLevel ?? 1) as 1 | 2 | 3);
+  const [isRedLine, setIsRedLine] = useState(law.isRedLine === 1);
+  const [isPrimary, setIsPrimary] = useState(law.isPrimary === 1);
+
+  return (
+    <div className="space-y-2">
+      <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Name this law" className="text-sm" />
+      <Textarea value={statement} onChange={e => setStatement(e.target.value)} placeholder="Law statement" className="text-sm min-h-[60px]" />
+      <Input value={whyItMatters} onChange={e => setWhyItMatters(e.target.value)} placeholder="Why this protects you (optional)" className="text-sm" />
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Enforcement level</label>
+        <div className="flex gap-1.5">
+          {([1, 2, 3] as const).map(level => {
+            const labels: Record<number, string> = { 1: "1 · Awareness", 2: "2 · Friction", 3: "3 · Block" };
+            const colors: Record<number, string> = {
+              1: "bg-amber-500 text-white border-amber-500",
+              2: "bg-orange-500 text-white border-orange-500",
+              3: "bg-red-500 text-white border-red-500",
+            };
+            return (
+              <button
+                key={level}
+                onClick={() => setEnforcementLevel(level)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
+                  enforcementLevel === level
+                    ? colors[level]
+                    : "bg-background text-foreground border-border hover:bg-accent"
+                }`}
+              >
+                {labels[level]}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={isRedLine} onChange={e => setIsRedLine(e.target.checked)} className="rounded" />
+          Red line (hard boundary)
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={isPrimary} onChange={e => setIsPrimary(e.target.checked)} className="rounded" />
+          Primary law for this piece
+        </label>
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" className="h-7 text-xs" disabled={!title.trim() || !statement.trim() || isPending} onClick={() => onSave({ title, statement, whyItMatters: whyItMatters || null, enforcementLevel: Number(enforcementLevel), isRedLine: isRedLine ? 1 : 0, isPrimary: isPrimary ? 1 : 0 })}>
+          {isPending ? "Saving..." : "Save"}
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onCancel}>Cancel</Button>
       </div>
     </div>
   );
