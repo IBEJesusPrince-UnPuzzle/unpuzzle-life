@@ -8,11 +8,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Puzzle, ChevronLeft, Plus, Brain, ChevronDown, ChevronUp,
+  Puzzle, ChevronLeft, Plus, Brain, ChevronDown, ChevronUp, Star,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
-import type { Area, Identity, Belief, AntiHabit } from "@shared/schema";
+import { Badge } from "@/components/ui/badge";
+import type { Area, Identity, Belief, AntiHabit, ImmutableLaw } from "@shared/schema";
 
 // ============================================================
 // CONSTANTS
@@ -442,19 +443,23 @@ function PieceDetailView({
   const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
   const { data: beliefsData = [] } = useQuery<Belief[]>({ queryKey: ["/api/beliefs"] });
   const { data: antiHabitsData = [] } = useQuery<AntiHabit[]>({ queryKey: ["/api/anti-habits"] });
+  const { data: lawsData = [] } = useQuery<ImmutableLaw[]>({ queryKey: ["/api/immutable-laws"] });
   const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
 
   const pieceIdentities = useMemo(() => identities.filter(i => i.puzzlePiece === piece), [identities, piece]);
   const pieceBeliefs = useMemo(() => beliefsData.filter(b => b.puzzlePiece === piece), [beliefsData, piece]);
   const pieceAntiHabits = useMemo(() => antiHabitsData.filter(a => a.puzzlePiece === piece), [antiHabitsData, piece]);
+  const pieceLaws = useMemo(() => lawsData.filter(l => l.puzzlePiece === piece), [lawsData, piece]);
 
   const [showIdentityForm, setShowIdentityForm] = useState(false);
   const [showBeliefForm, setShowBeliefForm] = useState(false);
   const [showAntiHabitForm, setShowAntiHabitForm] = useState(false);
+  const [showLawForm, setShowLawForm] = useState(false);
 
   const [showAllIdentities, setShowAllIdentities] = useState(false);
   const [showAllBeliefs, setShowAllBeliefs] = useState(false);
   const [showAllAntiHabits, setShowAllAntiHabits] = useState(false);
+  const [showAllLaws, setShowAllLaws] = useState(false);
 
   const activeAreas = useMemo(() => areas.filter(a => !a.archived), [areas]);
 
@@ -552,6 +557,49 @@ function PieceDetailView({
           </Button>
           {showAntiHabitForm && (
             <AntiHabitForm piece={piece} color={pieceInfo.color} onSuccess={() => setShowAntiHabitForm(false)} />
+          )}
+        </Section>
+
+        {/* Immutable Laws section */}
+        <Section
+          title="Immutable Laws"
+          count={pieceLaws.length}
+          showAll={showAllLaws}
+          onToggleShowAll={() => setShowAllLaws(!showAllLaws)}
+        >
+          {(showAllLaws ? pieceLaws : pieceLaws.slice(0, 3)).map(law => {
+            const LEVEL_BADGE: Record<number, { label: string; className: string }> = {
+              1: { label: "Awareness", className: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
+              2: { label: "Friction",  className: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20" },
+              3: { label: "Block",     className: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20" },
+            };
+            const levelBadge = LEVEL_BADGE[law.enforcementLevel ?? 1] ?? LEVEL_BADGE[1];
+            return (
+              <Card key={law.id} className="border-l-4" style={{ borderLeftColor: pieceInfo.color }}>
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-sm font-medium">{law.title}</p>
+                    <Badge variant="outline" className={`text-[9px] h-4 px-1 ${levelBadge.className}`}>
+                      {levelBadge.label}
+                    </Badge>
+                    {law.isRedLine === 1 && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" title="Red line" />
+                    )}
+                    {law.isPrimary === 1 && (
+                      <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{law.statement}</p>
+                  {law.whyItMatters && <p className="text-[11px] text-muted-foreground mt-0.5 italic">{law.whyItMatters}</p>}
+                </CardContent>
+              </Card>
+            );
+          })}
+          <Button variant="outline" size="sm" className="w-full gap-1" onClick={() => setShowLawForm(!showLawForm)}>
+            <Plus className="w-3.5 h-3.5" /> Add Law
+          </Button>
+          {showLawForm && (
+            <LawForm piece={piece} color={pieceInfo.color} onSuccess={() => setShowLawForm(false)} />
           )}
         </Section>
       </div>
@@ -716,6 +764,108 @@ function AntiHabitForm({
 }
 
 // ============================================================
+// LAW FORM (inline)
+// ============================================================
+
+function LawForm({
+  piece,
+  color,
+  onSuccess,
+}: {
+  piece: PuzzlePiece;
+  color: string;
+  onSuccess: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [statement, setStatement] = useState("");
+  const [whyItMatters, setWhyItMatters] = useState("");
+  const [enforcementLevel, setEnforcementLevel] = useState<1 | 2 | 3>(1);
+  const [isRedLine, setIsRedLine] = useState(false);
+  const [isPrimary, setIsPrimary] = useState(false);
+
+  const createLaw = useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      apiRequest("POST", "/api/immutable-laws", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/immutable-laws"] });
+      setTitle(""); setStatement(""); setWhyItMatters("");
+      setEnforcementLevel(1); setIsRedLine(false); setIsPrimary(false);
+      onSuccess();
+    },
+  });
+
+  return (
+    <Card className="border-l-4" style={{ borderLeftColor: color }}>
+      <CardContent className="p-4 space-y-3">
+        <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Name this law (short)" className="text-sm" />
+        <Textarea value={statement} onChange={e => setStatement(e.target.value)} placeholder="e.g. I will not sacrifice sleep for productivity" className="text-sm min-h-[60px]" />
+        <Input value={whyItMatters} onChange={e => setWhyItMatters(e.target.value)} placeholder="Why this protects you (optional)" className="text-sm" />
+
+        {/* Enforcement level toggle */}
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Enforcement level</label>
+          <div className="flex gap-1.5">
+            {([1, 2, 3] as const).map(level => {
+              const labels: Record<number, string> = { 1: "1 · Awareness", 2: "2 · Friction", 3: "3 · Block" };
+              const colors: Record<number, string> = {
+                1: "bg-amber-500 text-white border-amber-500",
+                2: "bg-orange-500 text-white border-orange-500",
+                3: "bg-red-500 text-white border-red-500",
+              };
+              return (
+                <button
+                  key={level}
+                  onClick={() => setEnforcementLevel(level)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
+                    enforcementLevel === level
+                      ? colors[level]
+                      : "bg-background text-foreground border-border hover:bg-accent"
+                  }`}
+                >
+                  {labels[level]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Checkboxes */}
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={isRedLine} onChange={e => setIsRedLine(e.target.checked)} className="rounded" />
+            This is a red line (hard boundary)
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={isPrimary} onChange={e => setIsPrimary(e.target.checked)} className="rounded" />
+            Set as primary law for this piece
+          </label>
+        </div>
+
+        <Button
+          className="w-full h-9"
+          disabled={!title.trim() || !statement.trim() || createLaw.isPending}
+          onClick={() => createLaw.mutate({
+            puzzlePiece: piece,
+            title,
+            statement,
+            whyItMatters: whyItMatters || null,
+            enforcementLevel: Number(enforcementLevel),
+            isRedLine: isRedLine ? 1 : 0,
+            isPrimary: isPrimary ? 1 : 0,
+            linkedIdentityIds: null,
+            triggerConditions: null,
+            active: 1,
+            createdAt: new Date().toISOString(),
+          })}
+        >
+          {createLaw.isPending ? "Saving..." : "Save Law"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================
 // MAIN UNPUZZLE PAGE
 // ============================================================
 
@@ -727,6 +877,7 @@ export default function UnPuzzlePage() {
   const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
   const { data: beliefs = [] } = useQuery<Belief[]>({ queryKey: ["/api/beliefs"] });
   const { data: antiHabits = [] } = useQuery<AntiHabit[]>({ queryKey: ["/api/anti-habits"] });
+  const { data: laws = [] } = useQuery<ImmutableLaw[]>({ queryKey: ["/api/immutable-laws"] });
 
   if (view.type === "piece") {
     return <PieceDetailView piece={view.piece} onBack={() => setView({ type: "hub" })} />;
@@ -736,6 +887,7 @@ export default function UnPuzzlePage() {
     identities: identities.filter(i => i.puzzlePiece === pieceName).length,
     beliefs: beliefs.filter(b => b.puzzlePiece === pieceName).length,
     antiHabits: antiHabits.filter(a => a.puzzlePiece === pieceName).length,
+    laws: laws.filter(l => l.puzzlePiece === pieceName).length,
   });
 
   return (
@@ -778,7 +930,7 @@ export default function UnPuzzlePage() {
                   <ChevronLeft className="w-4 h-4 text-muted-foreground rotate-180" />
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  {counts.identities} identities &middot; {counts.beliefs} beliefs &middot; {counts.antiHabits} anti-habits
+                  {counts.identities} identities &middot; {counts.beliefs} beliefs &middot; {counts.antiHabits} anti-habits &middot; {counts.laws} laws
                 </p>
               </button>
             );

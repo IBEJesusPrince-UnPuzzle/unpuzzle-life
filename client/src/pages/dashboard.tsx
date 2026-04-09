@@ -7,9 +7,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import {
   Fingerprint, Inbox as InboxIcon, Repeat2, FolderOpen, Plus, ArrowRight,
-  FileEdit, ChevronRight,
+  FileEdit, ChevronRight, Shield, Check, X,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
@@ -25,6 +26,136 @@ function getGreeting() {
   if (h < 12) return "Good morning";
   if (h < 17) return "Good afternoon";
   return "Good evening";
+}
+
+function LawCheckInRow({ law, log, isChecked, isKept, today }: {
+  law: any; log: any; isChecked: boolean; isKept: boolean; today: string;
+}) {
+  const [showNote, setShowNote] = useState(false);
+  const [note, setNote] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
+
+  const checkIn = useMutation({
+    mutationFn: (data: { kept: boolean; note?: string; overrideReason?: string }) =>
+      apiRequest("POST", "/api/immutable-law-logs/check-in", {
+        lawId: law.id,
+        kept: data.kept,
+        note: data.note || null,
+        wasOverride: data.overrideReason ? 1 : 0,
+        overrideReason: data.overrideReason || null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/immutable-law-logs/date", today] });
+      setShowNote(false);
+      setNote("");
+    },
+  });
+
+  const LEVEL_BADGE: Record<number, { label: string; className: string }> = {
+    1: { label: "Awareness", className: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
+    2: { label: "Friction",  className: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20" },
+    3: { label: "Block",     className: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20" },
+  };
+  const levelBadge = LEVEL_BADGE[law.enforcementLevel] ?? LEVEL_BADGE[1];
+
+  return (
+    <div className={`rounded-lg border p-2.5 transition-colors ${
+      isChecked
+        ? isKept ? "border-green-500/20 bg-green-500/[0.03]" : "border-red-500/20 bg-red-500/[0.03]"
+        : "border-border"
+    }`}>
+      <div className="flex items-start gap-2">
+        {isChecked ? (
+          <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+            isKept ? "bg-green-500/20" : "bg-red-500/20"
+          }`}>
+            {isKept
+              ? <Check className="w-3 h-3 text-green-600 dark:text-green-400" />
+              : <X className="w-3 h-3 text-red-600 dark:text-red-400" />
+            }
+          </div>
+        ) : (
+          <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30 shrink-0 mt-0.5" />
+        )}
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs font-medium">{law.title}</span>
+            <Badge variant="outline" className={`text-[9px] h-4 px-1 ${levelBadge.className}`}>
+              {levelBadge.label}
+            </Badge>
+            {law.isRedLine === 1 && (
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" title="Red line" />
+            )}
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{law.statement}</p>
+
+          {!isChecked && (
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 text-[10px] px-2 text-green-600 border-green-500/30 hover:bg-green-500/10"
+                onClick={() => checkIn.mutate({ kept: true })}
+                disabled={checkIn.isPending}
+              >
+                {"\u2713"} Kept
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 text-[10px] px-2 text-red-600 border-red-500/30 hover:bg-red-500/10"
+                onClick={() => {
+                  setShowNote(true);
+                }}
+                disabled={checkIn.isPending}
+              >
+                {"\u2717"} Broken
+              </Button>
+            </div>
+          )}
+
+          {showNote && (
+            <div className="mt-2 space-y-1.5">
+              {law.enforcementLevel === 3 && (
+                <p className="text-[10px] text-red-600 dark:text-red-400 font-medium">
+                  This is a Block-level law. Provide a reason to override.
+                </p>
+              )}
+              <Input
+                className="h-7 text-xs"
+                placeholder={law.enforcementLevel === 3 ? "Override reason (required)" : "What happened? (optional)"}
+                value={law.enforcementLevel === 3 ? overrideReason : note}
+                onChange={e => law.enforcementLevel === 3 ? setOverrideReason(e.target.value) : setNote(e.target.value)}
+              />
+              <div className="flex gap-1.5">
+                <Button
+                  size="sm"
+                  className="h-6 text-[10px] px-2"
+                  onClick={() => checkIn.mutate({
+                    kept: false,
+                    note: note || undefined,
+                    overrideReason: law.enforcementLevel === 3 ? overrideReason : undefined,
+                  })}
+                  disabled={checkIn.isPending || (law.enforcementLevel === 3 && !overrideReason.trim())}
+                >
+                  Log it
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-[10px] px-2"
+                  onClick={() => { setShowNote(false); setNote(""); setOverrideReason(""); }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function Dashboard() {
@@ -56,10 +187,21 @@ export default function Dashboard() {
     recurringCreated: number;
   }>({ queryKey: ["/api/dashboard-data"] });
 
+  const { data: laws = [] } = useQuery<any[]>({ queryKey: ["/api/immutable-laws"] });
+  const { data: lawLogs = [] } = useQuery<any[]>({
+    queryKey: ["/api/immutable-law-logs/date", today],
+    queryFn: () => apiRequest("GET", `/api/immutable-law-logs/date/${today}`).then(r => r.json()),
+  });
+
   const stats = dashboardData?.stats;
   const areas = dashboardData?.areas || [];
   const routineItems = dashboardData?.routineItems || [];
   const draftRoutineCount = routineItems.filter((i: any) => i.isDraft === 1 && i.active).length;
+
+  const activeLaws = laws.filter((l: any) => l.active);
+  const checkedInLawIds = new Set(lawLogs.map((log: any) => log.immutableLawId));
+  const todayKept = lawLogs.filter((log: any) => log.kept === 1).length;
+  const todayBroken = lawLogs.filter((log: any) => log.kept === 0).length;
 
   // Seed SorterView query caches from the combined endpoint to avoid duplicate fetches
   useEffect(() => {
@@ -236,6 +378,37 @@ export default function Dashboard() {
           </>
         )}
       </div>
+
+      {/* Immutable Laws Check-in */}
+      {activeLaws.length > 0 && (
+        <Card className="border-primary/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium">Immutable Laws</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                {todayKept > 0 && <span className="text-green-600 dark:text-green-400 font-medium">{"\u2713"} {todayKept} kept</span>}
+                {todayBroken > 0 && <span className="text-red-600 dark:text-red-400 font-medium">{"\u2717"} {todayBroken} broken</span>}
+                {activeLaws.length > 0 && checkedInLawIds.size === activeLaws.length && (
+                  <Badge className="bg-green-500/15 text-green-600 dark:text-green-400 border-green-500/30 text-[10px]">All checked in</Badge>
+                )}
+              </div>
+            </div>
+            <div className="space-y-2">
+              {activeLaws.map((law: any) => {
+                const log = lawLogs.find((l: any) => l.immutableLawId === law.id);
+                const isChecked = !!log;
+                const isKept = log?.kept === 1;
+                return (
+                  <LawCheckInRow key={law.id} law={law} log={log} isChecked={isChecked} isKept={isKept} today={today} />
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Embedded Agenda */}
       <div className="-mx-6 -mb-6">
