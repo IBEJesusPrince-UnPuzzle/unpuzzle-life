@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Link } from "wouter";
-import { navigate } from "wouter/use-hash-location";
 import type { RoutineItem, RoutineLog, Area } from "@shared/schema";
 
 function getToday() {
@@ -103,11 +102,12 @@ export default function RoutinePage({ filterIdentityId }: { filterIdentityId?: n
   const completedIds = useMemo(() => new Set(logs.map(l => l.routineItemId)), [logs]);
   const completedCount = nonDraftItems.filter(i => completedIds.has(i.id)).length;
   const currentIdx = getCurrentProgress(nonDraftItems);
-  const phases = useMemo(() => groupByPhase(activeItems), [activeItems]);
-  const draftCount = activeItems.filter(i => (i as any).isDraft === 1).length;
+  const draftItems = activeItems.filter(i => (i as any).isDraft === 1);
+  const publishedItems = activeItems.filter(i => !(i as any).isDraft);
+  const phases = useMemo(() => groupByPhase(publishedItems), [publishedItems]);
 
-  // Total day duration
-  const totalMinutes = activeItems.reduce((sum, i) => sum + i.durationMinutes, 0);
+  // Total day duration (published items only)
+  const totalMinutes = publishedItems.reduce((sum, i) => sum + i.durationMinutes, 0);
   const totalHours = Math.floor(totalMinutes / 60);
   const totalMins = totalMinutes % 60;
 
@@ -168,6 +168,37 @@ export default function RoutinePage({ filterIdentityId }: { filterIdentityId?: n
         </p>
       </div>
 
+      {/* Drafts section */}
+      {draftItems.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-1">
+            <FileEdit className="w-4 h-4 text-amber-500" />
+            <h2 className="text-sm font-medium">Drafts</h2>
+            <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px] h-4 px-1.5 ml-auto">
+              {draftItems.length} waiting
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground px-1">
+            Set a time and location to add these to your routine.
+          </p>
+          <div className="space-y-1.5">
+            {draftItems.map(item => (
+              <RoutineRow
+                key={item.id}
+                item={item}
+                isDone={false}
+                log={undefined}
+                isCurrent={false}
+                isPast={false}
+                today={today}
+                prevReward={null}
+                areas={areas}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Progress bar */}
       <Card>
         <CardContent className="p-4">
@@ -175,11 +206,6 @@ export default function RoutinePage({ filterIdentityId }: { filterIdentityId?: n
             <div className="flex items-center gap-2">
               <span className="text-2xl font-bold tabular-nums">{completedCount}</span>
               <span className="text-sm text-muted-foreground">/ {nonDraftItems.length} blocks</span>
-              {draftCount > 0 && (
-                <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px] h-4 px-1.5">
-                  {draftCount} draft{draftCount > 1 ? "s" : ""}
-                </Badge>
-              )}
             </div>
             <div className="text-right">
               <span className="text-sm font-medium">{progressPct}%</span>
@@ -194,14 +220,14 @@ export default function RoutinePage({ filterIdentityId }: { filterIdentityId?: n
           </div>
           <div className="flex items-center justify-between mt-2">
             <span className="text-xs text-muted-foreground">
-              {activeItems[0] && formatTime(activeItems[0].time)}
+              {publishedItems[0] && formatTime(publishedItems[0].time)}
             </span>
             <span className="text-xs text-muted-foreground">
               {totalHours}h {totalMins > 0 ? `${totalMins}m` : ""} total
             </span>
             <span className="text-xs text-muted-foreground">
-              {activeItems.length > 0 && (() => {
-                const last = activeItems[activeItems.length - 1];
+              {publishedItems.length > 0 && (() => {
+                const last = publishedItems[publishedItems.length - 1];
                 const [h, m] = last.time.split(":");
                 const endMins = parseInt(h) * 60 + parseInt(m) + last.durationMinutes;
                 return formatTime(`${Math.floor(endMins / 60).toString().padStart(2, "0")}:${(endMins % 60).toString().padStart(2, "0")}`);
@@ -226,7 +252,7 @@ export default function RoutinePage({ filterIdentityId }: { filterIdentityId?: n
             logs={logs}
             today={today}
             currentIdx={currentIdx}
-            allItems={activeItems}
+            allItems={publishedItems}
             flatDisplayOrder={flatDisplayOrder}
             areas={areas}
           />
@@ -436,9 +462,11 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
               )}
               {item.habitId && (
                 <div className="flex items-center gap-1.5 mt-1" onClick={(e) => e.stopPropagation()}>
-                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30" onClick={() => navigate("/horizons?tab=identity")}>
-                    <Fingerprint className="w-3 h-3" /> Identity
-                  </Badge>
+                  <Link href="/unpuzzle">
+                    <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30">
+                      <Fingerprint className="w-3 h-3" /> Identity
+                    </Badge>
+                  </Link>
                   <Link href={`/projects/${item.habitId}`}>
                     <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-chart-5/10 transition-colors text-chart-5 border-chart-5/30">
                       <FolderOpen className="w-3 h-3" /> Project

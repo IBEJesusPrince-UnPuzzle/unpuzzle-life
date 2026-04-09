@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/select";
 import {
   Fingerprint, Inbox as InboxIcon, Repeat2, FolderOpen, Plus, ArrowRight,
+  FileEdit, ChevronRight,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
@@ -57,6 +58,8 @@ export default function Dashboard() {
 
   const stats = dashboardData?.stats;
   const areas = dashboardData?.areas || [];
+  const routineItems = dashboardData?.routineItems || [];
+  const draftRoutineCount = routineItems.filter((i: any) => i.isDraft === 1 && i.active).length;
 
   // Seed SorterView query caches from the combined endpoint to avoid duplicate fetches
   useEffect(() => {
@@ -148,6 +151,26 @@ export default function Dashboard() {
             </Link>
           </CardContent>
         </Card>
+      )}
+
+      {/* Draft routine nudge */}
+      {draftRoutineCount > 0 && (
+        <Link href="/routine">
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.04] p-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-amber-500/[0.08] transition-colors">
+            <div className="flex items-center gap-2.5">
+              <FileEdit className="w-4 h-4 text-amber-500 shrink-0" />
+              <div>
+                <p className="text-sm font-medium">
+                  {draftRoutineCount} routine{draftRoutineCount > 1 ? "s" : ""} waiting to be scheduled
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Open Routines to set a time and lock them in
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+          </div>
+        </Link>
       )}
 
       {/* Stats Row */}
