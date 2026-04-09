@@ -6,16 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
   Puzzle, ChevronRight, ChevronLeft, Plus, Sparkles, Trash2,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useLocation, Link } from "wouter";
 import type { Area, Identity } from "@shared/schema";
-import { RecurrenceBuilder } from "./planner";
-import { TIME_OF_DAY_CATEGORIES } from "./habits";
+import { IdentityForm } from "./unpuzzle";
 
 // ============================================================
 // TYPES
@@ -51,14 +47,7 @@ export default function WizardPage() {
     statement: "", alwaysNever: "", testScenarios: ["", "", ""], violationSignal: "", courseCorrect: "",
   }]);
 
-  // Phase 3 state (identity)
-  const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null);
-  const [identityText, setIdentityText] = useState("");
-  const [habitCue, setHabitCue] = useState("");
-  const [habitTimeOfDay, setHabitTimeOfDay] = useState("");
-  const [habitRecurrence, setHabitRecurrence] = useState<string | null>(JSON.stringify({ type: "daily", interval: 1 }));
-  const [habitBecause, setHabitBecause] = useState("");
-  const [habitReward, setHabitReward] = useState("");
+  // Phase 3 state (identity) — managed by IdentityForm component
 
   const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
   const { data: identitiesData = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
@@ -83,33 +72,6 @@ export default function WizardPage() {
     mutationFn: ({ id, archived }: { id: number; archived: number }) =>
       apiRequest("PATCH", `/api/areas/${id}`, { archived }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/areas"] }),
-  });
-
-  // Phase 4: create identity with all fields
-  const createIdentity = useMutation({
-    mutationFn: (data: {
-      statement: string; areaId: number;
-      cue?: string; timeOfDay?: string; frequency?: string;
-      craving?: string; reward?: string;
-    }) =>
-      apiRequest("POST", "/api/identities", {
-        statement: data.statement,
-        areaId: data.areaId,
-        visionId: null,
-        cue: data.cue || null,
-        craving: data.craving || null,
-        reward: data.reward || null,
-        frequency: data.frequency || JSON.stringify({ type: "daily", interval: 1 }),
-        timeOfDay: data.timeOfDay || null,
-        targetCount: 1,
-        active: 1,
-        createdAt: new Date().toISOString(),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
-      setHabitCue(""); setHabitTimeOfDay(""); setHabitBecause(""); setHabitReward("");
-      setHabitRecurrence(JSON.stringify({ type: "daily", interval: 1 }));
-    },
   });
 
   // Complete wizard
@@ -156,23 +118,8 @@ export default function WizardPage() {
     return groups;
   }, [areas]);
 
-  // Active areas (for phase 4)
+  // Active areas (for phase 3 identity form)
   const activeAreas = useMemo(() => areas.filter(a => !a.archived), [areas]);
-  const activeGroupedAreas = useMemo(() => {
-    const groups: Record<string, Area[]> = {};
-    activeAreas.forEach(a => {
-      const cat = a.category || "Other";
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(a);
-    });
-    return groups;
-  }, [activeAreas]);
-
-  // Identities for the selected area
-  const areaIdentities = useMemo(() =>
-    identitiesData.filter(i => i.areaId === selectedAreaId),
-    [identitiesData, selectedAreaId]
-  );
 
   const currentPhase = PHASES[phase - 1];
 
@@ -240,28 +187,43 @@ export default function WizardPage() {
           />
         )}
         {phase === 3 && (
-          <Phase4Identities
-            activeGroupedAreas={activeGroupedAreas}
-            selectedAreaId={selectedAreaId}
-            setSelectedAreaId={setSelectedAreaId}
-            identityText={identityText}
-            setIdentityText={setIdentityText}
-            areaIdentities={areaIdentities}
-            habitCue={habitCue}
-            setHabitCue={setHabitCue}
-            habitTimeOfDay={habitTimeOfDay}
-            setHabitTimeOfDay={setHabitTimeOfDay}
-            habitRecurrence={habitRecurrence}
-            setHabitRecurrence={setHabitRecurrence}
-            habitBecause={habitBecause}
-            setHabitBecause={setHabitBecause}
-            habitReward={habitReward}
-            setHabitReward={setHabitReward}
-            onCreateIdentity={async (data) => {
-              await createIdentity.mutateAsync(data);
-              setIdentityText("");
-            }}
-          />
+          <div className="space-y-6">
+            <p className="text-sm text-muted-foreground">
+              Build identity statements for your life areas. Choose a puzzle piece, then describe who you're becoming.
+            </p>
+            {/* Existing identities */}
+            {identitiesData.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Created Identities
+                </h4>
+                {identitiesData.map(id => (
+                  <Card key={id.id} className="border-amber-500/20">
+                    <CardContent className="p-3">
+                      <p className="text-sm">
+                        <span className="text-muted-foreground">I am the type of person who</span>{" "}
+                        <span className="font-medium">{id.statement}</span>
+                      </p>
+                      {id.puzzlePiece && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5 capitalize">{id.puzzlePiece} piece</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+            <Card className="border-amber-500/30 bg-amber-500/5">
+              <CardContent className="p-4">
+                <h4 className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-4">
+                  New Identity
+                </h4>
+                <IdentityForm
+                  showPieceSelector
+                  areas={activeAreas}
+                />
+              </CardContent>
+            </Card>
+          </div>
         )}
       </div>
 
@@ -489,206 +451,3 @@ function Phase3Areas({
   );
 }
 
-// ============================================================
-// PHASE 3: IDENTITY (unified — no separate habits)
-// ============================================================
-
-function Phase4Identities({
-  activeGroupedAreas,
-  selectedAreaId, setSelectedAreaId,
-  identityText, setIdentityText,
-  areaIdentities,
-  habitCue, setHabitCue,
-  habitTimeOfDay, setHabitTimeOfDay,
-  habitRecurrence, setHabitRecurrence,
-  habitBecause, setHabitBecause,
-  habitReward, setHabitReward,
-  onCreateIdentity,
-}: {
-  activeGroupedAreas: Record<string, Area[]>;
-  selectedAreaId: number | null; setSelectedAreaId: (v: number | null) => void;
-  identityText: string; setIdentityText: (v: string) => void;
-  areaIdentities: Identity[];
-  habitCue: string; setHabitCue: (v: string) => void;
-  habitTimeOfDay: string; setHabitTimeOfDay: (v: string) => void;
-  habitRecurrence: string | null; setHabitRecurrence: (v: string | null) => void;
-  habitBecause: string; setHabitBecause: (v: string) => void;
-  habitReward: string; setHabitReward: (v: string) => void;
-  onCreateIdentity: (data: {
-    statement: string; areaId: number;
-    cue?: string; timeOfDay?: string; frequency?: string;
-    craving?: string; reward?: string;
-  }) => Promise<void>;
-}) {
-  const selectedArea = useMemo(() => {
-    for (const areas of Object.values(activeGroupedAreas)) {
-      const found = areas.find(a => a.id === selectedAreaId);
-      if (found) return found;
-    }
-    return null;
-  }, [activeGroupedAreas, selectedAreaId]);
-
-  if (!selectedAreaId) {
-    // Area selection grid
-    return (
-      <div className="space-y-6">
-        <p className="text-sm text-muted-foreground">
-          Select an area to create identity statements for it.
-        </p>
-
-        {CATEGORY_ORDER.map(cat => {
-          const catAreas = activeGroupedAreas[cat];
-          if (!catAreas || catAreas.length === 0) return null;
-
-          return (
-            <div key={cat}>
-              <h3 className="text-sm font-semibold mb-2">{cat}</h3>
-              <div className="grid grid-cols-2 gap-2">
-                {catAreas.map(area => (
-                  <button
-                    key={area.id}
-                    onClick={() => setSelectedAreaId(area.id)}
-                    className="p-3 rounded-lg border bg-card text-left hover:border-amber-500/50 hover:bg-amber-500/5 transition-colors"
-                  >
-                    <p className="text-sm font-medium">{area.name}</p>
-                    {area.description && (
-                      <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{area.description}</p>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
-  // Area detail: identity creation with all fields
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={() => setSelectedAreaId(null)}>
-          <ChevronLeft className="w-4 h-4" />
-        </Button>
-        <div>
-          <h3 className="text-sm font-semibold">{selectedArea?.name}</h3>
-          <p className="text-[10px] text-muted-foreground">{selectedArea?.category}</p>
-        </div>
-      </div>
-
-      {/* Existing identities for this area */}
-      {areaIdentities.length > 0 && (
-        <div className="space-y-2">
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Created Identities
-          </h4>
-          {areaIdentities.map(id => (
-            <Card key={id.id} className="border-amber-500/20">
-              <CardContent className="p-3">
-                <p className="text-sm">
-                  <span className="text-muted-foreground">I am the type of person who</span>{" "}
-                  <span className="font-medium">{id.statement}</span>
-                </p>
-                {id.cue && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5">triggered {id.cue}</p>
-                )}
-                {id.craving && (
-                  <p className="text-[11px] text-muted-foreground/70 mt-0.5 italic">because I {id.craving}</p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Build new identity form */}
-      <Card className="border-amber-500/30 bg-amber-500/5">
-        <CardContent className="p-4 space-y-3">
-          <h4 className="text-xs font-semibold text-amber-700 dark:text-amber-400">
-            Build Your Identity in {selectedArea?.name}
-          </h4>
-
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1">I am the type of person who...</p>
-            <Input
-              value={identityText}
-              onChange={e => setIdentityText(e.target.value)}
-              placeholder="e.g. exercises daily, reads before bed"
-              className="text-sm"
-              data-testid="input-identity"
-            />
-          </div>
-
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1">...triggered...</p>
-            <Input
-              value={habitCue}
-              onChange={e => setHabitCue(e.target.value)}
-              placeholder="before/after an event/action e.g. before bed, after work, while driving"
-              className="text-sm"
-            />
-          </div>
-
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1">...in the...</p>
-            <Select value={habitTimeOfDay} onValueChange={setHabitTimeOfDay}>
-              <SelectTrigger className="text-sm">
-                <SelectValue placeholder="Select time of day" />
-              </SelectTrigger>
-              <SelectContent>
-                {TIME_OF_DAY_CATEGORIES.map(t => (
-                  <SelectItem key={t.value} value={t.value}>
-                    {t.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <RecurrenceBuilder
-            value={habitRecurrence}
-            onChange={setHabitRecurrence}
-            requireRecurrence
-          />
-
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1">...because I...</p>
-            <Input
-              value={habitBecause}
-              onChange={e => setHabitBecause(e.target.value)}
-              placeholder="why do you want the change? e.g. avoid surprises, keep it manageable, understand better"
-              className="text-sm"
-            />
-          </div>
-
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1">...so this makes sure I'll have...</p>
-            <Input
-              value={habitReward}
-              onChange={e => setHabitReward(e.target.value)}
-              placeholder="tangible outcome e.g. clean floors, balanced books, 10% fat loss"
-              className="text-sm"
-            />
-          </div>
-
-          <Button
-            className="w-full h-9 bg-amber-600 hover:bg-amber-700 text-white"
-            disabled={!identityText.trim() || !selectedAreaId}
-            onClick={() => onCreateIdentity({
-              statement: identityText,
-              areaId: selectedAreaId,
-              cue: habitCue || undefined,
-              timeOfDay: habitTimeOfDay || undefined,
-              frequency: habitRecurrence || undefined,
-              craving: habitBecause || undefined,
-              reward: habitReward || undefined,
-            })}
-          >
-            Create Identity
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}

@@ -12,6 +12,7 @@ import PlannerPage from "@/pages/planner";
 import RoutinePage from "@/pages/routine";
 import IdentityVotePage from "@/pages/identity-vote";
 import ImportPage from "@/pages/import";
+import UnPuzzlePage from "@/pages/unpuzzle";
 import ProjectDetailPage from "@/pages/project-detail";
 import ProjectsPage from "@/pages/projects";
 import NotFound from "@/pages/not-found";
@@ -41,6 +42,7 @@ function AppRouter() {
       <Route path="/" component={DashboardWithRedirect} />
       <Route path="/inbox" component={InboxPage} />
       <Route path="/horizons" component={HorizonsPage} />
+      <Route path="/unpuzzle" component={UnPuzzlePage} />
       <Route path="/routine" component={RoutinePage} />
       <Route path="/routine/:id">{(params) => <RoutinePage filterIdentityId={Number(params.id)} />}</Route>
       <Route path="/planner" component={PlannerPage} />
@@ -56,8 +58,9 @@ function AppRouter() {
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Weekly Review", url: "/review", icon: RotateCcw },
   { title: "Clarity", url: "/horizons", icon: Layers },
+  { title: "UnPuzzle", url: "/unpuzzle", icon: Puzzle },
+  { title: "Weekly Review", url: "/review", icon: RotateCcw },
   { title: "Import", url: "/import", icon: Upload },
 ];
 
