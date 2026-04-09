@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
-import { navigate } from "wouter/use-hash-location";
 import type { Identity, Area, RoutineItem, PlannerTask } from "@shared/schema";
 import { formatRecurrence } from "./planner";
 
@@ -117,6 +116,18 @@ const READY_STATUS_OPTIONS = [
 ];
 
 // ============================================================
+// PUZZLE PIECE COLORS
+// ============================================================
+const PIECE_COLORS: Record<string, { bg: string; text: string; border: string; accent: string }> = {
+  Reason:   { bg: "bg-purple-500/10",  text: "text-purple-600 dark:text-purple-400",  border: "border-purple-500/30",  accent: "#7C3AED" },
+  Finance:  { bg: "bg-green-500/10",   text: "text-green-600 dark:text-green-400",    border: "border-green-500/30",   accent: "#16A34A" },
+  Fitness:  { bg: "bg-blue-500/10",    text: "text-blue-600 dark:text-blue-400",      border: "border-blue-500/30",    accent: "#2563EB" },
+  Talent:   { bg: "bg-yellow-500/10",  text: "text-yellow-600 dark:text-yellow-400",  border: "border-yellow-500/30",  accent: "#CA8A04" },
+  Pleasure: { bg: "bg-red-500/10",     text: "text-red-600 dark:text-red-400",        border: "border-red-500/30",     accent: "#DC2626" },
+};
+const DEFAULT_PIECE = { bg: "bg-primary/5", text: "text-primary", border: "border-primary/20", accent: "" };
+
+// ============================================================
 // PROJECT DETAIL PAGE
 // ============================================================
 
@@ -149,38 +160,73 @@ export default function ProjectDetailPage({ id }: { id: number }) {
   }
 
   const { identity, area, routineItems, plannerTasks } = data;
+  const pieceColor = identity.puzzlePiece ? PIECE_COLORS[identity.puzzlePiece] ?? DEFAULT_PIECE : DEFAULT_PIECE;
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
-      {/* Back button — centered pill */}
-      <div className="flex justify-center mb-3">
-        <Link href="/projects" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5">
+      {/* Back button */}
+      <div className="flex items-center gap-2 mb-4">
+        <Link href="/projects" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back to Projects
         </Link>
       </div>
 
+      {/* Colored top accent bar based on puzzle piece */}
+      {identity.puzzlePiece && (
+        <div
+          className="h-1 rounded-full mb-4"
+          style={{ backgroundColor: pieceColor.accent }}
+        />
+      )}
+
       {/* Header */}
       <div>
-        {area && (
-          <p className="text-[11px] text-muted-foreground mb-1">
-            In the area of <span className="font-medium text-foreground">
-              {area.category === "UnPuzzle" ? `${area.category} ${area.name}` : `${area.name} ${area.category || ""}`}
+        {/* Puzzle piece + area breadcrumb */}
+        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+          {identity.puzzlePiece && (
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${pieceColor.bg} ${pieceColor.text}`}>
+              {identity.puzzlePiece}
             </span>
-          </p>
-        )}
+          )}
+          {area && (
+            <>
+              <span className="text-[10px] text-muted-foreground">·</span>
+              <span className="text-[10px] text-muted-foreground font-medium">{area.name}</span>
+            </>
+          )}
+        </div>
+
+        {/* Identity statement */}
         <div className="flex items-center gap-2">
-          <FolderOpen className="w-5 h-5 text-primary" />
+          <FolderOpen className="w-5 h-5 text-primary shrink-0" />
           <h1 className="text-lg font-semibold tracking-tight">
             {identity.statement}
           </h1>
         </div>
-        <div className="flex items-center gap-1.5 mt-1.5">
-          <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30" onClick={() => navigate("/horizons?tab=identity")}>
-            <Fingerprint className="w-3 h-3" /> Identity
-          </Badge>
+
+        {/* Badge row */}
+        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+          {/* Identity badge — links to UnPuzzle page */}
+          <Link href="/unpuzzle">
+            <Badge
+              variant="outline"
+              className={`text-[10px] h-5 px-1.5 gap-1 cursor-pointer transition-colors ${pieceColor.text} ${pieceColor.border} hover:${pieceColor.bg}`}
+            >
+              <Fingerprint className="w-3 h-3" /> Identity
+            </Badge>
+          </Link>
+
+          {/* Routine badge */}
           <Link href={`/routine/${identity.id}`}>
             <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30">
               <Repeat2 className="w-3 h-3" /> Routine
+            </Badge>
+          </Link>
+
+          {/* Daily Agenda badge — links to /planner */}
+          <Link href="/planner">
+            <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-primary/10 transition-colors text-primary border-primary/20">
+              <Clock className="w-3 h-3" /> Daily Agenda
             </Badge>
           </Link>
         </div>
@@ -190,6 +236,16 @@ export default function ProjectDetailPage({ id }: { id: number }) {
       <Card>
         <CardContent className="p-4 space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Identity Chain</p>
+          {identity.puzzlePiece && (
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${pieceColor.bg} ${pieceColor.text}`}>
+                {identity.puzzlePiece}
+              </span>
+              {area && (
+                <span className="text-[11px] text-muted-foreground">· {area.name}</span>
+              )}
+            </div>
+          )}
           <p className="text-sm">
             <span className="text-muted-foreground">I'm the type of person who will</span>{" "}
             <span className="font-medium">{identity.statement}</span>
@@ -198,6 +254,18 @@ export default function ProjectDetailPage({ id }: { id: number }) {
             <p className="text-sm">
               <span className="text-muted-foreground">Triggered</span>{" "}
               <span className="font-medium">{identity.cue}</span>
+            </p>
+          )}
+          {identity.timeOfDay && (
+            <p className="text-sm">
+              <span className="text-muted-foreground">In the</span>{" "}
+              <span className="font-medium">{identity.timeOfDay}</span>
+            </p>
+          )}
+          {identity.location && (
+            <p className="text-sm">
+              <span className="text-muted-foreground">Taking place at</span>{" "}
+              <span className="font-medium">{identity.location}</span>
             </p>
           )}
           {identity.craving && (
