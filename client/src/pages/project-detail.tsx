@@ -18,6 +18,14 @@ import type { Identity, Area, RoutineItem, PlannerTask } from "@shared/schema";
 import { formatRecurrence } from "./planner";
 import { getPieceColor } from "@/lib/piece-colors";
 
+const PIECE_DESCRIPTORS: Record<string, string> = {
+  reason:   "Purpose, beliefs & principles",
+  finance:  "Money, assets & abundance",
+  fitness:  "Health, energy & longevity",
+  talent:   "Skills, work & contribution",
+  pleasure: "Joy, relationships & play",
+};
+
 interface IdentityProjectDetails {
   identityId: number;
   identity: Identity;
@@ -156,9 +164,9 @@ export default function ProjectDetailPage({ id }: { id: number }) {
       <div className="p-6 space-y-6">
       {/* Back button */}
       <div className="flex items-center gap-2 mb-4">
-        <Link href="/projects" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft className="w-4 h-4" /> Back to Projects
-        </Link>
+        <button onClick={() => window.history.back()} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Back
+        </button>
       </div>
 
       {/* Header — colored left border accent */}
@@ -169,14 +177,18 @@ export default function ProjectDetailPage({ id }: { id: number }) {
         {/* Puzzle piece + area breadcrumb */}
         <div className="flex items-center gap-1.5 mb-1 flex-wrap">
           {identity.puzzlePiece && (
-            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${pieceColor.bg} ${pieceColor.text}`}>
-              {pieceColor.label || identity.puzzlePiece}
-            </span>
+            <Link href="/unpuzzle">
+              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded cursor-pointer ${pieceColor.bg} ${pieceColor.text}`}>
+                {pieceColor.label || identity.puzzlePiece}
+              </span>
+            </Link>
           )}
           {area && (
             <>
               <span className="text-[10px] text-muted-foreground">·</span>
-              <span className="text-[10px] text-muted-foreground font-medium">{area.name}</span>
+              <Link href="/horizons">
+                <span className="text-[10px] text-muted-foreground font-medium cursor-pointer hover:text-foreground transition-colors">{area.name}</span>
+              </Link>
             </>
           )}
         </div>
@@ -201,13 +213,6 @@ export default function ProjectDetailPage({ id }: { id: number }) {
             </Badge>
           </Link>
 
-          {/* Routine badge */}
-          <Link href={`/routine/${identity.id}`}>
-            <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30">
-              <Repeat2 className="w-3 h-3" /> Routine
-            </Badge>
-          </Link>
-
           {/* Daily Agenda badge — links to /planner */}
           <Link href="/planner">
             <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-primary/10 transition-colors text-primary border-primary/20">
@@ -222,13 +227,23 @@ export default function ProjectDetailPage({ id }: { id: number }) {
         <CardContent className="p-4 space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Identity Chain</p>
           {identity.puzzlePiece && (
-            <div className="flex items-center gap-1.5">
-              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${pieceColor.bg} ${pieceColor.text}`}>
-                {pieceColor.label || identity.puzzlePiece}
-              </span>
-              {area && (
-                <span className="text-[11px] text-muted-foreground">· {area.name}</span>
-              )}
+            <div className="mb-1">
+              <div className="flex items-center gap-1.5">
+                <Link href="/unpuzzle">
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded cursor-pointer ${pieceColor.bg} ${pieceColor.text}`}>
+                    {pieceColor.label || identity.puzzlePiece}
+                  </span>
+                </Link>
+                {area && (
+                  <>
+                    <span className="text-[10px] text-muted-foreground">·</span>
+                    <Link href="/horizons">
+                      <span className="text-[11px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors">{area.name}</span>
+                    </Link>
+                  </>
+                )}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{PIECE_DESCRIPTORS[identity.puzzlePiece?.toLowerCase()] || ""}</p>
             </div>
           )}
           <p className="text-sm">

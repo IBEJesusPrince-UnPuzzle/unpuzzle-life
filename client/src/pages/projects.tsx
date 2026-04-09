@@ -14,9 +14,9 @@ export default function ProjectsPage() {
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
       <div className="flex items-center gap-2 mb-4">
-        <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft className="w-4 h-4" /> Back to Dashboard
-        </Link>
+        <button onClick={() => window.history.back()} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Back
+        </button>
       </div>
 
       <div>
@@ -57,9 +57,11 @@ export default function ProjectsPage() {
                   <CardContent className="p-4 space-y-1.5">
                     {(identity as any).puzzlePiece && (
                       <div className="flex items-center gap-1.5 mb-1">
-                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${pieceColor.bg} ${pieceColor.text}`}>
-                          {pieceColor.label}
-                        </span>
+                        <Link href="/unpuzzle" onClick={(e) => e.stopPropagation()}>
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded cursor-pointer ${pieceColor.bg} ${pieceColor.text}`}>
+                            {pieceColor.label}
+                          </span>
+                        </Link>
                       </div>
                     )}
                     {area && (

@@ -93,9 +93,9 @@ export default function ReviewPage() {
   }, [currentReview]);
 
   const checklist = [
-    { label: "Clear inbox to zero", done: inboxCleared || (currentReview?.inboxCleared === 1), setter: setInboxCleared, icon: Inbox, detail: `${unprocessedInbox} items remaining` },
-    { label: "Review all active projects", done: projectsReviewed || (currentReview?.projectsReviewed === 1), setter: setProjectsReviewed, icon: FolderOpen, detail: `${activeProjects.length} active projects` },
-    { label: "Review habit systems", done: habitsReviewed || (currentReview?.habitsReviewed === 1), setter: setHabitsReviewed, icon: TargetIcon, detail: `${habits.filter(h => h.active).length} active habits` },
+    { label: "Clear inbox to zero", done: inboxCleared || (currentReview?.inboxCleared === 1), setter: setInboxCleared, icon: Inbox, detail: unprocessedInbox > 0 ? `${unprocessedInbox} items remaining` : "All clear", linkHref: "/inbox", linkLabel: `Inbox${unprocessedInbox > 0 ? ` (${unprocessedInbox})` : ""}` },
+    { label: "Review all active projects", done: projectsReviewed || (currentReview?.projectsReviewed === 1), setter: setProjectsReviewed, icon: FolderOpen, detail: `${activeProjects.length} active projects`, linkHref: "/projects", linkLabel: `Projects (${activeProjects.length})` },
+    { label: "Review habit systems", done: habitsReviewed || (currentReview?.habitsReviewed === 1), setter: setHabitsReviewed, icon: TargetIcon, detail: `${habits.filter(h => h.active).length} active habits`, linkHref: "/routine", linkLabel: `Routines (${habits.filter(h => h.active).length})` },
   ];
 
   const checklistDone = checklist.filter(c => c.done).length;
@@ -126,9 +126,9 @@ export default function ReviewPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6 overflow-y-auto h-full">
       <div className="flex items-center gap-2 mb-4">
-        <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft className="w-4 h-4" /> Back to Dashboard
-        </Link>
+        <button onClick={() => window.history.back()} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Back
+        </button>
       </div>
       <div className="flex items-center justify-between">
         <div>
@@ -173,6 +173,13 @@ export default function ReviewPage() {
                   </p>
                   <p className="text-[10px] text-muted-foreground">{item.detail}</p>
                 </div>
+                {item.linkHref && (
+                  <Link href={item.linkHref} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 ml-auto cursor-pointer hover:bg-primary/10 transition-colors">
+                      {item.linkLabel}
+                    </Badge>
+                  </Link>
+                )}
               </div>
             ))}
           </div>

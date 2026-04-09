@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
-  Compass, Plus, Pencil, Trash2, X, ArrowLeft,
+  Compass, Plus, Pencil, Trash2, X, ArrowLeft, Archive,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
@@ -85,11 +85,13 @@ function AreaVisionCard({
   onClick,
   onEdit,
   onDelete,
+  onArchive,
 }: {
   area: Area;
   onClick: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onArchive: () => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -105,6 +107,13 @@ function AreaVisionCard({
             className="flex items-center gap-1"
             onClick={(e) => e.stopPropagation()}
           >
+            <button
+              onClick={onArchive}
+              className="p-1 text-muted-foreground hover:text-amber-500 transition-colors"
+              title={area.archived ? "Unarchive" : "Archive"}
+            >
+              <Archive className="w-3.5 h-3.5" />
+            </button>
             <Button
               variant="ghost"
               size="sm"
@@ -168,14 +177,22 @@ function VisionBoard({
   onOpenWriter: (areaId: number, isNew?: boolean) => void;
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
-  const areasWithVision = areas.filter((a) => a.visionText);
-  const areasWithoutVision = areas.filter((a) => !a.visionText);
+  const [showArchived, setShowArchived] = useState(false);
+  const visibleAreas = areas.filter(a => showArchived ? a.archived : !a.archived);
+  const areasWithVision = visibleAreas.filter((a) => a.visionText);
+  const areasWithoutVision = visibleAreas.filter((a) => !a.visionText);
   const isEmpty = areasWithVision.length === 0;
 
   const deleteArea = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/areas/${id}`),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["/api/areas"] }),
+  });
+
+  const archiveArea = useMutation({
+    mutationFn: ({ id, archived }: { id: number; archived: number }) =>
+      apiRequest("PATCH", `/api/areas/${id}`, { archived: archived ? 0 : 1 }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/areas"] }),
   });
 
   // Empty state (State 1)
@@ -271,12 +288,12 @@ function VisionBoard({
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
       <div className="mb-6">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5"
+        <button
+          onClick={() => window.history.back()}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          <ArrowLeft className="w-4 h-4" /> Back to Dashboard
-        </Link>
+          <ArrowLeft className="w-4 h-4" /> Back
+        </button>
       </div>
 
       <div>
@@ -290,13 +307,15 @@ function VisionBoard({
       {/* Area vision cards */}
       <div className="space-y-4">
         {areasWithVision.map((area) => (
-          <AreaVisionCard
-            key={area.id}
-            area={area}
-            onClick={() => onOpenWriter(area.id)}
-            onEdit={() => onOpenWriter(area.id)}
-            onDelete={() => deleteArea.mutate(area.id)}
-          />
+          <div key={area.id} className={area.archived ? "opacity-50" : ""}>
+            <AreaVisionCard
+              area={area}
+              onClick={() => onOpenWriter(area.id)}
+              onEdit={() => onOpenWriter(area.id)}
+              onDelete={() => deleteArea.mutate(area.id)}
+              onArchive={() => archiveArea.mutate({ id: area.id, archived: area.archived ?? 0 })}
+            />
+          </div>
         ))}
       </div>
 
@@ -340,6 +359,16 @@ function VisionBoard({
         >
           <Plus className="w-4 h-4 mr-1.5" /> Add another area
         </Button>
+      )}
+
+      {areas.some(a => a.archived) && (
+        <button
+          onClick={() => setShowArchived(!showArchived)}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 mt-2"
+        >
+          <Archive className="w-3 h-3" />
+          {showArchived ? "Hide archived" : `Show archived (${areas.filter(a => a.archived).length})`}
+        </button>
       )}
     </div>
   );

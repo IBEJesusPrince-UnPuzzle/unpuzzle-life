@@ -394,9 +394,9 @@ export function SorterView({ areas, onAreaClick, embedded }: { areas: Area[]; on
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4 overflow-y-auto h-full">
       {!embedded && (
         <div className="flex justify-center mb-3">
-          <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5">
-            <ArrowLeft className="w-4 h-4" /> Back to Dashboard
-          </Link>
+          <button onClick={() => window.history.back()} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Back
+          </button>
         </div>
       )}
       {/* Header */}
@@ -544,7 +544,7 @@ export function SorterView({ areas, onAreaClick, embedded }: { areas: Area[]; on
 function EditTaskDialog({ task, areas, open, onOpenChange }: {
   task: PlannerTask; areas: Area[]; open: boolean; onOpenChange: (open: boolean) => void;
 }) {
-  const [goal, setGoal] = useState(task.goal);
+  const [goal, setGoal] = useState(humanizeGoal(task.goal));
   const [areaId, setAreaId] = useState<string>(task.areaId ? String(task.areaId) : "none");
   const [startTime, setStartTime] = useState(task.startTime || "");
   const [endTime, setEndTime] = useState(task.endTime || "");
@@ -555,7 +555,7 @@ function EditTaskDialog({ task, areas, open, onOpenChange }: {
   // Reset form when dialog opens with new task
   useEffect(() => {
     if (open) {
-      setGoal(task.goal);
+      setGoal(humanizeGoal(task.goal));
       setAreaId(task.areaId ? String(task.areaId) : "none");
       setStartTime(task.startTime || "");
       setEndTime(task.endTime || "");
@@ -716,6 +716,24 @@ function ProjectTaskGoal({ goal, sourceType, isDone }: { goal: string; sourceTyp
       {goal}
     </p>
   );
+}
+
+function humanizeGoal(goal: string): string {
+  try {
+    const parsed = JSON.parse(goal);
+    if (parsed.name && parsed.contactMethod) {
+      return `Connect with ${parsed.name} via ${parsed.contactMethod}${parsed.contactInfo ? ` (${parsed.contactInfo})` : ""}`;
+    }
+    if (parsed.name && "travelMethod" in parsed) {
+      return `Visit ${parsed.name}${parsed.address ? ` at ${parsed.address}` : ""}`;
+    }
+    if (parsed.name && "purposeUse" in parsed) {
+      return `${parsed.name}${parsed.use ? ` — ${parsed.use}` : ""}`;
+    }
+    return goal;
+  } catch {
+    return goal;
+  }
 }
 
 function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area[]; onAreaClick: (id: number) => void }) {

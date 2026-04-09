@@ -8,7 +8,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Puzzle, ChevronLeft, Plus, Brain, ChevronDown, ChevronUp, Star, Pencil, Trash2,
+  Puzzle, ChevronLeft, Plus, ChevronDown, ChevronUp, Star, Pencil, Trash2,
+  FolderOpen, Repeat2, Clock,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
@@ -115,13 +116,19 @@ function PuzzleWheel({ onSelect }: { onSelect: (piece: PuzzlePiece) => void }) {
             </text>
           </g>
         ))}
-        {/* Center circle with brain icon */}
+        {/* Center circle with logo */}
         <circle cx={cx} cy={cy} r={40} fill="white" stroke="#e5e7eb" strokeWidth="2" />
-        <foreignObject x={cx - 14} y={cy - 14} width={28} height={28}>
-          <div className="flex items-center justify-center w-full h-full">
-            <Brain className="w-6 h-6 text-gray-600" />
-          </div>
-        </foreignObject>
+        <defs>
+          <clipPath id="centerClip">
+            <circle cx={cx} cy={cy} r={35} />
+          </clipPath>
+        </defs>
+        <image
+          href="/unpuzzle-logo.png"
+          x={cx - 35} y={cy - 35}
+          width="70" height="70"
+          clipPath="url(#centerClip)"
+        />
       </svg>
     </div>
   );
@@ -131,44 +138,72 @@ function PuzzleWheel({ onSelect }: { onSelect: (piece: PuzzlePiece) => void }) {
 // IDENTITY FORM (reusable — also used in wizard.tsx)
 // ============================================================
 
+interface IdentityFormValues {
+  areaId?: number | null;
+  statement?: string;
+  cue?: string | null;
+  timeOfDay?: string | null;
+  location?: string | null;
+  craving?: string | null;
+  reward?: string | null;
+  environmentType?: string | null;
+  envPersonName?: string | null;
+  envPersonContactMethod?: string | null;
+  envPersonContactInfo?: string | null;
+  envPersonWhy?: string | null;
+  envPlaceName?: string | null;
+  envPlaceAddress?: string | null;
+  envPlaceTravelMethod?: string | null;
+  envPlaceWhy?: string | null;
+  envThingName?: string | null;
+  envThingUsage?: string | null;
+  envThingWhy?: string | null;
+}
+
 export function IdentityForm({
   puzzlePiece,
   showPieceSelector,
   areas,
   onSuccess,
+  initialValues,
+  identityId,
 }: {
   puzzlePiece?: PuzzlePiece;
   showPieceSelector?: boolean;
   areas: Area[];
   onSuccess?: () => void;
+  initialValues?: Partial<IdentityFormValues>;
+  identityId?: number;
 }) {
   const [piece, setPiece] = useState<PuzzlePiece | "">(puzzlePiece || "");
-  const [areaId, setAreaId] = useState<string>("");
-  const [response, setResponse] = useState("");
-  const [environmentType, setEnvironmentType] = useState<"person" | "place" | "thing" | "">("");
+  const [areaId, setAreaId] = useState<string>(initialValues?.areaId ? String(initialValues.areaId) : "");
+  const [response, setResponse] = useState(initialValues?.statement || "");
+  const [environmentType, setEnvironmentType] = useState<"person" | "place" | "thing" | "">(
+    (initialValues?.environmentType as "person" | "place" | "thing" | "") || ""
+  );
 
   // Person fields
-  const [envPersonName, setEnvPersonName] = useState("");
-  const [envPersonContactMethod, setEnvPersonContactMethod] = useState("");
-  const [envPersonContactInfo, setEnvPersonContactInfo] = useState("");
-  const [envPersonWhy, setEnvPersonWhy] = useState("");
+  const [envPersonName, setEnvPersonName] = useState(initialValues?.envPersonName || "");
+  const [envPersonContactMethod, setEnvPersonContactMethod] = useState(initialValues?.envPersonContactMethod || "");
+  const [envPersonContactInfo, setEnvPersonContactInfo] = useState(initialValues?.envPersonContactInfo || "");
+  const [envPersonWhy, setEnvPersonWhy] = useState(initialValues?.envPersonWhy || "");
 
   // Place fields
-  const [envPlaceName, setEnvPlaceName] = useState("");
-  const [envPlaceAddress, setEnvPlaceAddress] = useState("");
-  const [envPlaceTravelMethod, setEnvPlaceTravelMethod] = useState("");
-  const [envPlaceWhy, setEnvPlaceWhy] = useState("");
+  const [envPlaceName, setEnvPlaceName] = useState(initialValues?.envPlaceName || "");
+  const [envPlaceAddress, setEnvPlaceAddress] = useState(initialValues?.envPlaceAddress || "");
+  const [envPlaceTravelMethod, setEnvPlaceTravelMethod] = useState(initialValues?.envPlaceTravelMethod || "");
+  const [envPlaceWhy, setEnvPlaceWhy] = useState(initialValues?.envPlaceWhy || "");
 
   // Thing fields
-  const [envThingName, setEnvThingName] = useState("");
-  const [envThingUsage, setEnvThingUsage] = useState("");
-  const [envThingWhy, setEnvThingWhy] = useState("");
+  const [envThingName, setEnvThingName] = useState(initialValues?.envThingName || "");
+  const [envThingUsage, setEnvThingUsage] = useState(initialValues?.envThingUsage || "");
+  const [envThingWhy, setEnvThingWhy] = useState(initialValues?.envThingWhy || "");
 
-  const [cue, setCue] = useState("");
-  const [timeOfDay, setTimeOfDay] = useState("");
-  const [location, setLocation] = useState("");
-  const [craving, setCraving] = useState("");
-  const [reward, setReward] = useState("");
+  const [cue, setCue] = useState(initialValues?.cue || "");
+  const [timeOfDay, setTimeOfDay] = useState(initialValues?.timeOfDay || "");
+  const [location, setLocation] = useState(initialValues?.location || "");
+  const [craving, setCraving] = useState(initialValues?.craving || "");
+  const [reward, setReward] = useState(initialValues?.reward || "");
 
   const activePiece = puzzlePiece || (piece as PuzzlePiece);
 
@@ -180,18 +215,22 @@ export function IdentityForm({
 
   const createIdentity = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
-      apiRequest("POST", "/api/identities", data),
+      identityId
+        ? apiRequest("PATCH", `/api/identities/${identityId}`, data)
+        : apiRequest("POST", "/api/identities", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
-      // Reset form
-      setResponse("");
-      setEnvironmentType("");
-      setEnvPersonName(""); setEnvPersonContactMethod(""); setEnvPersonContactInfo(""); setEnvPersonWhy("");
-      setEnvPlaceName(""); setEnvPlaceAddress(""); setEnvPlaceTravelMethod(""); setEnvPlaceWhy("");
-      setEnvThingName(""); setEnvThingUsage(""); setEnvThingWhy("");
-      setCue(""); setTimeOfDay(""); setLocation(""); setCraving(""); setReward("");
-      if (!puzzlePiece) setPiece("");
-      setAreaId("");
+      if (!identityId) {
+        // Reset form only for create mode
+        setResponse("");
+        setEnvironmentType("");
+        setEnvPersonName(""); setEnvPersonContactMethod(""); setEnvPersonContactInfo(""); setEnvPersonWhy("");
+        setEnvPlaceName(""); setEnvPlaceAddress(""); setEnvPlaceTravelMethod(""); setEnvPlaceWhy("");
+        setEnvThingName(""); setEnvThingUsage(""); setEnvThingWhy("");
+        setCue(""); setTimeOfDay(""); setLocation(""); setCraving(""); setReward("");
+        if (!puzzlePiece) setPiece("");
+        setAreaId("");
+      }
       onSuccess?.();
     },
   });
@@ -255,9 +294,12 @@ export function IdentityForm({
           </div>
         </div>
       ) : puzzlePiece && pieceInfo ? (
-        <p className="text-sm font-medium" style={{ color: pieceInfo.color }}>
-          For your {pieceInfo.label} piece
-        </p>
+        <div className="mb-4">
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+            For your {pieceInfo.label} piece
+          </p>
+          <p className="text-[11px] text-muted-foreground">{pieceInfo.descriptor}</p>
+        </div>
       ) : null}
 
       {/* 2. Area */}
@@ -379,12 +421,12 @@ export function IdentityForm({
       {/* 7. Location */}
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">
-          Where will this take place?
+          ...in my...
         </label>
         <Input
           value={location}
           onChange={e => setLocation(e.target.value)}
-          placeholder="e.g. kitchen table, home gym, back porch, office desk"
+          placeholder="kitchen, gym, office, bedroom"
           className="text-sm"
         />
         <p className="text-[10px] text-muted-foreground mt-0.5">
@@ -421,7 +463,7 @@ export function IdentityForm({
         disabled={!response.trim() || !activePiece || createIdentity.isPending}
         onClick={handleSubmit}
       >
-        {createIdentity.isPending ? "Creating..." : "Create Identity"}
+        {createIdentity.isPending ? "Saving..." : identityId ? "Save Identity" : "Create Identity"}
       </Button>
     </div>
   );
@@ -560,11 +602,32 @@ function PieceDetailView({
             <Card key={id.id} className="border-l-4" style={{ borderLeftColor: pieceInfo.color }}>
               <CardContent className="p-3">
                 {editingIdentityId === id.id ? (
-                  <IdentityEditForm
-                    identity={id}
-                    onSave={(data) => patchIdentity.mutate({ id: id.id, data })}
-                    onCancel={() => setEditingIdentityId(null)}
-                    isPending={patchIdentity.isPending}
+                  <IdentityForm
+                    puzzlePiece={piece}
+                    areas={activeAreas}
+                    onSuccess={() => setEditingIdentityId(null)}
+                    initialValues={{
+                      areaId: id.areaId,
+                      statement: id.statement,
+                      cue: id.cue,
+                      timeOfDay: id.timeOfDay,
+                      location: id.location,
+                      craving: id.craving,
+                      reward: id.reward,
+                      environmentType: (id as any).environmentType,
+                      envPersonName: (id as any).envPersonName,
+                      envPersonContactMethod: (id as any).envPersonContactMethod,
+                      envPersonContactInfo: (id as any).envPersonContactInfo,
+                      envPersonWhy: (id as any).envPersonWhy,
+                      envPlaceName: (id as any).envPlaceName,
+                      envPlaceAddress: (id as any).envPlaceAddress,
+                      envPlaceTravelMethod: (id as any).envPlaceTravelMethod,
+                      envPlaceWhy: (id as any).envPlaceWhy,
+                      envThingName: (id as any).envThingName,
+                      envThingUsage: (id as any).envThingUsage,
+                      envThingWhy: (id as any).envThingWhy,
+                    }}
+                    identityId={id.id}
                   />
                 ) : deletingIdentityId === id.id ? (
                   <div className="flex items-center justify-between">
@@ -583,6 +646,23 @@ function PieceDetailView({
                       {id.cue && <p className="text-[11px] text-muted-foreground mt-0.5">triggered {id.cue}</p>}
                       {id.timeOfDay && <p className="text-[11px] text-muted-foreground">in the {id.timeOfDay}</p>}
                       {id.location && <p className="text-[11px] text-muted-foreground">at {id.location}</p>}
+                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                        <Link href={`/projects/${id.id}`}>
+                          <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-1 cursor-pointer hover:bg-primary/10 transition-colors text-primary border-primary/20">
+                            <FolderOpen className="w-2.5 h-2.5" /> Project
+                          </Badge>
+                        </Link>
+                        <Link href="/routine">
+                          <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30">
+                            <Repeat2 className="w-2.5 h-2.5" /> Routine
+                          </Badge>
+                        </Link>
+                        <Link href="/planner">
+                          <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-1 cursor-pointer hover:bg-primary/10 transition-colors text-primary border-primary/20">
+                            <Clock className="w-2.5 h-2.5" /> Daily Agenda
+                          </Badge>
+                        </Link>
+                      </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button onClick={() => setEditingIdentityId(id.id)} className="p-1 text-muted-foreground hover:text-foreground transition-colors">

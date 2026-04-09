@@ -10,7 +10,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import {
   Fingerprint, Inbox as InboxIcon, Repeat2, FolderOpen, Plus, ArrowRight,
-  FileEdit, ChevronRight, Shield, Check, X, Puzzle,
+  FileEdit, ChevronRight, Shield, Check, X, Puzzle, Pencil,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
@@ -96,6 +96,9 @@ function LawCheckInRow({ law, log, isChecked, isKept, today }: {
             {law.isRedLine === 1 && (
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" title="Red line" />
             )}
+            <Link href="/unpuzzle" className="ml-auto p-1 text-muted-foreground hover:text-foreground transition-colors shrink-0" title="Edit in UnPuzzle">
+              <Pencil className="w-3 h-3" />
+            </Link>
           </div>
           <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{law.statement}</p>
 
