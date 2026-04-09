@@ -8,7 +8,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Fingerprint, Inbox as InboxIcon, Repeat2, FolderOpen, Plus,
+  Fingerprint, Inbox as InboxIcon, Repeat2, FolderOpen, Plus, ArrowRight,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
@@ -130,6 +130,25 @@ export default function Dashboard() {
           </Button>
         </div>
       </form>
+
+      {/* Onboarding nudge — only when no area visions exist */}
+      {areas.filter(a => a.visionText).length === 0 && (
+        <Card className="border-dashed bg-muted/30">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Start with Clarity</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Write your area visions — the foundation everything else builds from.
+              </p>
+            </div>
+            <Link href="/horizons">
+              <Button size="sm" variant="outline">
+                Go to Clarity <ArrowRight className="w-3 h-3 ml-1" />
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
