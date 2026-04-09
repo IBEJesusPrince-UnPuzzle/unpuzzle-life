@@ -16,6 +16,7 @@ import { useState } from "react";
 import { Link } from "wouter";
 import type { Identity, Area, RoutineItem, PlannerTask } from "@shared/schema";
 import { formatRecurrence } from "./planner";
+import { getPieceColor } from "@/lib/piece-colors";
 
 interface IdentityProjectDetails {
   identityId: number;
@@ -116,18 +117,6 @@ const READY_STATUS_OPTIONS = [
 ];
 
 // ============================================================
-// PUZZLE PIECE COLORS
-// ============================================================
-const PIECE_COLORS: Record<string, { bg: string; text: string; border: string; accent: string }> = {
-  Reason:   { bg: "bg-purple-500/10",  text: "text-purple-600 dark:text-purple-400",  border: "border-purple-500/30",  accent: "#7C3AED" },
-  Finance:  { bg: "bg-green-500/10",   text: "text-green-600 dark:text-green-400",    border: "border-green-500/30",   accent: "#16A34A" },
-  Fitness:  { bg: "bg-blue-500/10",    text: "text-blue-600 dark:text-blue-400",      border: "border-blue-500/30",    accent: "#2563EB" },
-  Talent:   { bg: "bg-yellow-500/10",  text: "text-yellow-600 dark:text-yellow-400",  border: "border-yellow-500/30",  accent: "#CA8A04" },
-  Pleasure: { bg: "bg-red-500/10",     text: "text-red-600 dark:text-red-400",        border: "border-red-500/30",     accent: "#DC2626" },
-};
-const DEFAULT_PIECE = { bg: "bg-primary/5", text: "text-primary", border: "border-primary/20", accent: "" };
-
-// ============================================================
 // PROJECT DETAIL PAGE
 // ============================================================
 
@@ -160,7 +149,7 @@ export default function ProjectDetailPage({ id }: { id: number }) {
   }
 
   const { identity, area, routineItems, plannerTasks } = data;
-  const pieceColor = identity.puzzlePiece ? PIECE_COLORS[identity.puzzlePiece] ?? DEFAULT_PIECE : DEFAULT_PIECE;
+  const pieceColor = getPieceColor(identity.puzzlePiece);
 
   return (
     <div className="max-w-4xl mx-auto overflow-y-auto h-full">
@@ -181,7 +170,7 @@ export default function ProjectDetailPage({ id }: { id: number }) {
         <div className="flex items-center gap-1.5 mb-1 flex-wrap">
           {identity.puzzlePiece && (
             <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${pieceColor.bg} ${pieceColor.text}`}>
-              {identity.puzzlePiece}
+              {pieceColor.label || identity.puzzlePiece}
             </span>
           )}
           {area && (
@@ -235,7 +224,7 @@ export default function ProjectDetailPage({ id }: { id: number }) {
           {identity.puzzlePiece && (
             <div className="flex items-center gap-1.5">
               <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${pieceColor.bg} ${pieceColor.text}`}>
-                {identity.puzzlePiece}
+                {pieceColor.label || identity.puzzlePiece}
               </span>
               {area && (
                 <span className="text-[11px] text-muted-foreground">· {area.name}</span>
