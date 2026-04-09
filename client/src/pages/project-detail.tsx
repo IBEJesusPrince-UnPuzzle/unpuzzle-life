@@ -163,21 +163,22 @@ export default function ProjectDetailPage({ id }: { id: number }) {
   const pieceColor = identity.puzzlePiece ? PIECE_COLORS[identity.puzzlePiece] ?? DEFAULT_PIECE : DEFAULT_PIECE;
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
+    <div className="max-w-4xl mx-auto overflow-y-auto h-full">
+      {/* Colored top accent bar — full width, flush to top */}
+      {identity.puzzlePiece && (
+        <div
+          className="h-1.5 w-full"
+          style={{ backgroundColor: pieceColor.accent }}
+        />
+      )}
+
+      <div className="p-6 space-y-6">
       {/* Back button */}
       <div className="flex items-center gap-2 mb-4">
         <Link href="/projects" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back to Projects
         </Link>
       </div>
-
-      {/* Colored top accent bar based on puzzle piece */}
-      {identity.puzzlePiece && (
-        <div
-          className="h-1 rounded-full mb-4"
-          style={{ backgroundColor: pieceColor.accent }}
-        />
-      )}
 
       {/* Header */}
       <div>
@@ -326,6 +327,7 @@ export default function ProjectDetailPage({ id }: { id: number }) {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }
