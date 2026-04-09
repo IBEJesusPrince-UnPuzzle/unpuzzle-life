@@ -276,6 +276,89 @@ export const environmentEntities = sqliteTable("environment_entities", {
 });
 
 // ============================================================
+// BELIEFS (Power of Your Subconscious Mind — reprogramming)
+// ============================================================
+
+export const beliefs = sqliteTable("beliefs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  puzzlePiece: text("puzzle_piece").notNull(), // reason | finance | fitness | talent | pleasure
+  areaId: integer("area_id").references(() => areas.id), // optional area link
+  oldBelief: text("old_belief").notNull(),         // the limiting belief being replaced
+  newBelief: text("new_belief").notNull(),          // the replacement belief
+  whyItMatters: text("why_it_matters"),             // short explanation
+  repetitionCount: integer("repetition_count").notNull().default(0), // times reviewed in morning/evening programming
+  graduated: integer("graduated").notNull().default(0), // 1 = "I believe this now" — archived
+  graduatedAt: text("graduated_at"),
+  active: integer("active").notNull().default(1),
+  createdAt: text("created_at").notNull(),
+});
+
+// ============================================================
+// ANTI-HABITS (Atomic Habits inversions)
+// ============================================================
+
+export const antiHabits = sqliteTable("anti_habits", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  puzzlePiece: text("puzzle_piece").notNull(), // reason | finance | fitness | talent | pleasure
+  areaId: integer("area_id").references(() => areas.id),
+  identityId: integer("identity_id").references(() => identities.id), // the identity this protects
+  title: text("title").notNull(),               // short name, e.g. "No late-night snacking"
+  description: text("description"),             // what habit you're breaking
+  // Inverted Four Laws (Make it Invisible/Unattractive/Difficult/Unsatisfying)
+  makeInvisible: text("make_invisible"),         // environment redesign — remove the cue
+  makeUnattractive: text("make_unattractive"),   // reframe the craving
+  makeDifficult: text("make_difficult"),         // add friction to the response
+  makeUnsatisfying: text("make_unsatisfying"),   // add a consequence to the reward
+  // Streak tracking (counting days WITHOUT the bad habit)
+  currentStreak: integer("current_streak").notNull().default(0),
+  longestStreak: integer("longest_streak").notNull().default(0),
+  lastSlipDate: text("last_slip_date"),          // YYYY-MM-DD — date of last slip
+  active: integer("active").notNull().default(1),
+  createdAt: text("created_at").notNull(),
+});
+
+// ============================================================
+// IMMUTABLE LAWS (identity boundaries per puzzle piece)
+// ============================================================
+
+export const immutableLaws = sqliteTable("immutable_laws", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  puzzlePiece: text("puzzle_piece").notNull(), // reason | finance | fitness | talent | pleasure
+  title: text("title").notNull(),               // short name, e.g. "No Sleep Sacrifice Law"
+  statement: text("statement").notNull(),        // one-sentence law
+  whyItMatters: text("why_it_matters"),          // short explanation tied to identity/beliefs
+  linkedIdentityIds: text("linked_identity_ids"), // JSON array of identity IDs this law protects
+  isPrimary: integer("is_primary").notNull().default(0), // 1 = highlighted as primary law for this puzzle piece
+  isRedLine: integer("is_red_line").notNull().default(0), // 1 = hard line, justifies stronger blocking
+  // Enforcement configuration
+  enforcementLevel: integer("enforcement_level").notNull().default(1), // 1=Awareness, 2=Friction, 3=Block
+  // Conditions for triggering enforcement (stored as JSON for flexibility)
+  triggerConditions: text("trigger_conditions"),  // JSON: conditions that activate enforcement
+  active: integer("active").notNull().default(1),
+  createdAt: text("created_at").notNull(),
+});
+
+// ============================================================
+// IMMUTABLE LAW LOGS (kept/broken tracking)
+// ============================================================
+
+export const immutableLawLogs = sqliteTable("immutable_law_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  immutableLawId: integer("immutable_law_id").notNull().references(() => immutableLaws.id),
+  puzzlePiece: text("puzzle_piece").notNull(),
+  date: text("date").notNull(),                  // YYYY-MM-DD
+  kept: integer("kept").notNull(),               // 1 = kept, 0 = broken
+  note: text("note"),                            // short reflection: what happened / why
+  triggerType: text("trigger_type"),             // visibility | craving | convenience | emotion | social_pressure
+  // Override tracking (Level 3 conscious override)
+  wasOverride: integer("was_override").notNull().default(0), // 1 = user explicitly overrode a Block
+  overrideReason: text("override_reason"),
+  // Anti-habit suggestion outcome
+  suggestedAntiHabitId: integer("suggested_anti_habit_id").references(() => antiHabits.id),
+  createdAt: text("created_at").notNull(),
+});
+
+// ============================================================
 // INSERT SCHEMAS & TYPES
 // ============================================================
 
@@ -328,3 +411,17 @@ export type EnvironmentEntity = typeof environmentEntities.$inferSelect;
 export type InsertEnvironmentEntity = z.infer<typeof insertEnvironmentEntitySchema>;
 export type WizardState = typeof wizardState.$inferSelect;
 export type InsertWizardState = z.infer<typeof insertWizardStateSchema>;
+
+export const insertBeliefSchema = createInsertSchema(beliefs).omit({ id: true });
+export const insertAntiHabitSchema = createInsertSchema(antiHabits).omit({ id: true });
+export const insertImmutableLawSchema = createInsertSchema(immutableLaws).omit({ id: true });
+export const insertImmutableLawLogSchema = createInsertSchema(immutableLawLogs).omit({ id: true });
+
+export type Belief = typeof beliefs.$inferSelect;
+export type InsertBelief = z.infer<typeof insertBeliefSchema>;
+export type AntiHabit = typeof antiHabits.$inferSelect;
+export type InsertAntiHabit = z.infer<typeof insertAntiHabitSchema>;
+export type ImmutableLaw = typeof immutableLaws.$inferSelect;
+export type InsertImmutableLaw = z.infer<typeof insertImmutableLawSchema>;
+export type ImmutableLawLog = typeof immutableLawLogs.$inferSelect;
+export type InsertImmutableLawLog = z.infer<typeof insertImmutableLawLogSchema>;

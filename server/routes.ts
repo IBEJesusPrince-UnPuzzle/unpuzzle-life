@@ -8,6 +8,8 @@ import {
   insertInboxItemSchema, insertWeeklyReviewSchema,
   insertRoutineItemSchema, insertRoutineLogSchema,
   insertPlannerTaskSchema, insertEnvironmentEntitySchema,
+  insertBeliefSchema, insertAntiHabitSchema,
+  insertImmutableLawSchema, insertImmutableLawLogSchema,
 } from "@shared/schema";
 
 export function registerRoutes(server: Server, app: Express) {
@@ -453,6 +455,165 @@ export function registerRoutes(server: Server, app: Express) {
   app.delete("/api/environment-entities/:id", (req, res) => {
     storage.deleteEnvironmentEntity(Number(req.params.id));
     res.json({ ok: true });
+  });
+
+  // ============================================================
+  // BELIEFS
+  // ============================================================
+  app.get("/api/beliefs", (_req, res) => {
+    res.json(storage.getBeliefs());
+  });
+  app.get("/api/beliefs/puzzle-piece/:piece", (req, res) => {
+    res.json(storage.getBeliefsByPuzzlePiece(req.params.piece));
+  });
+  app.post("/api/beliefs", (req, res) => {
+    const parsed = insertBeliefSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createBelief(parsed.data));
+  });
+  app.patch("/api/beliefs/:id", (req, res) => {
+    const result = storage.updateBelief(Number(req.params.id), req.body);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.post("/api/beliefs/:id/graduate", (req, res) => {
+    const result = storage.updateBelief(Number(req.params.id), {
+      graduated: 1,
+      graduatedAt: new Date().toISOString(),
+    });
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.post("/api/beliefs/:id/reviewed", (req, res) => {
+    const all = storage.getBeliefs();
+    const belief = all.find(b => b.id === Number(req.params.id));
+    if (!belief) return res.status(404).json({ error: "Not found" });
+    const result = storage.updateBelief(belief.id, {
+      repetitionCount: belief.repetitionCount + 1,
+    });
+    res.json(result);
+  });
+  app.delete("/api/beliefs/:id", (req, res) => {
+    storage.deleteBelief(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // ANTI-HABITS
+  // ============================================================
+  app.get("/api/anti-habits", (_req, res) => {
+    res.json(storage.getAntiHabits());
+  });
+  app.get("/api/anti-habits/puzzle-piece/:piece", (req, res) => {
+    res.json(storage.getAntiHabitsByPuzzlePiece(req.params.piece));
+  });
+  app.post("/api/anti-habits", (req, res) => {
+    const parsed = insertAntiHabitSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createAntiHabit(parsed.data));
+  });
+  app.patch("/api/anti-habits/:id", (req, res) => {
+    const result = storage.updateAntiHabit(Number(req.params.id), req.body);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.post("/api/anti-habits/:id/kept", (req, res) => {
+    const all = storage.getAntiHabits();
+    const antiHabit = all.find(a => a.id === Number(req.params.id));
+    if (!antiHabit) return res.status(404).json({ error: "Not found" });
+    const newStreak = antiHabit.currentStreak + 1;
+    const result = storage.updateAntiHabit(antiHabit.id, {
+      currentStreak: newStreak,
+      longestStreak: Math.max(newStreak, antiHabit.longestStreak),
+    });
+    res.json(result);
+  });
+  app.post("/api/anti-habits/:id/slip", (req, res) => {
+    const all = storage.getAntiHabits();
+    const antiHabit = all.find(a => a.id === Number(req.params.id));
+    if (!antiHabit) return res.status(404).json({ error: "Not found" });
+    const result = storage.updateAntiHabit(antiHabit.id, {
+      currentStreak: 0,
+      lastSlipDate: new Date().toISOString().split("T")[0],
+    });
+    res.json(result);
+  });
+  app.delete("/api/anti-habits/:id", (req, res) => {
+    storage.deleteAntiHabit(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // IMMUTABLE LAWS
+  // ============================================================
+  app.get("/api/immutable-laws", (_req, res) => {
+    res.json(storage.getImmutableLaws());
+  });
+  app.get("/api/immutable-laws/puzzle-piece/:piece", (req, res) => {
+    res.json(storage.getImmutableLawsByPuzzlePiece(req.params.piece));
+  });
+  app.post("/api/immutable-laws", (req, res) => {
+    const parsed = insertImmutableLawSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createImmutableLaw(parsed.data));
+  });
+  app.patch("/api/immutable-laws/:id", (req, res) => {
+    const result = storage.updateImmutableLaw(Number(req.params.id), req.body);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/immutable-laws/:id", (req, res) => {
+    storage.deleteImmutableLaw(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // IMMUTABLE LAW LOGS
+  // ============================================================
+  app.get("/api/immutable-law-logs", (_req, res) => {
+    res.json(storage.getImmutableLawLogs());
+  });
+  app.get("/api/immutable-law-logs/law/:lawId", (req, res) => {
+    res.json(storage.getImmutableLawLogsByLaw(Number(req.params.lawId)));
+  });
+  app.get("/api/immutable-law-logs/date/:date", (req, res) => {
+    res.json(storage.getImmutableLawLogsByDate(req.params.date));
+  });
+  app.post("/api/immutable-law-logs", (req, res) => {
+    const parsed = insertImmutableLawLogSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createImmutableLawLog(parsed.data));
+  });
+  app.post("/api/immutable-law-logs/check-in", (req, res) => {
+    const { lawId, kept, triggerType, note, wasOverride, overrideReason } = req.body;
+    if (lawId == null || kept == null) {
+      return res.status(400).json({ error: "lawId and kept are required" });
+    }
+    // Look up the law to get its puzzlePiece
+    const allLaws = storage.getImmutableLaws();
+    const law = allLaws.find(l => l.id === Number(lawId));
+    if (!law) return res.status(404).json({ error: "Law not found" });
+
+    const log = storage.createImmutableLawLog({
+      immutableLawId: law.id,
+      puzzlePiece: law.puzzlePiece,
+      date: new Date().toISOString().split("T")[0],
+      kept: kept ? 1 : 0,
+      note: note || null,
+      triggerType: triggerType || null,
+      wasOverride: wasOverride ? 1 : 0,
+      overrideReason: overrideReason || null,
+      suggestedAntiHabitId: null,
+      createdAt: new Date().toISOString(),
+    });
+
+    // If broken and triggerType provided, suggest anti-habits for the same puzzle piece
+    let antiHabitSuggestions: any[] = [];
+    if (!kept && triggerType) {
+      antiHabitSuggestions = storage.getAntiHabitsByPuzzlePiece(law.puzzlePiece);
+    }
+
+    res.json({ log, antiHabitSuggestions });
   });
 
   // ============================================================

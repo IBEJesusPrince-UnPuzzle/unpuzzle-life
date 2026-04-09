@@ -5,7 +5,7 @@ import {
   purposes, visions, goals, areas, projects, actions,
   identities, habits, habitLogs, inboxItems, weeklyReviews,
   routineItems, routineLogs, plannerTasks, wizardState,
-  environmentEntities,
+  environmentEntities, beliefs, antiHabits, immutableLaws, immutableLawLogs,
   type Purpose, type InsertPurpose,
   type Vision, type InsertVision,
   type Goal, type InsertGoal,
@@ -22,6 +22,10 @@ import {
   type PlannerTask, type InsertPlannerTask,
   type EnvironmentEntity, type InsertEnvironmentEntity,
   type WizardState, type InsertWizardState,
+  type Belief, type InsertBelief,
+  type AntiHabit, type InsertAntiHabit,
+  type ImmutableLaw, type InsertImmutableLaw,
+  type ImmutableLawLog, type InsertImmutableLawLog,
 } from "@shared/schema";
 
 const dbPath = process.env.DATABASE_PATH || "data.db";
@@ -237,6 +241,67 @@ sqlite.exec(`
     thing_why TEXT,
     created_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS beliefs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    puzzle_piece TEXT NOT NULL,
+    area_id INTEGER REFERENCES areas(id),
+    old_belief TEXT NOT NULL DEFAULT '',
+    new_belief TEXT NOT NULL DEFAULT '',
+    why_it_matters TEXT,
+    repetition_count INTEGER NOT NULL DEFAULT 0,
+    graduated INTEGER NOT NULL DEFAULT 0,
+    graduated_at TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS anti_habits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    puzzle_piece TEXT NOT NULL,
+    area_id INTEGER REFERENCES areas(id),
+    identity_id INTEGER REFERENCES identities(id),
+    title TEXT NOT NULL DEFAULT '',
+    description TEXT,
+    make_invisible TEXT,
+    make_unattractive TEXT,
+    make_difficult TEXT,
+    make_unsatisfying TEXT,
+    current_streak INTEGER NOT NULL DEFAULT 0,
+    longest_streak INTEGER NOT NULL DEFAULT 0,
+    last_slip_date TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS immutable_laws (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    puzzle_piece TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    statement TEXT NOT NULL DEFAULT '',
+    why_it_matters TEXT,
+    linked_identity_ids TEXT,
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    is_red_line INTEGER NOT NULL DEFAULT 0,
+    enforcement_level INTEGER NOT NULL DEFAULT 1,
+    trigger_conditions TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS immutable_law_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    immutable_law_id INTEGER NOT NULL REFERENCES immutable_laws(id),
+    puzzle_piece TEXT NOT NULL,
+    date TEXT NOT NULL,
+    kept INTEGER NOT NULL,
+    note TEXT,
+    trigger_type TEXT,
+    was_override INTEGER NOT NULL DEFAULT 0,
+    override_reason TEXT,
+    suggested_anti_habit_id INTEGER REFERENCES anti_habits(id),
+    created_at TEXT NOT NULL
+  );
 `);
 
 // Migrate renamed columns (old schema → new schema)
@@ -410,6 +475,33 @@ export interface IStorage {
   createEnvironmentEntity(data: InsertEnvironmentEntity): EnvironmentEntity;
   updateEnvironmentEntity(id: number, data: Partial<InsertEnvironmentEntity>): EnvironmentEntity | undefined;
   deleteEnvironmentEntity(id: number): void;
+
+  // Beliefs
+  getBeliefs(): Belief[];
+  getBeliefsByPuzzlePiece(puzzlePiece: string): Belief[];
+  createBelief(data: InsertBelief): Belief;
+  updateBelief(id: number, data: Partial<InsertBelief>): Belief | undefined;
+  deleteBelief(id: number): void;
+
+  // Anti-Habits
+  getAntiHabits(): AntiHabit[];
+  getAntiHabitsByPuzzlePiece(puzzlePiece: string): AntiHabit[];
+  createAntiHabit(data: InsertAntiHabit): AntiHabit;
+  updateAntiHabit(id: number, data: Partial<InsertAntiHabit>): AntiHabit | undefined;
+  deleteAntiHabit(id: number): void;
+
+  // Immutable Laws
+  getImmutableLaws(): ImmutableLaw[];
+  getImmutableLawsByPuzzlePiece(puzzlePiece: string): ImmutableLaw[];
+  createImmutableLaw(data: InsertImmutableLaw): ImmutableLaw;
+  updateImmutableLaw(id: number, data: Partial<InsertImmutableLaw>): ImmutableLaw | undefined;
+  deleteImmutableLaw(id: number): void;
+
+  // Immutable Law Logs
+  getImmutableLawLogs(): ImmutableLawLog[];
+  getImmutableLawLogsByLaw(lawId: number): ImmutableLawLog[];
+  getImmutableLawLogsByDate(date: string): ImmutableLawLog[];
+  createImmutableLawLog(data: InsertImmutableLawLog): ImmutableLawLog;
 
   // Wizard State
   getWizardState(): WizardState | undefined;
@@ -678,6 +770,71 @@ export class DatabaseStorage implements IStorage {
   }
   deleteEnvironmentEntity(id: number): void {
     db.delete(environmentEntities).where(eq(environmentEntities.id, id)).run();
+  }
+
+  // Beliefs
+  getBeliefs(): Belief[] {
+    return db.select().from(beliefs).orderBy(desc(beliefs.createdAt)).all();
+  }
+  getBeliefsByPuzzlePiece(puzzlePiece: string): Belief[] {
+    return db.select().from(beliefs).where(eq(beliefs.puzzlePiece, puzzlePiece)).all();
+  }
+  createBelief(data: InsertBelief): Belief {
+    return db.insert(beliefs).values(data).returning().get();
+  }
+  updateBelief(id: number, data: Partial<InsertBelief>): Belief | undefined {
+    return db.update(beliefs).set(data).where(eq(beliefs.id, id)).returning().get();
+  }
+  deleteBelief(id: number): void {
+    db.delete(beliefs).where(eq(beliefs.id, id)).run();
+  }
+
+  // Anti-Habits
+  getAntiHabits(): AntiHabit[] {
+    return db.select().from(antiHabits).orderBy(desc(antiHabits.createdAt)).all();
+  }
+  getAntiHabitsByPuzzlePiece(puzzlePiece: string): AntiHabit[] {
+    return db.select().from(antiHabits).where(eq(antiHabits.puzzlePiece, puzzlePiece)).all();
+  }
+  createAntiHabit(data: InsertAntiHabit): AntiHabit {
+    return db.insert(antiHabits).values(data).returning().get();
+  }
+  updateAntiHabit(id: number, data: Partial<InsertAntiHabit>): AntiHabit | undefined {
+    return db.update(antiHabits).set(data).where(eq(antiHabits.id, id)).returning().get();
+  }
+  deleteAntiHabit(id: number): void {
+    db.delete(antiHabits).where(eq(antiHabits.id, id)).run();
+  }
+
+  // Immutable Laws
+  getImmutableLaws(): ImmutableLaw[] {
+    return db.select().from(immutableLaws).orderBy(desc(immutableLaws.createdAt)).all();
+  }
+  getImmutableLawsByPuzzlePiece(puzzlePiece: string): ImmutableLaw[] {
+    return db.select().from(immutableLaws).where(eq(immutableLaws.puzzlePiece, puzzlePiece)).all();
+  }
+  createImmutableLaw(data: InsertImmutableLaw): ImmutableLaw {
+    return db.insert(immutableLaws).values(data).returning().get();
+  }
+  updateImmutableLaw(id: number, data: Partial<InsertImmutableLaw>): ImmutableLaw | undefined {
+    return db.update(immutableLaws).set(data).where(eq(immutableLaws.id, id)).returning().get();
+  }
+  deleteImmutableLaw(id: number): void {
+    db.delete(immutableLaws).where(eq(immutableLaws.id, id)).run();
+  }
+
+  // Immutable Law Logs
+  getImmutableLawLogs(): ImmutableLawLog[] {
+    return db.select().from(immutableLawLogs).orderBy(desc(immutableLawLogs.createdAt)).all();
+  }
+  getImmutableLawLogsByLaw(lawId: number): ImmutableLawLog[] {
+    return db.select().from(immutableLawLogs).where(eq(immutableLawLogs.immutableLawId, lawId)).all();
+  }
+  getImmutableLawLogsByDate(date: string): ImmutableLawLog[] {
+    return db.select().from(immutableLawLogs).where(eq(immutableLawLogs.date, date)).all();
+  }
+  createImmutableLawLog(data: InsertImmutableLawLog): ImmutableLawLog {
+    return db.insert(immutableLawLogs).values(data).returning().get();
   }
 
   // Wizard State
