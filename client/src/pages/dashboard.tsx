@@ -10,12 +10,21 @@ import {
 import { Badge } from "@/components/ui/badge";
 import {
   Fingerprint, Inbox as InboxIcon, Repeat2, FolderOpen, Plus, ArrowRight,
-  FileEdit, ChevronRight, Shield, Check, X,
+  FileEdit, ChevronRight, Shield, Check, X, Puzzle,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import type { Area } from "@shared/schema";
+import { getPieceColor } from "@/lib/piece-colors";
 import { SorterView } from "./planner";
+
+const DASHBOARD_PIECES = [
+  { key: "reason",   short: "RSN" },
+  { key: "finance",  short: "FIN" },
+  { key: "fitness",  short: "FIT" },
+  { key: "talent",   short: "TLT" },
+  { key: "pleasure", short: "PLR" },
+];
 
 function getToday() {
   return new Date().toISOString().split("T")[0];
@@ -192,6 +201,13 @@ export default function Dashboard() {
     queryKey: ["/api/immutable-law-logs/date", today],
     queryFn: () => apiRequest("GET", `/api/immutable-law-logs/date/${today}`).then(r => r.json()),
   });
+
+  const { data: weeklyReviews = [] } = useQuery<any[]>({ queryKey: ["/api/weekly-reviews"] });
+  const lastReview = weeklyReviews.sort((a: any, b: any) => b.weekOf.localeCompare(a.weekOf))[0];
+  const lastRatings: Record<string, number> = lastReview?.puzzlePieceRatings
+    ? (() => { try { return JSON.parse(lastReview.puzzlePieceRatings); } catch { return {}; } })()
+    : {};
+  const hasAnyRatings = Object.values(lastRatings).some(v => v > 0);
 
   const stats = dashboardData?.stats;
   const areas = dashboardData?.areas || [];
@@ -378,6 +394,49 @@ export default function Dashboard() {
           </>
         )}
       </div>
+
+      {/* Puzzle Health */}
+      {hasAnyRatings && (
+        <Link href="/review">
+          <Card className="cursor-pointer hover:shadow-md transition-shadow">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Puzzle className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-medium">Puzzle Health</span>
+                </div>
+                <span className="text-[10px] text-muted-foreground">
+                  Week of {lastReview ? new Date(lastReview.weekOf + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}
+                </span>
+              </div>
+              <div className="flex items-end gap-1.5 h-12">
+                {DASHBOARD_PIECES.map(piece => {
+                  const rating = lastRatings[piece.key] || 0;
+                  const color = getPieceColor(piece.key);
+                  const heightPct = rating > 0 ? (rating / 5) * 100 : 8;
+                  return (
+                    <div key={piece.key} className="flex-1 flex flex-col items-center gap-1">
+                      <div className="w-full flex items-end" style={{ height: "36px" }}>
+                        <div
+                          className="w-full rounded-t transition-all"
+                          style={{
+                            height: `${heightPct}%`,
+                            backgroundColor: rating > 0 ? color.accent : "var(--border)",
+                            opacity: rating > 0 ? 1 : 0.4,
+                          }}
+                        />
+                      </div>
+                      <span className="text-[8px] text-muted-foreground font-medium uppercase tracking-wide">
+                        {piece.short}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+      )}
 
       {/* Immutable Laws Check-in */}
       {activeLaws.length > 0 && (

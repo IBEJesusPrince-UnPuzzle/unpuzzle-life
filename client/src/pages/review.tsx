@@ -8,11 +8,54 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   RotateCcw, Trophy, Lightbulb, Target as TargetIcon,
-  CheckCircle2, Inbox, FolderOpen, Plus, ArrowLeft
+  CheckCircle2, Inbox, FolderOpen, Plus, ArrowLeft, Puzzle
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "wouter";
 import type { WeeklyReview, InboxItem, Project, Habit } from "@shared/schema";
+import { getPieceColor } from "@/lib/piece-colors";
+
+const PIECES = [
+  { key: "reason",   label: "Reason",   descriptor: "Purpose & beliefs" },
+  { key: "finance",  label: "Finance",  descriptor: "Money & abundance" },
+  { key: "fitness",  label: "Fitness",  descriptor: "Health & energy" },
+  { key: "talent",   label: "Talent",   descriptor: "Work & contribution" },
+  { key: "pleasure", label: "Pleasure", descriptor: "Joy & relationships" },
+] as const;
+
+function PieceRatingRow({ piece, value, onChange }: {
+  piece: { key: string; label: string; descriptor: string };
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const color = getPieceColor(piece.key);
+  return (
+    <div className="flex items-center gap-3">
+      <div className="w-20 shrink-0">
+        <span className={`text-xs font-semibold ${color.text}`}>{piece.label}</span>
+        <p className="text-[9px] text-muted-foreground leading-tight">{piece.descriptor}</p>
+      </div>
+      <div className="flex items-center gap-1 flex-1">
+        {[1, 2, 3, 4, 5].map(n => (
+          <button
+            key={n}
+            onClick={() => onChange(n === value ? 0 : n)}
+            className={`flex-1 h-7 rounded text-xs font-medium transition-all border ${
+              n <= value
+                ? `${color.bg} ${color.text} ${color.border}`
+                : "border-border text-muted-foreground hover:border-muted-foreground/50"
+            }`}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+      <span className="text-xs text-muted-foreground w-4 text-right shrink-0">
+        {value > 0 ? value : "–"}
+      </span>
+    </div>
+  );
+}
 
 function getMonday() {
   const d = new Date();
@@ -39,6 +82,15 @@ export default function ReviewPage() {
   const [inboxCleared, setInboxCleared] = useState(false);
   const [projectsReviewed, setProjectsReviewed] = useState(false);
   const [habitsReviewed, setHabitsReviewed] = useState(false);
+  const [ratings, setRatings] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (currentReview?.puzzlePieceRatings) {
+      try {
+        setRatings(JSON.parse(currentReview.puzzlePieceRatings));
+      } catch {}
+    }
+  }, [currentReview]);
 
   const checklist = [
     { label: "Clear inbox to zero", done: inboxCleared || (currentReview?.inboxCleared === 1), setter: setInboxCleared, icon: Inbox, detail: `${unprocessedInbox} items remaining` },
@@ -60,6 +112,7 @@ export default function ReviewPage() {
         inboxCleared: inboxCleared ? 1 : 0,
         projectsReviewed: projectsReviewed ? 1 : 0,
         habitsReviewed: habitsReviewed ? 1 : 0,
+        puzzlePieceRatings: Object.keys(ratings).length > 0 ? JSON.stringify(ratings) : null,
         createdAt: new Date().toISOString(),
       };
       if (currentReview) {
@@ -72,8 +125,8 @@ export default function ReviewPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6 overflow-y-auto h-full">
-      <div className="flex justify-center mb-3">
-        <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5">
+      <div className="flex items-center gap-2 mb-4">
+        <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back to Dashboard
         </Link>
       </div>
@@ -123,6 +176,28 @@ export default function ReviewPage() {
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Puzzle Piece Health */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Puzzle className="w-4 h-4 text-primary" /> Puzzle Piece Health
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            How did each piece of your life feel this week? (1 = struggling, 5 = thriving)
+          </p>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-3">
+          {PIECES.map(piece => (
+            <PieceRatingRow
+              key={piece.key}
+              piece={piece}
+              value={ratings[piece.key] || 0}
+              onChange={(v) => setRatings(prev => ({ ...prev, [piece.key]: v }))}
+            />
+          ))}
         </CardContent>
       </Card>
 
