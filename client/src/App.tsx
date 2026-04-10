@@ -23,6 +23,7 @@ import { apiRequest } from "@/lib/queryClient";
 import {
   Menu, X, LayoutDashboard, Inbox, Timer, CalendarDays,
   RotateCcw, Layers, Upload, Sun, Moon, Puzzle,
+  ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -159,7 +160,9 @@ function SlideMenu({ open, onClose, isDark, toggleTheme }: {
   );
 }
 
-function DesktopSidebar({ isDark, toggleTheme }: { isDark: boolean; toggleTheme: () => void }) {
+function DesktopSidebar({ isDark, toggleTheme, collapsed, onToggle }: {
+  isDark: boolean; toggleTheme: () => void; collapsed: boolean; onToggle: () => void;
+}) {
   const [location] = useLocation();
   const { data: stats } = useQuery<{ inboxCount: number }>({
     queryKey: ["/api/stats"],
@@ -167,37 +170,42 @@ function DesktopSidebar({ isDark, toggleTheme }: { isDark: boolean; toggleTheme:
   });
 
   return (
-    <aside className="hidden md:flex md:w-64 md:fixed md:inset-y-0 md:left-0 md:z-40 flex-col bg-background border-r">
+    <aside className={`hidden md:flex md:fixed md:inset-y-0 md:left-0 md:z-40 flex-col bg-background border-r transition-all duration-200 ease-linear ${collapsed ? 'md:w-16' : 'md:w-64'}`}>
       {/* Header */}
       <div className="p-4 flex items-center gap-2.5 border-b">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
             <img src="/unpuzzle-logo.png" alt="" className="w-5 h-5 object-contain" />
           </div>
-          <span className="font-semibold text-base tracking-tight">UnPuzzle Life</span>
+          {!collapsed && <span className="font-semibold text-base tracking-tight">UnPuzzle Life</span>}
         </Link>
       </div>
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-2">
-        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 px-4 py-2">
-          Navigate
-        </p>
+        {!collapsed && (
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 px-4 py-2">
+            Navigate
+          </p>
+        )}
         {navItems.map((item) => {
           const isActive = location === item.url || (item.url !== "/" && location.startsWith(item.url));
           return (
             <Link key={item.title} href={item.url}>
               <button
-                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                className={`w-full flex items-center text-sm transition-colors ${
+                  collapsed ? 'justify-center px-0 py-3' : 'gap-3 px-4 py-2.5'
+                } ${
                   isActive
                     ? "bg-primary/10 text-primary font-medium"
                     : "text-foreground hover:bg-accent"
                 }`}
                 data-testid={`nav-${item.title.toLowerCase()}`}
+                title={collapsed ? item.title : undefined}
               >
-                <item.icon className="w-4 h-4" />
-                <span className="flex-1 text-left">{item.title}</span>
-                {item.title === "Inbox" && stats?.inboxCount ? (
+                <item.icon className="w-4 h-4 shrink-0" />
+                {!collapsed && <span className="flex-1 text-left">{item.title}</span>}
+                {!collapsed && item.title === "Inbox" && stats?.inboxCount ? (
                   <Badge variant="secondary" className="text-xs h-5 min-w-5 justify-center px-1.5">
                     {stats.inboxCount}
                   </Badge>
@@ -209,14 +217,27 @@ function DesktopSidebar({ isDark, toggleTheme }: { isDark: boolean; toggleTheme:
       </nav>
 
       {/* Footer */}
-      <div className="p-3 border-t">
+      <div className="p-3 border-t flex flex-col gap-1">
         <button
           onClick={toggleTheme}
-          className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors w-full"
+          className={`flex items-center gap-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors w-full ${
+            collapsed ? 'justify-center p-2' : 'px-3 py-2'
+          }`}
           data-testid="button-theme-toggle"
+          title={collapsed ? (isDark ? "Light mode" : "Dark mode") : undefined}
         >
-          {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          <span>{isDark ? "Light mode" : "Dark mode"}</span>
+          {isDark ? <Sun className="w-4 h-4 shrink-0" /> : <Moon className="w-4 h-4 shrink-0" />}
+          {!collapsed && <span>{isDark ? "Light mode" : "Dark mode"}</span>}
+        </button>
+        <button
+          onClick={onToggle}
+          className={`flex items-center gap-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors w-full ${
+            collapsed ? 'justify-center p-2' : 'px-3 py-2'
+          }`}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? <ChevronsRight className="w-4 h-4" /> : <ChevronsLeft className="w-4 h-4" />}
+          {!collapsed && <span>Collapse</span>}
         </button>
       </div>
     </aside>
@@ -228,19 +249,32 @@ function AppShell() {
     window.matchMedia("(prefers-color-scheme: dark)").matches
   );
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    const stored = localStorage.getItem("sidebar_state");
+    return stored === null ? true : stored === "true";
+  });
   const [location] = useLocation();
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
   }, [isDark]);
 
+  useEffect(() => {
+    localStorage.setItem("sidebar_state", String(sidebarOpen));
+  }, [sidebarOpen]);
+
   return (
     <>
       {/* Desktop sidebar — persistent, visible on md+ */}
-      <DesktopSidebar isDark={isDark} toggleTheme={() => setIsDark(!isDark)} />
+      <DesktopSidebar
+        isDark={isDark}
+        toggleTheme={() => setIsDark(!isDark)}
+        collapsed={!sidebarOpen}
+        onToggle={() => setSidebarOpen(prev => !prev)}
+      />
 
       {/* Main content area */}
-      <div className="flex flex-col w-full h-[100dvh] md:ml-64 md:h-screen relative">
+      <div className={`flex flex-col w-full h-[100dvh] transition-all duration-200 ease-linear ${sidebarOpen ? 'md:ml-64' : 'md:ml-16'} md:h-screen relative`}>
         <main className="flex-1 overflow-y-auto bg-background">
           <AppRouter />
         </main>
