@@ -159,6 +159,70 @@ function SlideMenu({ open, onClose, isDark, toggleTheme }: {
   );
 }
 
+function DesktopSidebar({ isDark, toggleTheme }: { isDark: boolean; toggleTheme: () => void }) {
+  const [location] = useLocation();
+  const { data: stats } = useQuery<{ inboxCount: number }>({
+    queryKey: ["/api/stats"],
+    queryFn: () => apiRequest("GET", "/api/stats").then(r => r.json()),
+  });
+
+  return (
+    <aside className="hidden md:flex md:w-64 md:fixed md:inset-y-0 md:left-0 md:z-40 flex-col bg-background border-r">
+      {/* Header */}
+      <div className="p-4 flex items-center gap-2.5 border-b">
+        <Link href="/" className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+            <img src="/unpuzzle-logo.png" alt="" className="w-5 h-5 object-contain" />
+          </div>
+          <span className="font-semibold text-base tracking-tight">UnPuzzle Life</span>
+        </Link>
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto py-2">
+        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 px-4 py-2">
+          Navigate
+        </p>
+        {navItems.map((item) => {
+          const isActive = location === item.url || (item.url !== "/" && location.startsWith(item.url));
+          return (
+            <Link key={item.title} href={item.url}>
+              <button
+                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                  isActive
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-foreground hover:bg-accent"
+                }`}
+                data-testid={`nav-${item.title.toLowerCase()}`}
+              >
+                <item.icon className="w-4 h-4" />
+                <span className="flex-1 text-left">{item.title}</span>
+                {item.title === "Inbox" && stats?.inboxCount ? (
+                  <Badge variant="secondary" className="text-xs h-5 min-w-5 justify-center px-1.5">
+                    {stats.inboxCount}
+                  </Badge>
+                ) : null}
+              </button>
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* Footer */}
+      <div className="p-3 border-t">
+        <button
+          onClick={toggleTheme}
+          className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors w-full"
+          data-testid="button-theme-toggle"
+        >
+          {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          <span>{isDark ? "Light mode" : "Dark mode"}</span>
+        </button>
+      </div>
+    </aside>
+  );
+}
+
 function AppShell() {
   const [isDark, setIsDark] = useState(() =>
     window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -171,33 +235,38 @@ function AppShell() {
   }, [isDark]);
 
   return (
-    // Desktop: center a phone-width frame on gray bg. Mobile: full-width edge-to-edge.
-    <div className="md:min-h-screen md:bg-gray-200 dark:md:bg-neutral-900 md:flex md:items-center md:justify-center">
-      <div className="flex flex-col w-full h-[100dvh] md:w-[390px] md:h-screen md:rounded-[2.5rem] md:shadow-2xl md:overflow-hidden md:bg-white dark:md:bg-neutral-950 relative">
-      <main className="flex-1 overflow-hidden bg-background">
-        <AppRouter />
-      </main>
+    <>
+      {/* Desktop sidebar — persistent, visible on md+ */}
+      <DesktopSidebar isDark={isDark} toggleTheme={() => setIsDark(!isDark)} />
 
-      {/* Floating menu button */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30">
-        <button
-          onClick={() => setMenuOpen(true)}
-          className="w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-95 transition-all"
-          data-testid="menu-trigger"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
-      </div>
+      {/* Main content area */}
+      <div className="flex flex-col w-full h-[100dvh] md:ml-64 md:h-screen relative">
+        <main className="flex-1 overflow-y-auto bg-background">
+          <AppRouter />
+        </main>
 
-      {/* Slide-out menu */}
-      <SlideMenu
-        open={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        isDark={isDark}
-        toggleTheme={() => setIsDark(!isDark)}
-      />
+        {/* Floating menu button — mobile only */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 md:hidden">
+          <button
+            onClick={() => setMenuOpen(true)}
+            className="w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-95 transition-all"
+            data-testid="menu-trigger"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Slide-out menu — mobile only */}
+        <div className="md:hidden">
+          <SlideMenu
+            open={menuOpen}
+            onClose={() => setMenuOpen(false)}
+            isDark={isDark}
+            toggleTheme={() => setIsDark(!isDark)}
+          />
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
