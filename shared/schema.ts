@@ -359,6 +359,16 @@ export const immutableLawLogs = sqliteTable("immutable_law_logs", {
 });
 
 // ============================================================
+// PREFERENCES
+// ============================================================
+
+export const preferences = sqliteTable("preferences", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  displayName: text("display_name").notNull().default(""),
+  timeFormat: text("time_format").notNull().default("12h"), // "12h" | "24h"
+});
+
+// ============================================================
 // INSERT SCHEMAS & TYPES
 // ============================================================
 
@@ -412,10 +422,15 @@ export type InsertEnvironmentEntity = z.infer<typeof insertEnvironmentEntitySche
 export type WizardState = typeof wizardState.$inferSelect;
 export type InsertWizardState = z.infer<typeof insertWizardStateSchema>;
 
+export const insertPreferencesSchema = createInsertSchema(preferences).omit({ id: true });
+
 export const insertBeliefSchema = createInsertSchema(beliefs).omit({ id: true });
 export const insertAntiHabitSchema = createInsertSchema(antiHabits).omit({ id: true });
 export const insertImmutableLawSchema = createInsertSchema(immutableLaws).omit({ id: true });
 export const insertImmutableLawLogSchema = createInsertSchema(immutableLawLogs).omit({ id: true });
+
+export type Preferences = typeof preferences.$inferSelect;
+export type InsertPreferences = z.infer<typeof insertPreferencesSchema>;
 
 export type Belief = typeof beliefs.$inferSelect;
 export type InsertBelief = z.infer<typeof insertBeliefSchema>;

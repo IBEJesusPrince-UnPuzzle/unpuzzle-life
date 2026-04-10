@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
+import { formatTime } from "@/lib/time-format";
+import { usePreferences } from "@/hooks/use-preferences";
 
 interface VoteTask {
   id: number;
@@ -43,13 +45,7 @@ interface VoteDetails {
   }[];
 }
 
-function formatTime12h(time24: string | undefined) {
-  if (!time24) return "";
-  const [h, m] = time24.split(":").map(Number);
-  const ampm = h >= 12 ? "PM" : "AM";
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${h12}:${m.toString().padStart(2, "0")} ${ampm}`;
-}
+// formatTime12h replaced by shared formatTime from @/lib/time-format
 
 function formatDateShort(dateStr: string) {
   const d = new Date(dateStr + "T12:00:00");
@@ -59,6 +55,9 @@ function formatDateShort(dateStr: string) {
 }
 
 export default function IdentityVotePage() {
+  const { data: prefs } = usePreferences();
+  const tf = (prefs?.timeFormat ?? "12h") as "12h" | "24h";
+
   const { data, isLoading } = useQuery<VoteDetails>({
     queryKey: ["/api/identity-vote-details"],
     queryFn: () => apiRequest("GET", "/api/identity-vote-details").then(r => r.json()),
@@ -289,8 +288,8 @@ function IdentityBreakdownCard({ identity, onMarkDone }: { identity: IdentityBre
                         <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
                           <Clock className="w-2.5 h-2.5" />
                           {formatDateShort(t.date)}
-                          {t.startTime && ` ${formatTime12h(t.startTime)}`}
-                          {t.endTime && ` – ${formatTime12h(t.endTime)}`}
+                          {t.startTime && ` ${formatTime(t.startTime, tf)}`}
+                          {t.endTime && ` – ${formatTime(t.endTime, tf)}`}
                         </span>
                       </div>
                     </div>

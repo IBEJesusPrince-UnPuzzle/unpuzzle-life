@@ -18,18 +18,14 @@ import {
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import type { RoutineItem, RoutineLog, Area } from "@shared/schema";
+import { formatTime as sharedFormatTime } from "@/lib/time-format";
+import { usePreferences } from "@/hooks/use-preferences";
 
 function getToday() {
   return new Date().toISOString().split("T")[0];
 }
 
-function formatTime(time: string) {
-  const [h, m] = time.split(":");
-  const hour = parseInt(h);
-  const ampm = hour >= 12 ? "PM" : "AM";
-  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-  return `${h12}:${m} ${ampm}`;
-}
+// local formatTime removed — using sharedFormatTime from @/lib/time-format
 
 function formatDuration(mins: number) {
   if (mins < 60) return `${mins}m`;
@@ -84,7 +80,9 @@ function getCurrentProgress(items: RoutineItem[]): number {
 
 export default function RoutinePage({ filterIdentityId }: { filterIdentityId?: number } = {}) {
   const today = getToday();
-  
+  const { data: prefs } = usePreferences();
+  const tf = (prefs?.timeFormat ?? "12h") as "12h" | "24h";
+
   const { data: items = [] } = useQuery<RoutineItem[]>({
     queryKey: ["/api/routine-items"],
   });
@@ -220,7 +218,7 @@ export default function RoutinePage({ filterIdentityId }: { filterIdentityId?: n
           </div>
           <div className="flex items-center justify-between mt-2">
             <span className="text-xs text-muted-foreground">
-              {publishedItems[0] && formatTime(publishedItems[0].time)}
+              {publishedItems[0] && sharedFormatTime(publishedItems[0].time, tf)}
             </span>
             <span className="text-xs text-muted-foreground">
               {totalHours}h {totalMins > 0 ? `${totalMins}m` : ""} total
@@ -230,7 +228,7 @@ export default function RoutinePage({ filterIdentityId }: { filterIdentityId?: n
                 const last = publishedItems[publishedItems.length - 1];
                 const [h, m] = last.time.split(":");
                 const endMins = parseInt(h) * 60 + parseInt(m) + last.durationMinutes;
-                return formatTime(`${Math.floor(endMins / 60).toString().padStart(2, "0")}:${(endMins % 60).toString().padStart(2, "0")}`);
+                return sharedFormatTime(`${Math.floor(endMins / 60).toString().padStart(2, "0")}:${(endMins % 60).toString().padStart(2, "0")}`, tf);
               })()}
             </span>
           </div>
@@ -334,6 +332,8 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
   const [detailOpen, setDetailOpen] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
   const itemIsDraft = (item as any).isDraft === 1;
+  const { data: prefs } = usePreferences();
+  const tf = (prefs?.timeFormat ?? "12h") as "12h" | "24h";
 
   // Draft publish state — hour/minute/ampm selects for reliability
   const [draftHour, setDraftHour] = useState("");
@@ -346,8 +346,10 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
     mutationFn: () => {
       // Convert hour/minute/ampm to 24h HH:MM
       let h = parseInt(draftHour);
-      if (draftAmPm === "PM" && h !== 12) h += 12;
-      if (draftAmPm === "AM" && h === 12) h = 0;
+      if (tf !== "24h") {
+        if (draftAmPm === "PM" && h !== 12) h += 12;
+        if (draftAmPm === "AM" && h === 12) h = 0;
+      }
       const time24 = `${String(h).padStart(2, "0")}:${draftMinute}`;
       return apiRequest("PATCH", `/api/routine-items/${item.id}`, {
         time: time24,
@@ -447,7 +449,7 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                   <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
                     <Clock className="w-3 h-3" />
-                    {formatTime(item.time)}
+                    {sharedFormatTime(item.time, tf)}
                   </span>
                   <span className="text-[11px] text-muted-foreground">
                     {formatDuration(item.durationMinutes)}
@@ -645,6 +647,9 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
 export function EditRoutineDialog({ item, open, onOpenChange }: {
   item: RoutineItem; open: boolean; onOpenChange: (v: boolean) => void;
 }) {
+  const { data: prefs } = usePreferences();
+  const is24h = prefs?.timeFormat === "24h";
+
   // Parse current time into 12h format
   const parseTime = () => {
     const [h, m] = item.time.split(":");
@@ -655,7 +660,7 @@ export function EditRoutineDialog({ item, open, onOpenChange }: {
     const minNum = parseInt(m);
     const rounded = Math.round(minNum / 5) * 5;
     const minute = String(rounded >= 60 ? 55 : rounded).padStart(2, "0");
-    return { hour: String(hour12), minute, ampm };
+    return { hour: is24h ? String(hour24) : String(hour12), minute, ampm };
   };
   const parsed = parseTime();
 
@@ -674,7 +679,8 @@ export function EditRoutineDialog({ item, open, onOpenChange }: {
     setEditLocation(item.location || "");
   };
 
-  const hours = Array.from({ length: 12 }, (_, i) => i + 1);
+  const hours12 = Array.from({ length: 12 }, (_, i) => i + 1);
+  const hours24 = Array.from({ length: 24 }, (_, i) => i);
   const minutes = ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"];
   const durationPresets = [5, 10, 15, 20, 30, 45, 60, 90, 120, 150, 180];
   const durationOptions = durationPresets.includes(item.durationMinutes)
@@ -684,8 +690,10 @@ export function EditRoutineDialog({ item, open, onOpenChange }: {
   const updateRoutine = useMutation({
     mutationFn: () => {
       let h = parseInt(editHour);
-      if (editAmPm === "PM" && h !== 12) h += 12;
-      if (editAmPm === "AM" && h === 12) h = 0;
+      if (!is24h) {
+        if (editAmPm === "PM" && h !== 12) h += 12;
+        if (editAmPm === "AM" && h === 12) h = 0;
+      }
       const time24 = `${String(h).padStart(2, "0")}:${editMinute}`;
       return apiRequest("PATCH", `/api/routine-items/${item.id}`, {
         time: time24,
@@ -717,8 +725,8 @@ export function EditRoutineDialog({ item, open, onOpenChange }: {
                   <SelectValue placeholder="Hr" />
                 </SelectTrigger>
                 <SelectContent>
-                  {hours.map(h => (
-                    <SelectItem key={h} value={String(h)}>{h}</SelectItem>
+                  {(is24h ? hours24 : hours12).map(h => (
+                    <SelectItem key={h} value={String(h)}>{is24h ? String(h).padStart(2, "0") : h}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -733,26 +741,28 @@ export function EditRoutineDialog({ item, open, onOpenChange }: {
                   ))}
                 </SelectContent>
               </Select>
-              <div className="flex rounded-md border overflow-hidden shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setEditAmPm("AM")}
-                  className={`px-2 py-1 text-[11px] font-medium transition-colors ${
-                    editAmPm === "AM"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-background text-muted-foreground hover:bg-muted"
-                  }`}
-                >AM</button>
-                <button
-                  type="button"
-                  onClick={() => setEditAmPm("PM")}
-                  className={`px-2 py-1 text-[11px] font-medium transition-colors ${
-                    editAmPm === "PM"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-background text-muted-foreground hover:bg-muted"
-                  }`}
-                >PM</button>
-              </div>
+              {!is24h && (
+                <div className="flex rounded-md border overflow-hidden shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setEditAmPm("AM")}
+                    className={`px-2 py-1 text-[11px] font-medium transition-colors ${
+                      editAmPm === "AM"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-background text-muted-foreground hover:bg-muted"
+                    }`}
+                  >AM</button>
+                  <button
+                    type="button"
+                    onClick={() => setEditAmPm("PM")}
+                    className={`px-2 py-1 text-[11px] font-medium transition-colors ${
+                      editAmPm === "PM"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-background text-muted-foreground hover:bg-muted"
+                    }`}
+                  >PM</button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -819,7 +829,10 @@ function DraftPublishForm({
   isPending: boolean;
   canPublish: boolean;
 }) {
-  const hours = Array.from({ length: 12 }, (_, i) => i + 1); // 1-12
+  const { data: prefs } = usePreferences();
+  const is24h = prefs?.timeFormat === "24h";
+  const hours12 = Array.from({ length: 12 }, (_, i) => i + 1); // 1-12
+  const hours24 = Array.from({ length: 24 }, (_, i) => i); // 0-23
   const minutes = ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"];
 
   return (
@@ -835,8 +848,8 @@ function DraftPublishForm({
               <SelectValue placeholder="Hr" />
             </SelectTrigger>
             <SelectContent>
-              {hours.map(h => (
-                <SelectItem key={h} value={String(h)}>{h}</SelectItem>
+              {(is24h ? hours24 : hours12).map(h => (
+                <SelectItem key={h} value={String(h)}>{is24h ? String(h).padStart(2, "0") : h}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -851,28 +864,30 @@ function DraftPublishForm({
               ))}
             </SelectContent>
           </Select>
-          <div className="flex rounded-md border overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setDraftAmPm("AM")}
-              className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                draftAmPm === "AM"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-background text-muted-foreground hover:bg-muted"
-              }`}
-              data-testid={`draft-am-${item.id}`}
-            >AM</button>
-            <button
-              type="button"
-              onClick={() => setDraftAmPm("PM")}
-              className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                draftAmPm === "PM"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-background text-muted-foreground hover:bg-muted"
-              }`}
-              data-testid={`draft-pm-${item.id}`}
-            >PM</button>
-          </div>
+          {!is24h && (
+            <div className="flex rounded-md border overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setDraftAmPm("AM")}
+                className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  draftAmPm === "AM"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background text-muted-foreground hover:bg-muted"
+                }`}
+                data-testid={`draft-am-${item.id}`}
+              >AM</button>
+              <button
+                type="button"
+                onClick={() => setDraftAmPm("PM")}
+                className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  draftAmPm === "PM"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background text-muted-foreground hover:bg-muted"
+                }`}
+                data-testid={`draft-pm-${item.id}`}
+              >PM</button>
+            </div>
+          )}
         </div>
       </div>
 

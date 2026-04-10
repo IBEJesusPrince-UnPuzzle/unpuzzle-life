@@ -20,6 +20,9 @@ import { useState, useMemo, useEffect } from "react";
 import type { PlannerTask, Area, RoutineItem, RoutineLog } from "@shared/schema";
 import { EditRoutineDialog } from "./routine";
 import { Link } from "wouter";
+import { formatTime } from "@/lib/time-format";
+import { getTimeOfDayRanges } from "@/lib/time-format";
+import { usePreferences } from "@/hooks/use-preferences";
 import {
   parsePerson, formatPersonAgenda,
   parsePlace, formatPlaceAgenda,
@@ -87,13 +90,8 @@ function getDayOfWeek(dateStr: string) {
   return d.toLocaleDateString("en-US", { weekday: "long" });
 }
 
-function formatTime12h(time24: string) {
-  if (!time24) return "";
-  const [h, m] = time24.split(":").map(Number);
-  const ampm = h >= 12 ? "PM" : "AM";
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${h12}:${m.toString().padStart(2, "0")} ${ampm}`;
-}
+// formatTime12h is now provided by the shared formatTime utility from time-format.ts
+// It's called as formatTime(time, timeFormat) where timeFormat comes from usePreferences
 
 function getTimePhase(time: string): string {
   if (!time) return "Unscheduled";
@@ -191,6 +189,7 @@ const DAYS_OF_WEEK = [
 
 // Time picker helpers
 const HOURS_12 = Array.from({ length: 12 }, (_, i) => i + 1);
+const HOURS_24 = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"];
 
 function to24h(h12: number, min: string, period: string): string {
@@ -211,21 +210,55 @@ function from24h(time24: string): { h12: number; min: string; period: string } {
 }
 
 function TimePicker({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+  const { data: prefs } = usePreferences();
+  const is24h = prefs?.timeFormat === "24h";
   const parsed = from24h(value);
-  const [hour, setHour] = useState(String(parsed.h12));
+  const h24 = value ? parseInt(value.split(":")[0]) : 0;
+  const [hour, setHour] = useState(is24h ? String(h24) : String(parsed.h12));
   const [minute, setMinute] = useState(parsed.min);
   const [period, setPeriod] = useState(parsed.period);
 
-  const update = (h: string, m: string, p: string) => {
+  const update12h = (h: string, m: string, p: string) => {
     setHour(h); setMinute(m); setPeriod(p);
     if (h && m && p) onChange(to24h(Number(h), m, p));
   };
+
+  const update24h = (h: string, m: string) => {
+    setHour(h); setMinute(m);
+    if (h !== "" && m) onChange(`${h.padStart(2, "0")}:${m}`);
+  };
+
+  if (is24h) {
+    return (
+      <div>
+        <label className="text-xs font-medium mb-1 block text-muted-foreground">{label}</label>
+        <div className="flex gap-1">
+          <Select value={hour} onValueChange={v => update24h(v, minute)}>
+            <SelectTrigger className="text-sm h-9 px-1.5 w-[52px]" data-testid={`time-${label.toLowerCase()}-hour`}>
+              <SelectValue placeholder="Hr" />
+            </SelectTrigger>
+            <SelectContent>
+              {HOURS_24.map(h => <SelectItem key={h} value={String(h)}>{String(h).padStart(2, "0")}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={minute} onValueChange={v => update24h(hour, v)}>
+            <SelectTrigger className="text-sm h-9 px-1.5 w-[46px]" data-testid={`time-${label.toLowerCase()}-min`}>
+              <SelectValue placeholder="Min" />
+            </SelectTrigger>
+            <SelectContent>
+              {MINUTES.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
       <label className="text-xs font-medium mb-1 block text-muted-foreground">{label}</label>
       <div className="flex gap-1">
-        <Select value={hour} onValueChange={v => update(v, minute, period)}>
+        <Select value={hour} onValueChange={v => update12h(v, minute, period)}>
           <SelectTrigger className="text-sm h-9 px-1.5 w-[46px]" data-testid={`time-${label.toLowerCase()}-hour`}>
             <SelectValue placeholder="Hr" />
           </SelectTrigger>
@@ -233,7 +266,7 @@ function TimePicker({ value, onChange, label }: { value: string; onChange: (v: s
             {HOURS_12.map(h => <SelectItem key={h} value={String(h)}>{h}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={minute} onValueChange={v => update(hour, v, period)}>
+        <Select value={minute} onValueChange={v => update12h(hour, v, period)}>
           <SelectTrigger className="text-sm h-9 px-1.5 w-[46px]" data-testid={`time-${label.toLowerCase()}-min`}>
             <SelectValue placeholder="Min" />
           </SelectTrigger>
@@ -241,7 +274,7 @@ function TimePicker({ value, onChange, label }: { value: string; onChange: (v: s
             {MINUTES.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={period} onValueChange={v => update(hour, minute, v)}>
+        <Select value={period} onValueChange={v => update12h(hour, minute, v)}>
           <SelectTrigger className="text-sm h-9 px-1.5 w-[50px]" data-testid={`time-${label.toLowerCase()}-period`}>
             <SelectValue />
           </SelectTrigger>
@@ -299,6 +332,8 @@ export default function PlannerPage() {
 export function SorterView({ areas, onAreaClick, embedded }: { areas: Area[]; onAreaClick: (id: number) => void; embedded?: boolean }) {
   const [selectedDate, setSelectedDate] = useState(getToday());
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const { data: prefs } = usePreferences();
+  const tf = (prefs?.timeFormat ?? "12h") as "12h" | "24h";
 
   const { data: tasks = [], isSuccess } = useQuery<PlannerTask[]>({
     queryKey: ["/api/planner-tasks", selectedDate],
@@ -820,8 +855,8 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
                 {task.startTime && (
                   <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
                     <Clock className="w-3 h-3" />
-                    {formatTime12h(task.startTime)}
-                    {task.endTime && ` – ${formatTime12h(task.endTime)}`}
+                    {formatTime(task.startTime, tf)}
+                    {task.endTime && ` – ${formatTime(task.endTime, tf)}`}
                   </span>
                 )}
                 {task.hours && parseFloat(task.hours) > 0 && (
@@ -989,12 +1024,12 @@ function RoutineItemCard({ item, areas, isComplete, date, logId }: {
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
                 <Clock className="w-3 h-3" />
-                {formatTime12h(item.time)}
+                {formatTime(item.time, tf)}
                 {item.durationMinutes > 0 && (() => {
                   const endH = parseInt(item.time.split(":")[0]);
                   const endM = parseInt(item.time.split(":")[1]) + item.durationMinutes;
                   const endTime = `${Math.floor((endH * 60 + endM) / 60).toString().padStart(2, "0")}:${((endH * 60 + endM) % 60).toString().padStart(2, "0")}`;
-                  return ` \u2013 ${formatTime12h(endTime)}`;
+                  return ` \u2013 ${formatTime(endTime, tf)}`;
                 })()}
               </span>
               {item.durationMinutes > 0 && (
@@ -1342,6 +1377,8 @@ function AddTaskDialog({ open, onOpenChange, areas, defaultDate, defaultAreaId }
 function AreaDetailView({ areaId, areas, onBack }: { areaId: number; areas: Area[]; onBack: () => void }) {
   const area = areas.find(a => a.id === areaId);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const { data: prefs } = usePreferences();
+  const tf = (prefs?.timeFormat ?? "12h") as "12h" | "24h";
 
   const { data: tasks = [] } = useQuery<PlannerTask[]>({
     queryKey: ["/api/planner-tasks", "area", areaId],
@@ -1456,7 +1493,7 @@ function AreaDetailView({ areaId, areas, onBack }: { areaId: number; areas: Area
                           <p className={`text-sm ${isDone ? "line-through" : ""}`}>{task.goal}</p>
                           <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                             {task.startTime && (
-                              <span>{formatTime12h(task.startTime)}{task.endTime ? ` – ${formatTime12h(task.endTime)}` : ""}</span>
+                              <span>{formatTime(task.startTime, tf)}{task.endTime ? ` – ${formatTime(task.endTime, tf)}` : ""}</span>
                             )}
                             {task.hours && <span>{parseFloat(task.hours).toFixed(1)}h</span>}
                             {task.recurrence && (
@@ -1500,15 +1537,7 @@ function AreaDetailView({ areaId, areas, onBack }: { areaId: number; areas: Area
 // ============================================================
 // CONVERT TASK TO HABIT DIALOG
 // ============================================================
-const TIME_OF_DAY_CATEGORIES = [
-  { value: "early_morning", label: "Early Morning", range: "12:00 AM – 5:59 AM" },
-  { value: "morning", label: "Morning", range: "6:00 AM – 8:59 AM" },
-  { value: "late_morning", label: "Late Morning", range: "9:00 AM – 11:59 AM" },
-  { value: "afternoon", label: "Afternoon", range: "12:00 PM – 2:59 PM" },
-  { value: "late_afternoon", label: "Late Afternoon", range: "3:00 PM – 5:59 PM" },
-  { value: "evening", label: "Evening", range: "6:00 PM – 11:59 PM" },
-  { value: "waking_hours", label: "Waking Hours", range: "8:00 AM – 7:59 PM" },
-];
+// TIME_OF_DAY_CATEGORIES is now dynamically provided by getTimeOfDayRanges from time-format.ts
 
 function timeToCategory(time: string | null): string {
   if (!time) return "";
@@ -1524,6 +1553,8 @@ function timeToCategory(time: string | null): string {
 function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
   task: PlannerTask; area?: Area; open: boolean; onOpenChange: (v: boolean) => void;
 }) {
+  const { data: prefs } = usePreferences();
+  const todCategories = getTimeOfDayRanges((prefs?.timeFormat ?? "12h") as "12h" | "24h");
   const [action, setAction] = useState(task.goal);
   const [timeOfDay, setTimeOfDay] = useState(timeToCategory(task.startTime));
   const [recurrenceJson, setRecurrenceJson] = useState<string | null>(
@@ -1611,7 +1642,7 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
                 <SelectValue placeholder="Select time of day" />
               </SelectTrigger>
               <SelectContent>
-                {TIME_OF_DAY_CATEGORIES.map(t => (
+                {todCategories.map(t => (
                   <SelectItem key={t.value} value={t.value}>
                     {t.label} <span className="text-xs text-muted-foreground ml-1">({t.range})</span>
                   </SelectItem>

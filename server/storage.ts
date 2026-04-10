@@ -6,6 +6,7 @@ import {
   identities, habits, habitLogs, inboxItems, weeklyReviews,
   routineItems, routineLogs, plannerTasks, wizardState,
   environmentEntities, beliefs, antiHabits, immutableLaws, immutableLawLogs,
+  preferences,
   type Purpose, type InsertPurpose,
   type Vision, type InsertVision,
   type Goal, type InsertGoal,
@@ -26,6 +27,7 @@ import {
   type AntiHabit, type InsertAntiHabit,
   type ImmutableLaw, type InsertImmutableLaw,
   type ImmutableLawLog, type InsertImmutableLawLog,
+  type Preferences,
 } from "@shared/schema";
 
 const dbPath = process.env.DATABASE_PATH || "data.db";
@@ -302,7 +304,21 @@ sqlite.exec(`
     suggested_anti_habit_id INTEGER REFERENCES anti_habits(id),
     created_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS preferences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    display_name TEXT NOT NULL DEFAULT '',
+    time_format TEXT NOT NULL DEFAULT '12h'
+  );
 `);
+
+// Insert default preferences row if none exists
+try {
+  const prefRow = sqlite.prepare("SELECT id FROM preferences LIMIT 1").get();
+  if (!prefRow) {
+    sqlite.exec("INSERT INTO preferences (display_name, time_format) VALUES ('', '12h')");
+  }
+} catch (_) { /* table will be handled above */ }
 
 // Migrate renamed columns (old schema → new schema)
 renameColumnIfExists("inbox_items", "text", "content");
@@ -375,6 +391,7 @@ addColumnIfMissing("projects", "puzzle_piece", "TEXT");
 addColumnIfMissing("projects", "identity_id", "INTEGER");
 addColumnIfMissing("weekly_reviews", "puzzle_piece_ratings", "TEXT");
 
+export { sqlite };
 export const db = drizzle(sqlite);
 
 export interface IStorage {
@@ -506,6 +523,16 @@ export interface IStorage {
   // Wizard State
   getWizardState(): WizardState | undefined;
   upsertWizardState(data: Partial<InsertWizardState>): WizardState;
+
+  // Preferences
+  getPreferences(): { displayName: string; timeFormat: string };
+  updatePreferences(data: { displayName?: string; timeFormat?: string }): { displayName: string; timeFormat: string };
+
+  // Reset
+  resetDatabase(): void;
+
+  // Export
+  getAllDataForExport(): Record<string, any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -851,6 +878,69 @@ export class DatabaseStorage implements IStorage {
       completed: data.completed ?? 0,
       completedAt: data.completedAt ?? null,
     }).returning().get();
+  }
+
+  // Preferences
+  getPreferences(): { displayName: string; timeFormat: string } {
+    const row = db.select().from(preferences).get();
+    if (!row) return { displayName: "", timeFormat: "12h" };
+    return { displayName: row.displayName, timeFormat: row.timeFormat };
+  }
+  updatePreferences(data: { displayName?: string; timeFormat?: string }): { displayName: string; timeFormat: string } {
+    const existing = db.select().from(preferences).get();
+    if (existing) {
+      const updated: any = {};
+      if (data.displayName !== undefined) updated.displayName = data.displayName;
+      if (data.timeFormat !== undefined) updated.timeFormat = data.timeFormat;
+      db.update(preferences).set(updated).where(eq(preferences.id, existing.id)).run();
+    } else {
+      db.insert(preferences).values({
+        displayName: data.displayName ?? "",
+        timeFormat: data.timeFormat ?? "12h",
+      }).run();
+    }
+    return this.getPreferences();
+  }
+
+  // Reset
+  resetDatabase(): void {
+    const tables = [
+      "purposes", "visions", "goals", "areas", "projects", "actions",
+      "identities", "habits", "habit_logs", "routine_items", "routine_logs",
+      "planner_tasks", "inbox_items", "weekly_reviews", "wizard_state",
+      "environment_entities", "beliefs", "anti_habits", "immutable_laws", "immutable_law_logs",
+    ];
+    for (const table of tables) {
+      sqlite.exec(`DELETE FROM ${table}`);
+    }
+    // Reset preferences to defaults
+    sqlite.exec("UPDATE preferences SET display_name = '', time_format = '12h'");
+  }
+
+  // Export
+  getAllDataForExport(): Record<string, any[]> {
+    return {
+      purposes: db.select().from(purposes).all(),
+      visions: db.select().from(visions).all(),
+      goals: db.select().from(goals).all(),
+      areas: db.select().from(areas).all(),
+      projects: db.select().from(projects).all(),
+      actions: db.select().from(actions).all(),
+      identities: db.select().from(identities).all(),
+      habits: db.select().from(habits).all(),
+      habitLogs: db.select().from(habitLogs).all(),
+      routineItems: db.select().from(routineItems).all(),
+      routineLogs: db.select().from(routineLogs).all(),
+      plannerTasks: db.select().from(plannerTasks).all(),
+      inboxItems: db.select().from(inboxItems).all(),
+      weeklyReviews: db.select().from(weeklyReviews).all(),
+      environmentEntities: db.select().from(environmentEntities).all(),
+      beliefs: db.select().from(beliefs).all(),
+      antiHabits: db.select().from(antiHabits).all(),
+      immutableLaws: db.select().from(immutableLaws).all(),
+      immutableLawLogs: db.select().from(immutableLawLogs).all(),
+      wizardState: db.select().from(wizardState).all(),
+    };
   }
 }
 

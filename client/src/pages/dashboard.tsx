@@ -17,6 +17,7 @@ import { Link, useLocation } from "wouter";
 import type { Area } from "@shared/schema";
 import { getPieceColor } from "@/lib/piece-colors";
 import { SorterView } from "./planner";
+import { usePreferences } from "@/hooks/use-preferences";
 
 const DASHBOARD_PIECES = [
   { key: "reason",   short: "RSN" },
@@ -175,6 +176,7 @@ export default function Dashboard() {
   const [quickCapture, setQuickCapture] = useState("");
   const [captureAreaId, setCaptureAreaId] = useState<string>("");
   const [now, setNow] = useState(new Date());
+  const { data: prefs } = usePreferences();
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60_000);
@@ -252,10 +254,10 @@ export default function Dashboard() {
       {/* Header */}
       <div className="space-y-1">
         <h1 className="text-xl font-semibold tracking-tight" data-testid="text-greeting">
-          {getGreeting()}, IBEJesus
+          {getGreeting()}, {prefs?.displayName || "there"}
         </h1>
         <p className="text-sm text-muted-foreground">
-          <span className="font-bold">It's</span> {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}, {now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+          <span className="font-bold">It's</span> {now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}, {prefs?.timeFormat === "24h" ? now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }) : now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
         </p>
       </div>
 

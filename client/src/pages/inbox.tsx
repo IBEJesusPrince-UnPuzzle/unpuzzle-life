@@ -17,10 +17,12 @@ import {
 import { Link } from "wouter";
 import { useState } from "react";
 import type { InboxItem, Project, Area } from "@shared/schema";
+import { usePreferences } from "@/hooks/use-preferences";
 
 type ProcessStep = "choose" | "doIt" | "addToProject" | "fileIt" | "wonderIt" | "trashIt";
 
 export default function InboxPage() {
+  const { data: prefs } = usePreferences();
   const [newItem, setNewItem] = useState("");
   const [captureAreaId, setCaptureAreaId] = useState<string>("");
   const [processingId, setProcessingId] = useState<number | null>(null);
@@ -170,8 +172,8 @@ export default function InboxPage() {
                       <p className="text-sm" data-testid={`inbox-item-${item.id}`}>{item.content}</p>
                       <div className="flex items-center gap-2 mt-1">
                         <p className="text-[10px] text-muted-foreground">
-                          {new Date(item.createdAt).toLocaleDateString("en-US", {
-                            month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+                          {new Date(item.createdAt).toLocaleDateString(prefs?.timeFormat === "24h" ? "en-GB" : "en-US", {
+                            month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: prefs?.timeFormat !== "24h"
                           })}
                         </p>
                         {item.areaId && (() => {

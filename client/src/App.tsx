@@ -11,7 +11,7 @@ import ReviewPage from "@/pages/review";
 import PlannerPage from "@/pages/planner";
 import RoutinePage from "@/pages/routine";
 import IdentityVotePage from "@/pages/identity-vote";
-import ImportPage from "@/pages/import";
+import DataPage from "@/pages/data";
 import UnPuzzlePage from "@/pages/unpuzzle";
 import ProjectDetailPage from "@/pages/project-detail";
 import ProjectsPage from "@/pages/projects";
@@ -22,7 +22,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import {
   Menu, X, LayoutDashboard, Inbox, Timer, CalendarDays,
-  RotateCcw, Layers, Upload, Sun, Moon, Puzzle,
+  RotateCcw, Layers, Database, Sun, Moon, Puzzle,
   ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -49,7 +49,7 @@ function AppRouter() {
       <Route path="/planner" component={PlannerPage} />
       <Route path="/review" component={ReviewPage} />
       <Route path="/identity-vote" component={IdentityVotePage} />
-      <Route path="/import" component={ImportPage} />
+      <Route path="/data" component={DataPage} />
       <Route path="/projects" component={ProjectsPage} />
       <Route path="/projects/:id" component={ProjectDetailRoute} />
       <Route component={NotFound} />
@@ -62,7 +62,7 @@ const navItems = [
   { title: "Clarity", url: "/horizons", icon: Layers },
   { title: "UnPuzzle", url: "/unpuzzle", icon: Puzzle },
   { title: "Weekly Review", url: "/review", icon: RotateCcw },
-  { title: "Import", url: "/import", icon: Upload },
+  { title: "Data", url: "/data", icon: Database },
 ];
 
 function SlideMenu({ open, onClose, isDark, toggleTheme }: {

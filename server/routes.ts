@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import type { Server } from "http";
-import { storage } from "./storage";
+import { storage, sqlite } from "./storage";
 import {
   insertPurposeSchema, insertVisionSchema, insertGoalSchema,
   insertAreaSchema, insertProjectSchema, insertActionSchema,
@@ -1568,5 +1568,158 @@ export function registerRoutes(server: Server, app: Express) {
     }
 
     res.json({ created, errors, total: rows.length });
+  });
+
+  // ============================================================
+  // PREFERENCES
+  // ============================================================
+  app.get("/api/preferences", (_req, res) => {
+    res.json(storage.getPreferences());
+  });
+  app.put("/api/preferences", (req, res) => {
+    const { displayName, timeFormat } = req.body;
+    const data: { displayName?: string; timeFormat?: string } = {};
+    if (displayName !== undefined) data.displayName = String(displayName).slice(0, 50);
+    if (timeFormat !== undefined && (timeFormat === "12h" || timeFormat === "24h")) data.timeFormat = timeFormat;
+    res.json(storage.updatePreferences(data));
+  });
+
+  // ============================================================
+  // EXPORT
+  // ============================================================
+  app.get("/api/export/json", (_req, res) => {
+    const allData = storage.getAllDataForExport();
+    const payload = {
+      exportDate: new Date().toISOString(),
+      version: 1,
+      data: allData,
+    };
+    const dateStr = new Date().toISOString().split("T")[0];
+    res.setHeader("Content-Disposition", `attachment; filename="unpuzzle-life-export-${dateStr}.json"`);
+    res.setHeader("Content-Type", "application/json");
+    res.json(payload);
+  });
+
+  app.get("/api/export/csv", async (_req, res) => {
+    const archiver = await import("archiver");
+    const allData = storage.getAllDataForExport();
+    const dateStr = new Date().toISOString().split("T")[0];
+
+    res.setHeader("Content-Disposition", `attachment; filename="unpuzzle-life-export-${dateStr}.zip"`);
+    res.setHeader("Content-Type", "application/zip");
+
+    const archive = archiver.default("zip", { zlib: { level: 9 } });
+    archive.pipe(res);
+
+    for (const [tableName, rows] of Object.entries(allData)) {
+      if (!rows.length) {
+        archive.append("", { name: `${tableName}.csv` });
+        continue;
+      }
+      const headers = Object.keys(rows[0]);
+      const csvRows = [headers.join(",")];
+      for (const row of rows) {
+        csvRows.push(headers.map(h => {
+          const val = (row as any)[h];
+          if (val === null || val === undefined) return "";
+          const str = String(val);
+          if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+            return `"${str.replace(/"/g, '""')}"`;
+          }
+          return str;
+        }).join(","));
+      }
+      archive.append(csvRows.join("\n"), { name: `${tableName}.csv` });
+    }
+
+    await archive.finalize();
+  });
+
+  // ============================================================
+  // IMPORT (full JSON replacement)
+  // ============================================================
+  app.post("/api/import/json", (req, res) => {
+    const body = req.body;
+    if (!body || !body.data || typeof body.data !== "object") {
+      return res.status(400).json({ error: "Invalid import format: missing 'data' key" });
+    }
+
+    const tableMap: Record<string, { drizzleTable: any; sqlName: string }> = {
+      purposes: { drizzleTable: null, sqlName: "purposes" },
+      visions: { drizzleTable: null, sqlName: "visions" },
+      goals: { drizzleTable: null, sqlName: "goals" },
+      areas: { drizzleTable: null, sqlName: "areas" },
+      projects: { drizzleTable: null, sqlName: "projects" },
+      actions: { drizzleTable: null, sqlName: "actions" },
+      identities: { drizzleTable: null, sqlName: "identities" },
+      habits: { drizzleTable: null, sqlName: "habits" },
+      habitLogs: { drizzleTable: null, sqlName: "habit_logs" },
+      routineItems: { drizzleTable: null, sqlName: "routine_items" },
+      routineLogs: { drizzleTable: null, sqlName: "routine_logs" },
+      plannerTasks: { drizzleTable: null, sqlName: "planner_tasks" },
+      inboxItems: { drizzleTable: null, sqlName: "inbox_items" },
+      weeklyReviews: { drizzleTable: null, sqlName: "weekly_reviews" },
+      environmentEntities: { drizzleTable: null, sqlName: "environment_entities" },
+      beliefs: { drizzleTable: null, sqlName: "beliefs" },
+      antiHabits: { drizzleTable: null, sqlName: "anti_habits" },
+      immutableLaws: { drizzleTable: null, sqlName: "immutable_laws" },
+      immutableLawLogs: { drizzleTable: null, sqlName: "immutable_law_logs" },
+      wizardState: { drizzleTable: null, sqlName: "wizard_state" },
+    };
+
+    const counts: Record<string, number> = {};
+
+    try {
+      const camelToSnake = (s: string) => s.replace(/[A-Z]/g, m => `_${m.toLowerCase()}`);
+
+      const runTx = sqlite.transaction(() => {
+        for (const [key, rows] of Object.entries(body.data)) {
+          const mapping = tableMap[key];
+          if (!mapping || !Array.isArray(rows)) continue;
+
+          sqlite.prepare(`DELETE FROM ${mapping.sqlName}`).run();
+
+          if (rows.length === 0) {
+            counts[key] = 0;
+            continue;
+          }
+
+          const firstRow = rows[0];
+          const camelKeys = Object.keys(firstRow);
+          const snakeKeys = camelKeys.map(camelToSnake);
+
+          const placeholders = snakeKeys.map(() => "?").join(", ");
+          const insertStmt = sqlite.prepare(
+            `INSERT INTO ${mapping.sqlName} (${snakeKeys.join(", ")}) VALUES (${placeholders})`
+          );
+
+          for (const row of rows) {
+            const values = camelKeys.map(k => {
+              const v = (row as any)[k];
+              return v === undefined ? null : v;
+            });
+            insertStmt.run(...values);
+          }
+          counts[key] = rows.length;
+        }
+      });
+
+      runTx();
+      res.json({ success: true, counts });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============================================================
+  // RESET
+  // ============================================================
+  app.post("/api/reset", (_req, res) => {
+    try {
+      storage.resetDatabase();
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 }
