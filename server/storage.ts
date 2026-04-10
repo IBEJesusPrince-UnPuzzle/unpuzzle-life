@@ -345,7 +345,11 @@ addColumnIfMissing("actions", "due_date", "TEXT");
 addColumnIfMissing("actions", "completed", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("actions", "completed_at", "TEXT");
 addColumnIfMissing("habits", "identity_id", "INTEGER");
+addColumnIfMissing("habits", "cue", "TEXT");
 addColumnIfMissing("habits", "craving", "TEXT");
+addColumnIfMissing("habits", "response", "TEXT");
+addColumnIfMissing("habits", "reward", "TEXT");
+addColumnIfMissing("habits", "time_of_day", "TEXT");
 addColumnIfMissing("routine_items", "time", "TEXT DEFAULT '08:00'");
 addColumnIfMissing("routine_items", "duration_minutes", "INTEGER NOT NULL DEFAULT 10");
 addColumnIfMissing("routine_items", "location", "TEXT");
@@ -397,6 +401,11 @@ addColumnIfMissing("identities", "env_thing_why", "TEXT");
 addColumnIfMissing("projects", "puzzle_piece", "TEXT");
 addColumnIfMissing("projects", "identity_id", "INTEGER");
 addColumnIfMissing("weekly_reviews", "puzzle_piece_ratings", "TEXT");
+
+// Ensure wizard_state has all columns
+addColumnIfMissing("wizard_state", "current_phase", "INTEGER NOT NULL DEFAULT 1");
+addColumnIfMissing("wizard_state", "completed", "INTEGER NOT NULL DEFAULT 0");
+addColumnIfMissing("wizard_state", "completed_at", "TEXT");
 
 export { sqlite };
 export const db = drizzle(sqlite);
