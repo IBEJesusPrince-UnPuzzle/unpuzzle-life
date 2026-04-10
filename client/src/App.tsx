@@ -306,7 +306,7 @@ function AppShell() {
 
       {/* Main content area */}
       <div className={`flex flex-col w-full h-[100dvh] transition-all duration-200 ease-linear ${sidebarOpen ? 'md:ml-64' : 'md:ml-16'} md:h-screen relative`}>
-        <main className="flex-1 overflow-y-auto bg-background">
+        <main className="flex-1 overflow-y-auto bg-background pb-20 md:pb-0">
           <AppRouter />
         </main>
 
