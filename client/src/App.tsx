@@ -171,9 +171,9 @@ function AppShell() {
   }, [isDark]);
 
   return (
-    // Desktop: center a phone-width frame. Mobile: full screen.
-    <div className="w-full bg-background md:min-h-screen md:bg-neutral-200 dark:md:bg-neutral-900 md:flex md:items-start md:justify-center md:py-4">
-      <div className="flex flex-col w-full md:w-[390px] md:rounded-3xl md:shadow-2xl md:overflow-hidden md:border md:border-neutral-300 dark:md:border-neutral-700 relative" style={{ height: '100dvh' }}>
+    // Desktop: center a phone-width frame on gray bg. Mobile: full-width edge-to-edge.
+    <div className="md:min-h-screen md:bg-gray-200 dark:md:bg-neutral-900 md:flex md:items-center md:justify-center">
+      <div className="flex flex-col w-full h-[100dvh] md:w-[390px] md:h-screen md:rounded-[2.5rem] md:shadow-2xl md:overflow-hidden md:bg-white dark:md:bg-neutral-950 relative">
       <main className="flex-1 overflow-hidden bg-background">
         <AppRouter />
       </main>
