@@ -87,14 +87,14 @@ function SlideMenu({ open, onClose, isDark, toggleTheme }: {
       {/* Backdrop */}
       {open && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 transition-opacity"
+          className="absolute inset-0 z-40 bg-black/50 transition-opacity"
           onClick={onClose}
         />
       )}
 
       {/* Panel */}
       <div
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-background border-r shadow-xl transform transition-transform duration-200 ease-out ${
+        className={`absolute inset-y-0 left-0 z-50 w-64 bg-background border-r shadow-xl transform transition-transform duration-200 ease-out ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -171,13 +171,15 @@ function AppShell() {
   }, [isDark]);
 
   return (
-    <div className="flex flex-col h-screen w-full">
-      <main className="flex-1 overflow-hidden">
+    // Desktop: center a phone-width frame. Mobile: full screen.
+    <div className="min-h-screen w-full bg-neutral-200 dark:bg-neutral-900 md:flex md:items-start md:justify-center md:py-4">
+      <div className="flex flex-col h-screen w-full md:w-[390px] md:h-[844px] md:rounded-3xl md:shadow-2xl md:overflow-hidden md:border md:border-neutral-300 dark:md:border-neutral-700 relative">
+      <main className="flex-1 overflow-hidden bg-background">
         <AppRouter />
       </main>
 
       {/* Floating menu button */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30">
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30">
         <button
           onClick={() => setMenuOpen(true)}
           className="w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 active:scale-95 transition-all"
@@ -194,6 +196,7 @@ function AppShell() {
         isDark={isDark}
         toggleTheme={() => setIsDark(!isDark)}
       />
+      </div>
     </div>
   );
 }
