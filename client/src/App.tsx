@@ -3,7 +3,7 @@ import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import Dashboard from "@/pages/dashboard";
 import InboxPage from "@/pages/inbox";
 import HorizonsPage from "@/pages/horizons";
@@ -190,7 +190,7 @@ function DesktopSidebar({ isDark, toggleTheme, collapsed, onToggle }: {
         )}
         {navItems.map((item) => {
           const isActive = location === item.url || (item.url !== "/" && location.startsWith(item.url));
-          return (
+          const navButton = (
             <Link key={item.title} href={item.url}>
               <button
                 className={`w-full flex items-center text-sm transition-colors ${
@@ -201,7 +201,6 @@ function DesktopSidebar({ isDark, toggleTheme, collapsed, onToggle }: {
                     : "text-foreground hover:bg-accent"
                 }`}
                 data-testid={`nav-${item.title.toLowerCase()}`}
-                title={collapsed ? item.title : undefined}
               >
                 <item.icon className="w-4 h-4 shrink-0" />
                 {!collapsed && <span className="flex-1 text-left">{item.title}</span>}
@@ -213,32 +212,64 @@ function DesktopSidebar({ isDark, toggleTheme, collapsed, onToggle }: {
               </button>
             </Link>
           );
+          if (collapsed) {
+            return (
+              <Tooltip key={item.title} delayDuration={0}>
+                <TooltipTrigger asChild>{navButton}</TooltipTrigger>
+                <TooltipContent side="right" className="font-medium">{item.title}</TooltipContent>
+              </Tooltip>
+            );
+          }
+          return navButton;
         })}
       </nav>
 
       {/* Footer */}
       <div className="p-3 border-t flex flex-col gap-1">
-        <button
-          onClick={toggleTheme}
-          className={`flex items-center gap-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors w-full ${
-            collapsed ? 'justify-center p-2' : 'px-3 py-2'
-          }`}
-          data-testid="button-theme-toggle"
-          title={collapsed ? (isDark ? "Light mode" : "Dark mode") : undefined}
-        >
-          {isDark ? <Sun className="w-4 h-4 shrink-0" /> : <Moon className="w-4 h-4 shrink-0" />}
-          {!collapsed && <span>{isDark ? "Light mode" : "Dark mode"}</span>}
-        </button>
-        <button
-          onClick={onToggle}
-          className={`flex items-center gap-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors w-full ${
-            collapsed ? 'justify-center p-2' : 'px-3 py-2'
-          }`}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? <ChevronsRight className="w-4 h-4" /> : <ChevronsLeft className="w-4 h-4" />}
-          {!collapsed && <span>Collapse</span>}
-        </button>
+        {collapsed ? (
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <button
+                onClick={toggleTheme}
+                className="flex items-center justify-center p-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors w-full"
+                data-testid="button-theme-toggle"
+              >
+                {isDark ? <Sun className="w-4 h-4 shrink-0" /> : <Moon className="w-4 h-4 shrink-0" />}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="font-medium">{isDark ? "Light mode" : "Dark mode"}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <button
+            onClick={toggleTheme}
+            className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors w-full"
+            data-testid="button-theme-toggle"
+          >
+            {isDark ? <Sun className="w-4 h-4 shrink-0" /> : <Moon className="w-4 h-4 shrink-0" />}
+            <span>{isDark ? "Light mode" : "Dark mode"}</span>
+          </button>
+        )}
+        {collapsed ? (
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <button
+                onClick={onToggle}
+                className="flex items-center justify-center p-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors w-full"
+              >
+                <ChevronsRight className="w-4 h-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="font-medium">Expand sidebar</TooltipContent>
+          </Tooltip>
+        ) : (
+          <button
+            onClick={onToggle}
+            className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors w-full"
+          >
+            <ChevronsLeft className="w-4 h-4" />
+            <span>Collapse</span>
+          </button>
+        )}
       </div>
     </aside>
   );
