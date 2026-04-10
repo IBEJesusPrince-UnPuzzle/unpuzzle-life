@@ -335,7 +335,7 @@ function DuplicateArchiveModal({
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/habits"] });
       queryClient.invalidateQueries({ queryKey: ["/api/actions"] });
-      toast({ title: `${area.name} archived. New area '${newName.trim()}' created.` });
+      toast({ title: `${area.name} archived. All linked items moved to '${newName.trim()}'.` });
       onOpenChange(false);
     },
     onError: (err: any) => {
@@ -355,8 +355,8 @@ function DuplicateArchiveModal({
         <DialogHeader>
           <DialogTitle>Duplicate & Archive</DialogTitle>
           <DialogDescription>
-            This will create a copy of <span className="font-medium text-foreground">{area.name}</span> and archive the original.
-            The copy starts fresh with no linked items.
+            This will create a new area and move all linked items (identities, habits, projects, tasks) to it.
+            The original <span className="font-medium text-foreground">{area.name}</span> will be archived.
           </DialogDescription>
         </DialogHeader>
 

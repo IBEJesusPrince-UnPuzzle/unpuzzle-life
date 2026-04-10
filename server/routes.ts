@@ -200,16 +200,17 @@ export function registerRoutes(server: Server, app: Express) {
       const { newName } = req.body;
       if (!newName || typeof newName !== "string") return res.status(400).json({ error: "newName is required" });
 
-      // Check name collision with active areas
-      const activeAreas = storage.getAreas();
-      if (activeAreas.some(a => a.name.toLowerCase() === newName.toLowerCase())) {
-        return res.status(400).json({ error: "An area with this name already exists." });
+      // Check name collision with ALL areas (active + archived)
+      const allAreas = storage.getAllAreasIncludingArchived();
+      if (allAreas.some(a => a.name.toLowerCase() === newName.toLowerCase())) {
+        return res.status(400).json({ error: "An area with this name already exists (or was previously used)." });
       }
 
       // Get original area
-      const allAreas = storage.getAllAreasIncludingArchived();
       const originalArea = allAreas.find(a => a.id === areaId);
       if (!originalArea) return res.status(404).json({ error: "Area not found" });
+
+      const activeAreas = storage.getAreas();
 
       // Create new area with copied vision
       const newArea = storage.createArea({
@@ -223,26 +224,30 @@ export function registerRoutes(server: Server, app: Express) {
         archived: 0,
       });
 
-      // Archive original + linked items
+      // Move all linked items to the new area (re-point area_id)
+      const newAreaId = (newArea as any).id;
+      sqlite.prepare("UPDATE identities SET area_id = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId);
+      sqlite.prepare("UPDATE projects SET area_id = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId);
+      sqlite.prepare("UPDATE habits SET area_id = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId);
+      sqlite.prepare("UPDATE actions SET area_id = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId);
+
+      // Count what was moved
+      const identitiesMoved = sqlite.prepare("SELECT COUNT(*) as c FROM identities WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId) as any;
+      const projectsMoved = sqlite.prepare("SELECT COUNT(*) as c FROM projects WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId) as any;
+      const habitsMoved = sqlite.prepare("SELECT COUNT(*) as c FROM habits WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId) as any;
+      const tasksMoved = sqlite.prepare("SELECT COUNT(*) as c FROM actions WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId) as any;
+
+      // Archive only the original area (linked items are now under the new area)
       const now = new Date().toISOString();
       storage.updateArea(areaId, { archived: 1, archivedAt: now } as any);
-      sqlite.prepare("UPDATE identities SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
-      sqlite.prepare("UPDATE projects SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
-      sqlite.prepare("UPDATE habits SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
-      sqlite.prepare("UPDATE actions SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
-
-      const identitiesArchived = sqlite.prepare("SELECT COUNT(*) as c FROM identities WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
-      const projectsArchived = sqlite.prepare("SELECT COUNT(*) as c FROM projects WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
-      const habitsArchived = sqlite.prepare("SELECT COUNT(*) as c FROM habits WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
-      const tasksArchived = sqlite.prepare("SELECT COUNT(*) as c FROM actions WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
 
       res.json({
         newArea,
-        archivedCounts: {
-          identities: identitiesArchived?.c || 0,
-          projects: projectsArchived?.c || 0,
-          habits: habitsArchived?.c || 0,
-          tasks: tasksArchived?.c || 0,
+        movedCounts: {
+          identities: identitiesMoved?.c || 0,
+          projects: projectsMoved?.c || 0,
+          habits: habitsMoved?.c || 0,
+          tasks: tasksMoved?.c || 0,
         },
       });
     } catch (err: any) {
