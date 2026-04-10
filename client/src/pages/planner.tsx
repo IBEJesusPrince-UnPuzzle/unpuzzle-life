@@ -772,6 +772,8 @@ function humanizeGoal(goal: string): string {
 }
 
 function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area[]; onAreaClick: (id: number) => void }) {
+  const { data: prefs } = usePreferences();
+  const tf = (prefs?.timeFormat ?? "12h") as "12h" | "24h";
   const area = areas.find(a => a.id === task.areaId);
   const isDone = task.status === "done";
   const isSkipped = task.status === "skipped";
@@ -971,6 +973,8 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
 function RoutineItemCard({ item, areas, isComplete, date, logId }: {
   item: RoutineItem; areas: Area[]; isComplete: boolean; date: string; logId?: number;
 }) {
+  const { data: prefs } = usePreferences();
+  const tf = (prefs?.timeFormat ?? "12h") as "12h" | "24h";
   const area = areas.find(a => a.id === item.areaId);
   const [expanded, setExpanded] = useState(false);
   const [editOpen, setEditOpen] = useState(false);

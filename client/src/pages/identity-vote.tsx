@@ -228,6 +228,8 @@ export default function IdentityVotePage() {
 }
 
 function IdentityBreakdownCard({ identity, onMarkDone }: { identity: IdentityBreakdown; onMarkDone: (id: number) => void }) {
+  const { data: prefs } = usePreferences();
+  const tf = (prefs?.timeFormat ?? "12h") as "12h" | "24h";
   const [expanded, setExpanded] = useState(false);
   const percent = identity.percent ?? 0;
   const barColor = percent >= 80 ? "bg-emerald-500" : percent >= 50 ? "bg-amber-500" : "bg-destructive";
