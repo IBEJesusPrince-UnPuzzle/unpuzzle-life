@@ -370,6 +370,13 @@ addColumnIfMissing("weekly_reviews", "inbox_cleared", "INTEGER NOT NULL DEFAULT 
 addColumnIfMissing("weekly_reviews", "projects_reviewed", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("weekly_reviews", "habits_reviewed", "INTEGER NOT NULL DEFAULT 0");
 
+// Ensure identities table has all habit-loop columns (may be missing if DB was created before schema update)
+addColumnIfMissing("identities", "cue", "TEXT");
+addColumnIfMissing("identities", "craving", "TEXT");
+addColumnIfMissing("identities", "response", "TEXT");
+addColumnIfMissing("identities", "reward", "TEXT");
+addColumnIfMissing("identities", "time_of_day", "TEXT");
+
 // Phase 1: puzzle piece, environment entities, identity→project→routine chain
 addColumnIfMissing("areas", "puzzle_piece", "TEXT");
 addColumnIfMissing("areas", "vision_text", "TEXT");
