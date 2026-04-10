@@ -172,8 +172,8 @@ function AppShell() {
 
   return (
     // Desktop: center a phone-width frame. Mobile: full screen.
-    <div className="min-h-screen w-full bg-neutral-200 dark:bg-neutral-900 md:flex md:items-start md:justify-center md:py-4">
-      <div className="flex flex-col h-screen w-full md:w-[390px] md:h-[844px] md:rounded-3xl md:shadow-2xl md:overflow-hidden md:border md:border-neutral-300 dark:md:border-neutral-700 relative">
+    <div className="w-full bg-background md:min-h-screen md:bg-neutral-200 dark:md:bg-neutral-900 md:flex md:items-start md:justify-center md:py-4">
+      <div className="flex flex-col w-full md:w-[390px] md:rounded-3xl md:shadow-2xl md:overflow-hidden md:border md:border-neutral-300 dark:md:border-neutral-700 relative" style={{ height: '100dvh' }}>
       <main className="flex-1 overflow-hidden bg-background">
         <AppRouter />
       </main>
