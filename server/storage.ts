@@ -1,16 +1,17 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, and, desc, asc, isNull, gte } from "drizzle-orm";
+import { eq, and, or, desc, asc, isNull, gte } from "drizzle-orm";
 import {
   purposes, visions, goals, areas, projects, actions,
   identities, habits, habitLogs, inboxItems, weeklyReviews,
   routineItems, routineLogs, plannerTasks, wizardState,
   environmentEntities, beliefs, antiHabits, immutableLaws, immutableLawLogs,
-  preferences,
+  preferences, areaVisionSnapshots,
   type Purpose, type InsertPurpose,
   type Vision, type InsertVision,
   type Goal, type InsertGoal,
   type Area, type InsertArea,
+  type AreaVisionSnapshot, type InsertAreaVisionSnapshot,
   type Project, type InsertProject,
   type Action, type InsertAction,
   type Identity, type InsertIdentity,
@@ -310,6 +311,14 @@ sqlite.exec(`
     display_name TEXT NOT NULL DEFAULT '',
     time_format TEXT NOT NULL DEFAULT '12h'
   );
+
+  CREATE TABLE IF NOT EXISTS area_vision_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    area_id INTEGER NOT NULL REFERENCES areas(id),
+    previous_vision TEXT NOT NULL,
+    note TEXT,
+    changed_at TEXT NOT NULL
+  );
 `);
 
 // Insert default preferences row if none exists
@@ -407,6 +416,17 @@ addColumnIfMissing("wizard_state", "current_phase", "INTEGER NOT NULL DEFAULT 1"
 addColumnIfMissing("wizard_state", "completed", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("wizard_state", "completed_at", "TEXT");
 
+// Area edit & archive: archived/archived_at columns on all linked tables
+addColumnIfMissing("areas", "archived_at", "TEXT");
+addColumnIfMissing("identities", "archived", "INTEGER NOT NULL DEFAULT 0");
+addColumnIfMissing("identities", "archived_at", "TEXT");
+addColumnIfMissing("habits", "archived", "INTEGER NOT NULL DEFAULT 0");
+addColumnIfMissing("habits", "archived_at", "TEXT");
+addColumnIfMissing("projects", "archived", "INTEGER NOT NULL DEFAULT 0");
+addColumnIfMissing("projects", "archived_at", "TEXT");
+addColumnIfMissing("actions", "archived", "INTEGER NOT NULL DEFAULT 0");
+addColumnIfMissing("actions", "archived_at", "TEXT");
+
 export { sqlite };
 export const db = drizzle(sqlite);
 
@@ -431,9 +451,14 @@ export interface IStorage {
 
   // Areas
   getAreas(): Area[];
+  getAllAreasIncludingArchived(): Area[];
   createArea(data: InsertArea): Area;
   updateArea(id: number, data: Partial<InsertArea>): Area | undefined;
   deleteArea(id: number): void;
+
+  // Area Vision Snapshots
+  getAreaVisionSnapshots(areaId: number): AreaVisionSnapshot[];
+  createAreaVisionSnapshot(data: InsertAreaVisionSnapshot): AreaVisionSnapshot;
 
   // Projects
   getProjects(): Project[];
@@ -596,6 +621,9 @@ export class DatabaseStorage implements IStorage {
 
   // Areas
   getAreas(): Area[] {
+    return db.select().from(areas).where(or(eq(areas.archived, 0), isNull(areas.archived))).orderBy(asc(areas.sortOrder)).all();
+  }
+  getAllAreasIncludingArchived(): Area[] {
     return db.select().from(areas).orderBy(asc(areas.sortOrder)).all();
   }
   createArea(data: InsertArea): Area {
@@ -608,9 +636,17 @@ export class DatabaseStorage implements IStorage {
     db.delete(areas).where(eq(areas.id, id)).run();
   }
 
+  // Area Vision Snapshots
+  getAreaVisionSnapshots(areaId: number): AreaVisionSnapshot[] {
+    return db.select().from(areaVisionSnapshots).where(eq(areaVisionSnapshots.areaId, areaId)).orderBy(desc(areaVisionSnapshots.changedAt)).all();
+  }
+  createAreaVisionSnapshot(data: InsertAreaVisionSnapshot): AreaVisionSnapshot {
+    return db.insert(areaVisionSnapshots).values(data).returning().get();
+  }
+
   // Projects
   getProjects(): Project[] {
-    return db.select().from(projects).orderBy(desc(projects.createdAt)).all();
+    return db.select().from(projects).where(or(eq(projects.archived, 0), isNull(projects.archived))).orderBy(desc(projects.createdAt)).all();
   }
   createProject(data: InsertProject): Project {
     return db.insert(projects).values(data).returning().get();
@@ -624,7 +660,7 @@ export class DatabaseStorage implements IStorage {
 
   // Actions
   getActions(): Action[] {
-    return db.select().from(actions).orderBy(desc(actions.createdAt)).all();
+    return db.select().from(actions).where(or(eq(actions.archived, 0), isNull(actions.archived))).orderBy(desc(actions.createdAt)).all();
   }
   getActionsByProject(projectId: number): Action[] {
     return db.select().from(actions).where(eq(actions.projectId, projectId)).all();
@@ -641,7 +677,7 @@ export class DatabaseStorage implements IStorage {
 
   // Identities
   getIdentities(): Identity[] {
-    return db.select().from(identities).all();
+    return db.select().from(identities).where(or(eq(identities.archived, 0), isNull(identities.archived))).all();
   }
   createIdentity(data: InsertIdentity): Identity {
     return db.insert(identities).values(data).returning().get();
@@ -655,7 +691,7 @@ export class DatabaseStorage implements IStorage {
 
   // Habits
   getHabits(): Habit[] {
-    return db.select().from(habits).all();
+    return db.select().from(habits).where(or(eq(habits.archived, 0), isNull(habits.archived))).all();
   }
   createHabit(data: InsertHabit): Habit {
     return db.insert(habits).values(data).returning().get();
@@ -925,6 +961,7 @@ export class DatabaseStorage implements IStorage {
       "identities", "habits", "habit_logs", "routine_items", "routine_logs",
       "planner_tasks", "inbox_items", "weekly_reviews", "wizard_state",
       "environment_entities", "beliefs", "anti_habits", "immutable_laws", "immutable_law_logs",
+      "area_vision_snapshots",
     ];
     for (const table of tables) {
       sqlite.exec(`DELETE FROM ${table}`);
@@ -956,6 +993,7 @@ export class DatabaseStorage implements IStorage {
       immutableLaws: "immutable_laws",
       immutableLawLogs: "immutable_law_logs",
       wizardState: "wizard_state",
+      areaVisionSnapshots: "area_vision_snapshots",
     };
     const result: Record<string, any[]> = {};
     for (const [key, sqlName] of Object.entries(tableMap)) {

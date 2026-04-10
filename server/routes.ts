@@ -98,6 +98,159 @@ export function registerRoutes(server: Server, app: Express) {
   });
 
   // ============================================================
+  // AREA VISION EDITING & SNAPSHOTS
+  // ============================================================
+  app.patch("/api/areas/:id/vision", (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { vision, note } = req.body;
+      if (typeof vision !== "string") return res.status(400).json({ error: "vision is required" });
+
+      // Get current area
+      const allAreas = storage.getAllAreasIncludingArchived();
+      const area = allAreas.find(a => a.id === id);
+      if (!area) return res.status(404).json({ error: "Area not found" });
+
+      // Only create snapshot if vision actually changed
+      if (area.visionText && area.visionText !== vision) {
+        storage.createAreaVisionSnapshot({
+          areaId: id,
+          previousVision: area.visionText,
+          note: note || null,
+          changedAt: new Date().toISOString(),
+        });
+      }
+
+      const updated = storage.updateArea(id, { visionText: vision });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Internal server error" });
+    }
+  });
+
+  app.get("/api/areas/:id/snapshots", (req, res) => {
+    try {
+      const snapshots = storage.getAreaVisionSnapshots(Number(req.params.id));
+      res.json(snapshots);
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Internal server error" });
+    }
+  });
+
+  app.get("/api/areas/:id/archive-preview", (req, res) => {
+    try {
+      const areaId = Number(req.params.id);
+      // Use raw SQL to avoid schema mismatch on live DB
+      const identityRows = sqlite.prepare("SELECT id, statement as name FROM identities WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId) as any[];
+      const projectRows = sqlite.prepare("SELECT id, title as name FROM projects WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId) as any[];
+      const habitRows = sqlite.prepare("SELECT id, name FROM habits WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId) as any[];
+      const actionRows = sqlite.prepare("SELECT id, title as name FROM actions WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId) as any[];
+      res.json({
+        identities: identityRows,
+        projects: projectRows,
+        habits: habitRows,
+        tasks: actionRows,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Internal server error" });
+    }
+  });
+
+  app.post("/api/areas/:id/archive", (req, res) => {
+    try {
+      const areaId = Number(req.params.id);
+      const now = new Date().toISOString();
+
+      // Archive the area
+      storage.updateArea(areaId, { archived: 1, archivedAt: now } as any);
+
+      // Archive linked items using raw SQL for safety
+      sqlite.prepare("UPDATE identities SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
+      sqlite.prepare("UPDATE projects SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
+      sqlite.prepare("UPDATE habits SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
+      sqlite.prepare("UPDATE actions SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
+
+      // Count what was archived
+      const counts = {
+        identities: (sqlite.prepare("SELECT changes() as c").get() as any)?.c || 0,
+      };
+      // Re-count properly
+      const identitiesArchived = sqlite.prepare("SELECT COUNT(*) as c FROM identities WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
+      const projectsArchived = sqlite.prepare("SELECT COUNT(*) as c FROM projects WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
+      const habitsArchived = sqlite.prepare("SELECT COUNT(*) as c FROM habits WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
+      const tasksArchived = sqlite.prepare("SELECT COUNT(*) as c FROM actions WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
+
+      res.json({
+        success: true,
+        archivedCounts: {
+          identities: identitiesArchived?.c || 0,
+          projects: projectsArchived?.c || 0,
+          habits: habitsArchived?.c || 0,
+          tasks: tasksArchived?.c || 0,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Internal server error" });
+    }
+  });
+
+  app.post("/api/areas/:id/duplicate-and-archive", (req, res) => {
+    try {
+      const areaId = Number(req.params.id);
+      const { newName } = req.body;
+      if (!newName || typeof newName !== "string") return res.status(400).json({ error: "newName is required" });
+
+      // Check name collision with active areas
+      const activeAreas = storage.getAreas();
+      if (activeAreas.some(a => a.name.toLowerCase() === newName.toLowerCase())) {
+        return res.status(400).json({ error: "An area with this name already exists." });
+      }
+
+      // Get original area
+      const allAreas = storage.getAllAreasIncludingArchived();
+      const originalArea = allAreas.find(a => a.id === areaId);
+      if (!originalArea) return res.status(404).json({ error: "Area not found" });
+
+      // Create new area with copied vision
+      const newArea = storage.createArea({
+        name: newName,
+        description: originalArea.description,
+        category: originalArea.category,
+        puzzlePiece: originalArea.puzzlePiece,
+        visionText: originalArea.visionText,
+        icon: originalArea.icon,
+        sortOrder: activeAreas.length,
+        archived: 0,
+      });
+
+      // Archive original + linked items
+      const now = new Date().toISOString();
+      storage.updateArea(areaId, { archived: 1, archivedAt: now } as any);
+      sqlite.prepare("UPDATE identities SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
+      sqlite.prepare("UPDATE projects SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
+      sqlite.prepare("UPDATE habits SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
+      sqlite.prepare("UPDATE actions SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
+
+      const identitiesArchived = sqlite.prepare("SELECT COUNT(*) as c FROM identities WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
+      const projectsArchived = sqlite.prepare("SELECT COUNT(*) as c FROM projects WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
+      const habitsArchived = sqlite.prepare("SELECT COUNT(*) as c FROM habits WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
+      const tasksArchived = sqlite.prepare("SELECT COUNT(*) as c FROM actions WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
+
+      res.json({
+        newArea,
+        archivedCounts: {
+          identities: identitiesArchived?.c || 0,
+          projects: projectsArchived?.c || 0,
+          habits: habitsArchived?.c || 0,
+          tasks: tasksArchived?.c || 0,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Internal server error" });
+    }
+  });
+
+  // ============================================================
   // PROJECTS
   // ============================================================
   app.get("/api/projects", (_req, res) => {

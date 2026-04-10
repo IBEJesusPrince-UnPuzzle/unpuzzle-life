@@ -6,16 +6,39 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
-  Compass, Plus, Pencil, Trash2, X, ArrowLeft, Archive,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
+  Compass, Plus, Pencil, ArrowLeft, MoreHorizontal, Clock, Archive, Copy,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { usePreferences } from "@/hooks/use-preferences";
 import type { Area } from "@shared/schema";
 
 type ClarityView =
   | { type: "board" }
   | { type: "writer"; areaId: number; isNew?: boolean };
+
+// ============================================================
+// HELPER: format ISO timestamp for display
+// ============================================================
+function formatSnapshotDate(iso: string, timeFormat: "12h" | "24h"): string {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const h = d.getHours();
+  const m = d.getMinutes().toString().padStart(2, "0");
+  if (timeFormat === "24h") {
+    return `${date} at ${h.toString().padStart(2, "0")}:${m}`;
+  }
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${date} at ${h12}:${m} ${ampm}`;
+}
 
 // ============================================================
 // INLINE AREA CREATE
@@ -78,91 +101,471 @@ function InlineAreaCreate({
 }
 
 // ============================================================
-// AREA VISION CARD
+// VISION EDITOR DIALOG
+// ============================================================
+function VisionEditorDialog({
+  area,
+  open,
+  onOpenChange,
+}: {
+  area: Area;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [visionText, setVisionText] = useState(area.visionText || "");
+  const [note, setNote] = useState("");
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (open) {
+      setVisionText(area.visionText || "");
+      setNote("");
+    }
+  }, [open, area.visionText]);
+
+  const saveVision = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/areas/${area.id}/vision`, {
+        vision: visionText,
+        note: note.trim() || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/areas"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/areas/${area.id}/snapshots`] });
+      toast({ title: "Vision updated. Snapshot saved." });
+      onOpenChange(false);
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Vision</DialogTitle>
+          <DialogDescription>
+            Update the vision for <span className="font-medium text-foreground">{area.name}</span>. The area name cannot be changed.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">Area</label>
+            <div className="mt-1">
+              <Badge variant="secondary" className="text-sm">{area.name}</Badge>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium">Vision / Description</label>
+            <Textarea
+              value={visionText}
+              onChange={(e) => setVisionText(e.target.value)}
+              placeholder={`My ${area.name} is...`}
+              className="mt-1 min-h-[200px] resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">Reason for change (optional)</label>
+            <Input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Why the change? (optional)"
+              className="mt-1"
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={() => saveVision.mutate()} disabled={saveVision.isPending}>
+            Save vision
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
+// ARCHIVE CONFIRMATION MODAL
+// ============================================================
+function ArchiveModal({
+  area,
+  open,
+  onOpenChange,
+}: {
+  area: Area;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [confirmText, setConfirmText] = useState("");
+  const { toast } = useToast();
+
+  const { data: preview } = useQuery({
+    queryKey: [`/api/areas/${area.id}/archive-preview`],
+    queryFn: () => apiRequest("GET", `/api/areas/${area.id}/archive-preview`).then(r => r.json()),
+    enabled: open,
+  });
+
+  useEffect(() => {
+    if (open) setConfirmText("");
+  }, [open]);
+
+  const archiveMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/areas/${area.id}/archive`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/areas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/habits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/actions"] });
+      toast({ title: `${area.name} has been archived.` });
+      onOpenChange(false);
+    },
+  });
+
+  const nameMatches = confirmText.trim() === area.name;
+  const hasLinkedItems = preview && (
+    preview.identities?.length > 0 || preview.projects?.length > 0 ||
+    preview.habits?.length > 0 || preview.tasks?.length > 0
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-destructive">Archive {area.name}</DialogTitle>
+          <DialogDescription>
+            This will archive this area and all linked items. They will no longer appear in active views.
+          </DialogDescription>
+        </DialogHeader>
+
+        {preview && (
+          <div className="space-y-2 text-sm">
+            {hasLinkedItems ? (
+              <>
+                <p className="font-medium">Archiving <span className="text-foreground">{area.name}</span> will also archive:</p>
+                {preview.identities?.length > 0 && (
+                  <p>
+                    <span className="text-muted-foreground">{preview.identities.length} {preview.identities.length === 1 ? "Identity" : "Identities"}:</span>{" "}
+                    {preview.identities.map((i: any) => i.name).join(", ")}
+                  </p>
+                )}
+                {preview.projects?.length > 0 && (
+                  <p>
+                    <span className="text-muted-foreground">{preview.projects.length} {preview.projects.length === 1 ? "Project" : "Projects"}:</span>{" "}
+                    {preview.projects.map((p: any) => p.name).join(", ")}
+                  </p>
+                )}
+                {preview.habits?.length > 0 && (
+                  <p>
+                    <span className="text-muted-foreground">{preview.habits.length} {preview.habits.length === 1 ? "Habit" : "Habits"}:</span>{" "}
+                    {preview.habits.map((h: any) => h.name).join(", ")}
+                  </p>
+                )}
+                {preview.tasks?.length > 0 && (
+                  <p>
+                    <span className="text-muted-foreground">{preview.tasks.length} {preview.tasks.length === 1 ? "Task" : "Tasks"}:</span>{" "}
+                    {preview.tasks.map((t: any) => t.name).join(", ")}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-muted-foreground">No linked items will be affected.</p>
+            )}
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Type <span className="font-bold">{area.name}</span> to confirm</label>
+          <Input
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder={area.name}
+          />
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            variant="destructive"
+            onClick={() => archiveMutation.mutate()}
+            disabled={!nameMatches || archiveMutation.isPending}
+          >
+            Archive
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
+// DUPLICATE & ARCHIVE MODAL
+// ============================================================
+function DuplicateArchiveModal({
+  area,
+  areas,
+  open,
+  onOpenChange,
+}: {
+  area: Area;
+  areas: Area[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [newName, setNewName] = useState(area.name);
+  const [confirmText, setConfirmText] = useState("");
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (open) {
+      setNewName(area.name);
+      setConfirmText("");
+    }
+  }, [open, area.name]);
+
+  const duplicateMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", `/api/areas/${area.id}/duplicate-and-archive`, { newName: newName.trim() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/areas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/habits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/actions"] });
+      toast({ title: `${area.name} archived. New area '${newName.trim()}' created.` });
+      onOpenChange(false);
+    },
+    onError: (err: any) => {
+      toast({ title: err?.message || "Failed to duplicate and archive." });
+    },
+  });
+
+  const nameMatches = confirmText.trim() === area.name;
+  const nameCollision = areas.some(
+    a => a.id !== area.id && a.name.toLowerCase() === newName.trim().toLowerCase()
+  );
+  const canSubmit = nameMatches && newName.trim().length > 0 && !nameCollision;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Duplicate & Archive</DialogTitle>
+          <DialogDescription>
+            This will create a copy of <span className="font-medium text-foreground">{area.name}</span> and archive the original.
+            The copy starts fresh with no linked items.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium">New area name</label>
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="New area name"
+              className="mt-1"
+            />
+            {nameCollision && (
+              <p className="text-xs text-destructive mt-1">An area with this name already exists.</p>
+            )}
+          </div>
+
+          <div>
+            <label className="text-sm font-medium">Type <span className="font-bold">{area.name}</span> to confirm archiving the original</label>
+            <Input
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder={area.name}
+              className="mt-1"
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            onClick={() => duplicateMutation.mutate()}
+            disabled={!canSubmit || duplicateMutation.isPending}
+          >
+            Duplicate & Archive
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
+// SNAPSHOT HISTORY TIMELINE
+// ============================================================
+function SnapshotTimeline({
+  areaId,
+  expanded,
+  onToggle,
+}: {
+  areaId: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const { data: prefs } = usePreferences();
+  const timeFormat = (prefs?.timeFormat as "12h" | "24h") || "12h";
+
+  const { data: snapshots = [] } = useQuery({
+    queryKey: [`/api/areas/${areaId}/snapshots`],
+    queryFn: () => apiRequest("GET", `/api/areas/${areaId}/snapshots`).then(r => r.json()),
+    enabled: expanded,
+  });
+
+  if (!expanded || snapshots.length === 0) return null;
+
+  return (
+    <div className="mt-2 border rounded-lg bg-muted/30 p-3 space-y-3 animate-in slide-in-from-top-2 duration-200">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-muted-foreground">Vision History</p>
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggle(); }}
+          className="text-xs text-muted-foreground hover:text-foreground"
+        >
+          Close
+        </button>
+      </div>
+      <div className="space-y-3">
+        {snapshots.map((snap: any) => (
+          <div key={snap.id} className="border-l-2 border-muted-foreground/20 pl-3">
+            <p className="text-xs text-muted-foreground">
+              {formatSnapshotDate(snap.changedAt, timeFormat)}
+            </p>
+            <p className="text-sm mt-0.5">{snap.previousVision}</p>
+            {snap.note && (
+              <p className="text-xs text-muted-foreground italic mt-0.5">{snap.note}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// AREA VISION CARD (redesigned)
 // ============================================================
 function AreaVisionCard({
   area,
+  areas,
   onClick,
-  onEdit,
-  onDelete,
-  onArchive,
 }: {
   area: Area;
+  areas: Area[];
   onClick: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  onArchive: () => void;
 }) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+
+  // Get snapshot count for badge
+  const { data: snapshots = [] } = useQuery({
+    queryKey: [`/api/areas/${area.id}/snapshots`],
+    queryFn: () => apiRequest("GET", `/api/areas/${area.id}/snapshots`).then(r => r.json()),
+  });
+
+  const snapshotCount = snapshots.length;
 
   return (
-    <Card
-      className="cursor-pointer hover:shadow-md transition-shadow"
-      onClick={onClick}
-    >
-      <CardContent className="p-5">
-        <div className="flex justify-between items-start">
-          <p className="text-base font-semibold">{area.name}</p>
-          <div
-            className="flex items-center gap-1"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={onArchive}
-              className="p-1 text-muted-foreground hover:text-amber-500 transition-colors"
-              title={area.archived ? "Unarchive" : "Archive"}
-            >
-              <Archive className="w-3.5 h-3.5" />
-            </button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0"
-              onClick={onEdit}
-            >
-              <Pencil className="w-3 h-3" />
-            </Button>
-            {confirmDelete ? (
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-destructive h-7 text-xs"
-                  onClick={onDelete}
+    <>
+      <Card
+        className="cursor-pointer hover:shadow-md transition-shadow"
+        onClick={onClick}
+      >
+        <CardContent className="p-5">
+          <div className="flex justify-between items-start">
+            <div className="flex items-center gap-2">
+              <p className="text-base font-semibold">{area.name}</p>
+              {/* History badge */}
+              {snapshotCount > 0 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setHistoryExpanded(!historyExpanded);
+                  }}
+                  className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  title="View vision history"
                 >
-                  Confirm
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0"
-                  onClick={() => setConfirmDelete(false)}
-                >
-                  <X className="w-3 h-3" />
-                </Button>
-              </div>
-            ) : (
+                  <Clock className="w-3 h-3" />
+                  <span>{snapshotCount}</span>
+                </button>
+              )}
+            </div>
+            <div
+              className="flex items-center gap-1"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Pencil icon → vision editor */}
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-destructive h-7 w-7 p-0"
-                onClick={() => setConfirmDelete(true)}
+                className="h-7 w-7 p-0"
+                onClick={() => setEditOpen(true)}
+                title="Edit vision"
               >
-                <Trash2 className="w-3 h-3" />
+                <Pencil className="w-3 h-3" />
               </Button>
-            )}
+
+              {/* Three-dot menu */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                    <MoreHorizontal className="w-3.5 h-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setDuplicateOpen(true)}>
+                    <Copy className="w-3.5 h-3.5 mr-2" />
+                    Duplicate & Archive
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => setArchiveOpen(true)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Archive className="w-3.5 h-3.5 mr-2" />
+                    Archive
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
-        </div>
-        {area.visionText && (
-          <div className="relative mt-2">
-            <p className="text-sm text-muted-foreground line-clamp-4">
-              {area.visionText}
-            </p>
-            <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-card to-transparent pointer-events-none" />
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          {area.visionText && (
+            <div className="relative mt-2">
+              <p className="text-sm text-muted-foreground line-clamp-4">
+                {area.visionText}
+              </p>
+              <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-card to-transparent pointer-events-none" />
+            </div>
+          )}
+
+          {/* Inline snapshot timeline */}
+          {historyExpanded && (
+            <div onClick={(e) => e.stopPropagation()}>
+              <SnapshotTimeline
+                areaId={area.id}
+                expanded={historyExpanded}
+                onToggle={() => setHistoryExpanded(false)}
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Dialogs */}
+      <VisionEditorDialog area={area} open={editOpen} onOpenChange={setEditOpen} />
+      <ArchiveModal area={area} open={archiveOpen} onOpenChange={setArchiveOpen} />
+      <DuplicateArchiveModal area={area} areas={areas} open={duplicateOpen} onOpenChange={setDuplicateOpen} />
+    </>
   );
 }
 
@@ -177,23 +580,9 @@ function VisionBoard({
   onOpenWriter: (areaId: number, isNew?: boolean) => void;
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
-  const [showArchived, setShowArchived] = useState(false);
-  const visibleAreas = areas.filter(a => showArchived ? a.archived : !a.archived);
-  const areasWithVision = visibleAreas.filter((a) => a.visionText);
-  const areasWithoutVision = visibleAreas.filter((a) => !a.visionText);
+  const areasWithVision = areas.filter((a) => a.visionText);
+  const areasWithoutVision = areas.filter((a) => !a.visionText);
   const isEmpty = areasWithVision.length === 0;
-
-  const deleteArea = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/areas/${id}`),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["/api/areas"] }),
-  });
-
-  const archiveArea = useMutation({
-    mutationFn: ({ id, archived }: { id: number; archived: number }) =>
-      apiRequest("PATCH", `/api/areas/${id}`, { archived: archived ? 0 : 1 }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/areas"] }),
-  });
 
   // Empty state (State 1)
   if (isEmpty && !showAddForm && areasWithoutVision.length === 0) {
@@ -307,15 +696,12 @@ function VisionBoard({
       {/* Area vision cards */}
       <div className="space-y-4">
         {areasWithVision.map((area) => (
-          <div key={area.id} className={area.archived ? "opacity-50" : ""}>
-            <AreaVisionCard
-              area={area}
-              onClick={() => onOpenWriter(area.id)}
-              onEdit={() => onOpenWriter(area.id)}
-              onDelete={() => deleteArea.mutate(area.id)}
-              onArchive={() => archiveArea.mutate({ id: area.id, archived: area.archived ?? 0 })}
-            />
-          </div>
+          <AreaVisionCard
+            key={area.id}
+            area={area}
+            areas={areas}
+            onClick={() => onOpenWriter(area.id)}
+          />
         ))}
       </div>
 
@@ -333,7 +719,7 @@ function VisionBoard({
                   {area.name}
                 </p>
                 <span className="text-xs text-muted-foreground">
-                  Add your vision →
+                  Add your vision &rarr;
                 </span>
               </CardContent>
             </Card>
@@ -360,16 +746,6 @@ function VisionBoard({
           <Plus className="w-4 h-4 mr-1.5" /> Add another area
         </Button>
       )}
-
-      {areas.some(a => a.archived) && (
-        <button
-          onClick={() => setShowArchived(!showArchived)}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 mt-2"
-        >
-          <Archive className="w-3 h-3" />
-          {showArchived ? "Hide archived" : `Show archived (${areas.filter(a => a.archived).length})`}
-        </button>
-      )}
     </div>
   );
 }
@@ -395,11 +771,12 @@ function VisionWriter({
 
   const saveVision = useMutation({
     mutationFn: () =>
-      apiRequest("PATCH", `/api/areas/${area.id}`, {
-        visionText,
+      apiRequest("PATCH", `/api/areas/${area.id}/vision`, {
+        vision: visionText,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/areas"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/areas/${area.id}/snapshots`] });
       toast({ title: "Vision saved." });
       onBack();
     },

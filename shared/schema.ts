@@ -47,6 +47,16 @@ export const areas = sqliteTable("areas", {
   icon: text("icon"), // lucide icon name
   sortOrder: integer("sort_order").notNull().default(0),
   archived: integer("archived").notNull().default(0), // 1 = archived, 0 = active
+  archivedAt: text("archived_at"), // ISO 8601 timestamp
+});
+
+// Area Vision Snapshots (history of vision changes)
+export const areaVisionSnapshots = sqliteTable("area_vision_snapshots", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  areaId: integer("area_id").notNull().references(() => areas.id),
+  previousVision: text("previous_vision").notNull(),
+  note: text("note"),
+  changedAt: text("changed_at").notNull(), // ISO 8601 timestamp
 });
 
 // C1: Identity (projects & routines derived from identities)
@@ -61,6 +71,8 @@ export const projects = sqliteTable("projects", {
   status: text("status").notNull().default("active"), // active, completed, someday, deferred
   dueDate: text("due_date"),
   createdAt: text("created_at").notNull(),
+  archived: integer("archived").notNull().default(0),
+  archivedAt: text("archived_at"),
 });
 
 // Ground: Next Actions
@@ -77,6 +89,8 @@ export const actions = sqliteTable("actions", {
   completed: integer("completed").notNull().default(0),
   completedAt: text("completed_at"),
   createdAt: text("created_at").notNull(),
+  archived: integer("archived").notNull().default(0),
+  archivedAt: text("archived_at"),
 });
 
 // ============================================================
@@ -119,6 +133,8 @@ export const identities = sqliteTable("identities", {
   envThingWhy: text("env_thing_why"),
 
   createdAt: text("created_at").notNull(),
+  archived: integer("archived").notNull().default(0),
+  archivedAt: text("archived_at"),
 });
 
 // Habits linked to identities
@@ -137,6 +153,8 @@ export const habits = sqliteTable("habits", {
   createdAt: text("created_at").notNull(),
   areaId: integer("area_id").references(() => areas.id),
   timeOfDay: text("time_of_day"), // time-of-day category string
+  archived: integer("archived").notNull().default(0),
+  archivedAt: text("archived_at"),
 });
 
 // Daily habit completions
@@ -376,6 +394,7 @@ export const insertPurposeSchema = createInsertSchema(purposes).omit({ id: true 
 export const insertVisionSchema = createInsertSchema(visions).omit({ id: true });
 export const insertGoalSchema = createInsertSchema(goals).omit({ id: true });
 export const insertAreaSchema = createInsertSchema(areas).omit({ id: true });
+export const insertAreaVisionSnapshotSchema = createInsertSchema(areaVisionSnapshots).omit({ id: true });
 export const insertProjectSchema = createInsertSchema(projects).omit({ id: true });
 export const insertActionSchema = createInsertSchema(actions).omit({ id: true });
 export const insertIdentitySchema = createInsertSchema(identities).omit({ id: true });
@@ -397,6 +416,8 @@ export type Goal = typeof goals.$inferSelect;
 export type InsertGoal = z.infer<typeof insertGoalSchema>;
 export type Area = typeof areas.$inferSelect;
 export type InsertArea = z.infer<typeof insertAreaSchema>;
+export type AreaVisionSnapshot = typeof areaVisionSnapshots.$inferSelect;
+export type InsertAreaVisionSnapshot = z.infer<typeof insertAreaVisionSnapshotSchema>;
 export type Project = typeof projects.$inferSelect;
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type Action = typeof actions.$inferSelect;
