@@ -933,30 +933,39 @@ export class DatabaseStorage implements IStorage {
     sqlite.exec("UPDATE preferences SET display_name = '', time_format = '12h'");
   }
 
-  // Export
+  // Export — use raw SQL SELECT * to avoid Drizzle schema mismatch with live DB
   getAllDataForExport(): Record<string, any[]> {
-    return {
-      purposes: db.select().from(purposes).all(),
-      visions: db.select().from(visions).all(),
-      goals: db.select().from(goals).all(),
-      areas: db.select().from(areas).all(),
-      projects: db.select().from(projects).all(),
-      actions: db.select().from(actions).all(),
-      identities: db.select().from(identities).all(),
-      habits: db.select().from(habits).all(),
-      habitLogs: db.select().from(habitLogs).all(),
-      routineItems: db.select().from(routineItems).all(),
-      routineLogs: db.select().from(routineLogs).all(),
-      plannerTasks: db.select().from(plannerTasks).all(),
-      inboxItems: db.select().from(inboxItems).all(),
-      weeklyReviews: db.select().from(weeklyReviews).all(),
-      environmentEntities: db.select().from(environmentEntities).all(),
-      beliefs: db.select().from(beliefs).all(),
-      antiHabits: db.select().from(antiHabits).all(),
-      immutableLaws: db.select().from(immutableLaws).all(),
-      immutableLawLogs: db.select().from(immutableLawLogs).all(),
-      wizardState: db.select().from(wizardState).all(),
+    const tableMap: Record<string, string> = {
+      purposes: "purposes",
+      visions: "visions",
+      goals: "goals",
+      areas: "areas",
+      projects: "projects",
+      actions: "actions",
+      identities: "identities",
+      habits: "habits",
+      habitLogs: "habit_logs",
+      routineItems: "routine_items",
+      routineLogs: "routine_logs",
+      plannerTasks: "planner_tasks",
+      inboxItems: "inbox_items",
+      weeklyReviews: "weekly_reviews",
+      environmentEntities: "environment_entities",
+      beliefs: "beliefs",
+      antiHabits: "anti_habits",
+      immutableLaws: "immutable_laws",
+      immutableLawLogs: "immutable_law_logs",
+      wizardState: "wizard_state",
     };
+    const result: Record<string, any[]> = {};
+    for (const [key, sqlName] of Object.entries(tableMap)) {
+      try {
+        result[key] = sqlite.prepare(`SELECT * FROM ${sqlName}`).all();
+      } catch {
+        result[key] = [];
+      }
+    }
+    return result;
   }
 }
 
