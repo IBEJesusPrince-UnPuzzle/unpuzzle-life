@@ -1,7 +1,15 @@
 import type { Express } from "express";
 import type { Server } from "http";
+import multer from "multer";
 import { storage, sqlite } from "./storage";
 import { requireAuth, getEffectiveUserId } from "./auth";
+import { exportWorkbook, importWorkbook, importSingleCsv, generateCsvTemplate, getSheetNames, getLeafTables } from "./xlsx-io";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename_routes = typeof __filename !== "undefined" ? __filename : fileURLToPath(import.meta.url);
+const __dirname_routes = path.dirname(__filename_routes);
 import {
   insertPurposeSchema, insertVisionSchema, insertGoalSchema,
   insertAreaSchema, insertProjectSchema, insertActionSchema,
@@ -1804,7 +1812,87 @@ export function registerRoutes(server: Server, app: Express) {
   });
 
   // ============================================================
-  // EXPORT
+  // XLSX EXPORT / IMPORT (new workbook system)
+  // ============================================================
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+  // Export styled XLSX workbook
+  app.get("/api/export/xlsx", async (req, res) => {
+    try {
+      const userId = getEffectiveUserId(req);
+      const buf = await exportWorkbook(userId);
+      const dateStr = new Date().toISOString().split("T")[0];
+      res.setHeader("Content-Disposition", `attachment; filename="unpuzzle-life-export-${dateStr}.xlsx"`);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.send(buf);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Download blank template
+  app.get("/api/export/template", (_req, res) => {
+    const candidates = [
+      path.join(process.cwd(), "server", "templates", "unpuzzle-life-template.xlsx"),
+      path.join(process.cwd(), "dist", "templates", "unpuzzle-life-template.xlsx"),
+      path.join(__dirname_routes, "templates", "unpuzzle-life-template.xlsx"),
+      path.join(__dirname_routes, "..", "server", "templates", "unpuzzle-life-template.xlsx"),
+    ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        res.setHeader("Content-Disposition", 'attachment; filename="unpuzzle-life-template.xlsx"');
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        return res.sendFile(p);
+      }
+    }
+    res.status(404).json({ error: "Template not found" });
+  });
+
+  // Download single-table CSV template
+  app.get("/api/export/csv-template/:sheetName", (req, res) => {
+    const sheetName = req.params.sheetName;
+    const csv = generateCsvTemplate(sheetName);
+    if (!csv) return res.status(404).json({ error: `Unknown table: ${sheetName}` });
+    const safeName = sheetName.toLowerCase().replace(/\s+/g, "-");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}-template.csv"`);
+    res.setHeader("Content-Type", "text/csv");
+    res.send(csv);
+  });
+
+  // Full workbook import (XLSX)
+  app.post("/api/import/xlsx", upload.single("file"), (req, res) => {
+    try {
+      const userId = getEffectiveUserId(req);
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+      const result = importWorkbook(req.file.buffer, userId);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Single-table CSV import
+  app.post("/api/import/csv", upload.single("file"), (req, res) => {
+    try {
+      const userId = getEffectiveUserId(req);
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+      const sheetName = req.body.sheetName;
+      const mode = req.body.mode === "replace" ? "replace" : "add";
+      if (!sheetName) return res.status(400).json({ error: "sheetName is required" });
+      const result = importSingleCsv(req.file.buffer, sheetName, mode as "add" | "replace", userId);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get available sheet names and leaf tables
+  app.get("/api/import/meta", (_req, res) => {
+    res.json({ sheets: getSheetNames(), leafTables: getLeafTables() });
+  });
+
+  // ============================================================
+  // EXPORT (legacy — kept as fallback)
   // ============================================================
   app.get("/api/export/json", (req, res) => {
     const userId = getEffectiveUserId(req);
