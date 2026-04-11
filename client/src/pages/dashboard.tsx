@@ -460,6 +460,15 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
+            <div className="text-xs text-muted-foreground mb-2">
+              {(() => {
+                const d = new Date(today + "T12:00:00");
+                const todayCheck = getToday();
+                const label = today === todayCheck ? "Today" : d.toLocaleDateString("en-US", { weekday: "long" });
+                const dateStr = d.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+                return `${label}, ${dateStr}`;
+              })()}
+            </div>
             <div className="space-y-2">
               {activeLaws.map((law: any) => {
                 const log = lawLogs.find((l: any) => l.immutableLawId === law.id);
