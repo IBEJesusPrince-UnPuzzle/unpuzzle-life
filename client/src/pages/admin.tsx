@@ -250,7 +250,7 @@ function InvitationsTab() {
                 <TableRow>
                   <TableHead>Email</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Token</TableHead>
+                  <TableHead>Invite Link</TableHead>
                   <TableHead>Expires</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -265,20 +265,20 @@ function InvitationsTab() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <code className="text-xs bg-muted px-1 py-0.5 rounded break-all">
-                        {inv.token.slice(0, 12)}...
-                      </code>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="ml-1 h-6 text-xs"
-                        onClick={() => {
-                          navigator.clipboard.writeText(inv.token);
-                          toast({ title: "Token copied to clipboard" });
-                        }}
-                      >
-                        Copy
-                      </Button>
+                      <div className="flex flex-col gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            const link = `${window.location.origin}/#/register?token=${inv.token}`;
+                            navigator.clipboard.writeText(link);
+                            toast({ title: "Invite link copied to clipboard" });
+                          }}
+                        >
+                          Copy Invite Link
+                        </Button>
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {new Date(inv.expiresAt).toLocaleDateString()}

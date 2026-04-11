@@ -74,9 +74,14 @@ function AuthGuard() {
   }
 
   if (!user) {
+    // Check hash for register route (query params in hash break wouter matching)
+    const hash = window.location.hash || "";
+    const hashPath = hash.replace(/^#/, "").split("?")[0];
+    if (hashPath === "/register") {
+      return <RegisterPage />;
+    }
     return (
       <Switch>
-        <Route path="/register" component={RegisterPage} />
         <Route path="/login" component={AuthPage} />
         <Route>
           <Redirect to="/login" />
