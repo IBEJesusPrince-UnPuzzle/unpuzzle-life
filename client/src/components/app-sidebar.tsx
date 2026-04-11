@@ -1,75 +1,85 @@
 import {
-  LayoutDashboard, Inbox, Layers, Target, RotateCcw,
-  Sun, Moon, Puzzle, CalendarDays, Timer, Upload
-} from "lucide-react";
-import { Link, useLocation } from "wouter";
-import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
   SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
-  SidebarHeader, SidebarFooter,
+  SidebarHeader, SidebarFooter, SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { useQuery } from "@tanstack/react-query";
-import { Badge } from "@/components/ui/badge";
-import { apiRequest } from "@/lib/queryClient";
+import { Link } from "wouter";
+import { useHashLocation } from "wouter/use-hash-location";
+import { useState, useEffect } from "react";
+import {
+  LayoutDashboard, Layers, Puzzle, RotateCcw, Database, Sun, Moon,
+} from "lucide-react";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Inbox", url: "/inbox", icon: Inbox },
-  { title: "Routine", url: "/routine", icon: Timer },
-  { title: "Agenda", url: "/planner", icon: CalendarDays },
-  { title: "Weekly Review", url: "/review", icon: RotateCcw },
   { title: "Clarity", url: "/horizons", icon: Layers },
-  { title: "Import", url: "/import", icon: Upload },
+  { title: "UnPuzzle", url: "/unpuzzle", icon: Puzzle },
+  { title: "Weekly Review", url: "/review", icon: RotateCcw },
+  { title: "Data", url: "/data", icon: Database },
 ];
 
-export function AppSidebar({ isDark, toggleTheme }: { isDark: boolean; toggleTheme: () => void }) {
-  const [location] = useLocation();
+export function AppSidebar() {
+  const [location] = useHashLocation();
 
-  const { data: stats } = useQuery<{
-    inboxCount: number;
-    pendingActions: number;
-    habitsCompletedToday: number;
-    totalActiveHabits: number;
-  }>({
-    queryKey: ["/api/stats"],
-    refetchInterval: 30000,
+  const [isDark, setIsDark] = useState(() => {
+    const stored = localStorage.getItem("theme");
+    if (stored) return stored === "dark";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
   });
 
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", isDark);
+  }, [isDark]);
+
+  const toggleTheme = () => {
+    const next = !isDark;
+    setIsDark(next);
+    localStorage.setItem("theme", next ? "dark" : "light");
+  };
+
   return (
-    <Sidebar>
-      <SidebarHeader className="p-4">
-        <Link href="/" className="flex items-center gap-2.5 group" data-testid="link-home">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <Puzzle className="w-4.5 h-4.5 text-primary-foreground" />
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="p-4 group-data-[collapsible=icon]:p-2">
+        <Link
+          href="/"
+          className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center"
+        >
+          <img
+            src="/unpuzzle-logo.png"
+            alt="Logo"
+            className="w-8 h-8 rounded-lg object-cover shrink-0"
+          />
+          <div className="group-data-[collapsible=icon]:hidden">
+            <span className="font-semibold text-sm text-sidebar-foreground">
+              UnPuzzle Life
+            </span>
+            <span className="block text-[11px] text-sidebar-foreground/60">
+              Life OS
+            </span>
           </div>
-          <span className="font-semibold text-base tracking-tight">UnPuzzle Life</span>
         </Link>
       </SidebarHeader>
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70 px-3">
-            Navigate
-          </SidebarGroupLabel>
+          <SidebarGroupLabel>Navigate</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
-                const isActive = location === item.url || (item.url !== "/" && location.startsWith(item.url));
+                const isActive =
+                  item.url === "/"
+                    ? location === "/"
+                    : location.startsWith(item.url);
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
                       asChild
                       isActive={isActive}
-                      data-testid={`nav-${item.title.toLowerCase()}`}
+                      data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
                     >
                       <Link href={item.url}>
                         <item.icon className="w-4 h-4" />
-                        <span className="flex-1">{item.title}</span>
-                        {item.title === "Inbox" && stats?.inboxCount ? (
-                          <Badge variant="secondary" className="ml-auto text-xs h-5 min-w-5 justify-center px-1.5">
-                            {stats.inboxCount}
-                          </Badge>
-                        ) : null}
+                        <span>{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -81,14 +91,26 @@ export function AppSidebar({ isDark, toggleTheme }: { isDark: boolean; toggleThe
       </SidebarContent>
 
       <SidebarFooter className="p-3">
-        <button
-          onClick={toggleTheme}
-          className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors w-full"
-          data-testid="button-theme-toggle"
-        >
-          {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          <span>{isDark ? "Light mode" : "Dark mode"}</span>
-        </button>
+        <div className="flex items-center justify-between">
+          <button
+            onClick={toggleTheme}
+            className="flex items-center gap-1.5 text-[11px] text-sidebar-foreground"
+            data-testid="button-theme-toggle"
+          >
+            {isDark ? (
+              <Sun className="w-4 h-4" />
+            ) : (
+              <Moon className="w-4 h-4" />
+            )}
+            <span className="group-data-[collapsible=icon]:hidden">
+              {isDark ? "Light mode" : "Dark mode"}
+            </span>
+          </button>
+
+          <SidebarTrigger
+            className="h-8 w-8 shrink-0 rounded-md border border-sidebar-border bg-sidebar"
+          />
+        </div>
       </SidebarFooter>
     </Sidebar>
   );
