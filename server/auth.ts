@@ -111,27 +111,50 @@ export function setupAuth(app: Express) {
 }
 
 function seedSuperAdmin() {
-  const allUsers = storage.getAllUsers();
-  if (allUsers.length > 0) return;
-
   const email = (process.env.ADMIN_EMAIL || "ibejesusprince@gmail.com").toLowerCase().trim();
   const password = process.env.ADMIN_PASSWORD || crypto.randomBytes(16).toString("hex");
   const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
 
-  storage.createUser({
-    email,
-    passwordHash,
-    displayName: "Super Admin",
-    role: "super_admin",
-    status: "active",
-    createdAt: new Date().toISOString(),
-  });
+  const allUsers = storage.getAllUsers();
 
-  if (!process.env.ADMIN_PASSWORD) {
-    console.log(`\n=== Super Admin Created ===`);
-    console.log(`Email: ${email}`);
-    console.log(`Password: ${password}`);
-    console.log(`(Set ADMIN_PASSWORD env var to use a fixed password)\n`);
+  if (allUsers.length === 0) {
+    // First run — create Super Admin
+    storage.createUser({
+      email,
+      passwordHash,
+      displayName: "Super Admin",
+      role: "super_admin",
+      status: "active",
+      createdAt: new Date().toISOString(),
+    });
+
+    if (!process.env.ADMIN_PASSWORD) {
+      console.log(`\n=== Super Admin Created ===`);
+      console.log(`Email: ${email}`);
+      console.log(`Password: ${password}`);
+      console.log(`(Set ADMIN_PASSWORD env var to use a fixed password)\n`);
+    }
+    return;
+  }
+
+  // Sync existing Super Admin with env vars (handles credential changes)
+  if (process.env.ADMIN_EMAIL || process.env.ADMIN_PASSWORD) {
+    const superAdmin = allUsers.find(u => u.role === "super_admin");
+    if (superAdmin) {
+      const needsUpdate = 
+        (process.env.ADMIN_EMAIL && superAdmin.email !== email) ||
+        (process.env.ADMIN_PASSWORD && !bcrypt.compareSync(password, superAdmin.passwordHash || ""));
+
+      if (needsUpdate) {
+        storage.updateUser(superAdmin.id, {
+          email,
+          passwordHash,
+        } as any);
+        console.log(`\n=== Super Admin Updated ===`);
+        console.log(`Email: ${email}`);
+        console.log(`Password synced from ADMIN_PASSWORD env var\n`);
+      }
+    }
   }
 }
 
