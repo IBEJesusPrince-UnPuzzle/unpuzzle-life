@@ -649,8 +649,6 @@ export interface IStorage {
   // Reset
   resetDatabase(userId: number): void;
 
-  // Export
-  getAllDataForExport(userId: number): Record<string, any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1086,41 +1084,6 @@ export class DatabaseStorage implements IStorage {
     sqlite.exec(`UPDATE preferences SET display_name = '', time_format = '12h' WHERE user_id = ${userId}`);
   }
 
-  // Export — use raw SQL SELECT * to avoid Drizzle schema mismatch with live DB
-  getAllDataForExport(userId: number): Record<string, any[]> {
-    const tableMap: Record<string, string> = {
-      purposes: "purposes",
-      visions: "visions",
-      goals: "goals",
-      areas: "areas",
-      projects: "projects",
-      actions: "actions",
-      identities: "identities",
-      habits: "habits",
-      habitLogs: "habit_logs",
-      routineItems: "routine_items",
-      routineLogs: "routine_logs",
-      plannerTasks: "planner_tasks",
-      inboxItems: "inbox_items",
-      weeklyReviews: "weekly_reviews",
-      environmentEntities: "environment_entities",
-      beliefs: "beliefs",
-      antiHabits: "anti_habits",
-      immutableLaws: "immutable_laws",
-      immutableLawLogs: "immutable_law_logs",
-      wizardState: "wizard_state",
-      areaVisionSnapshots: "area_vision_snapshots",
-    };
-    const result: Record<string, any[]> = {};
-    for (const [key, sqlName] of Object.entries(tableMap)) {
-      try {
-        result[key] = sqlite.prepare(`SELECT * FROM ${sqlName} WHERE user_id = ?`).all(userId);
-      } catch {
-        result[key] = [];
-      }
-    }
-    return result;
-  }
 }
 
 export const storage = new DatabaseStorage();
