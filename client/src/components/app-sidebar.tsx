@@ -7,8 +7,9 @@ import { Link } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { useState, useEffect } from "react";
 import {
-  LayoutDashboard, Layers, Puzzle, RotateCcw, Database, Sun, Moon,
+  LayoutDashboard, Layers, Puzzle, RotateCcw, Database, Sun, Moon, Shield, LogOut,
 } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -20,6 +21,7 @@ const navItems = [
 
 export function AppSidebar() {
   const [location] = useHashLocation();
+  const { user, logoutMutation } = useAuth();
 
   const [isDark, setIsDark] = useState(() => {
     const stored = localStorage.getItem("theme");
@@ -90,6 +92,27 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
+      {user?.role === "super_admin" && (
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={location === "/admin"}
+                  data-testid="nav-admin"
+                >
+                  <Link href="/admin">
+                    <Shield className="w-4 h-4" />
+                    <span>Admin</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      )}
+
       <SidebarFooter className="p-3">
         <div className="flex items-center justify-between">
           <button
@@ -111,6 +134,14 @@ export function AppSidebar() {
             className="h-8 w-8 shrink-0 rounded-md border border-sidebar-border bg-sidebar"
           />
         </div>
+        <button
+          onClick={() => logoutMutation.mutate(undefined, { onSuccess: () => { window.location.hash = "#/login"; } })}
+          className="flex items-center gap-1.5 text-[11px] text-sidebar-foreground/60 hover:text-sidebar-foreground mt-2 group-data-[collapsible=icon]:justify-center"
+          data-testid="button-logout"
+        >
+          <LogOut className="w-4 h-4" />
+          <span className="group-data-[collapsible=icon]:hidden">Sign out</span>
+        </button>
       </SidebarFooter>
     </Sidebar>
   );
