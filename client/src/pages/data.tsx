@@ -190,7 +190,7 @@ export default function DataPage() {
   const hasAnyValidation = Object.keys(importValidation).length > 0 && !importValidation._error;
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6 overflow-y-auto h-full">
+    <div className="p-6 max-w-3xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
         <button

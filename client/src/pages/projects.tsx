@@ -12,7 +12,7 @@ export default function ProjectsPage() {
   const projectIdentities = identities.filter(i => i.active && i.areaId != null);
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-2 mb-4">
         <button onClick={() => window.history.back()} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back

@@ -160,7 +160,7 @@ export default function ProjectDetailPage({ id }: { id: number }) {
   const pieceColor = getPieceColor(identity.puzzlePiece);
 
   return (
-    <div className="max-w-4xl mx-auto overflow-y-auto h-full">
+    <div className="max-w-4xl mx-auto">
       <div className="p-6 space-y-6">
       {/* Back button */}
       <div className="flex items-center gap-2 mb-4">

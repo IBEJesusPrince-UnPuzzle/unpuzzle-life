@@ -426,7 +426,7 @@ export function SorterView({ areas, onAreaClick, embedded }: { areas: Area[]; on
   const totalHours = tasks.reduce((sum, t) => sum + (parseFloat(t.hours || "0") || 0), 0);
 
   return (
-    <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4 overflow-y-auto h-full">
+    <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4">
       {!embedded && (
         <div className="flex justify-center mb-3">
           <button onClick={() => window.history.back()} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -1418,7 +1418,7 @@ function AreaDetailView({ areaId, areas, onBack }: { areaId: number; areas: Area
   });
 
   return (
-    <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4 overflow-y-auto h-full">
+    <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4">
       {/* Header */}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" className="h-8 px-2" onClick={onBack}>

@@ -577,7 +577,7 @@ function PieceDetailView({
   });
 
   return (
-    <div className="bg-background overflow-y-auto h-full">
+    <div className="bg-background">
       <div className="max-w-2xl mx-auto px-4 py-6 pb-24 space-y-6">
         {/* Back + header */}
         <button onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -1343,7 +1343,7 @@ export default function UnPuzzlePage() {
   });
 
   return (
-    <div className="overflow-y-auto h-full bg-background">
+    <div className="bg-background">
       <div className="max-w-2xl mx-auto px-4 py-6 pb-24 space-y-6">
         {/* Back */}
         <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">

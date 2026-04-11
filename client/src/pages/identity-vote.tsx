@@ -88,7 +88,7 @@ export default function IdentityVotePage() {
   const noTasks = breakdown.filter(b => b.total === 0 && b.hasRoutine);
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
       {/* Back button — centered pill */}
       <div className="flex justify-center mb-3">
         <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5">

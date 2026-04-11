@@ -141,7 +141,7 @@ export default function RoutinePage({ filterIdentityId }: { filterIdentityId?: n
     : null;
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-5 overflow-y-auto h-full">
+    <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-5">
       <div className="flex justify-center mb-3">
         <button onClick={() => window.history.back()} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back

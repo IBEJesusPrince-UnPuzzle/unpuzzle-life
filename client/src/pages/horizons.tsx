@@ -587,7 +587,7 @@ function VisionBoard({
   // Empty state (State 1)
   if (isEmpty && !showAddForm && areasWithoutVision.length === 0) {
     return (
-      <div className="p-6 max-w-4xl mx-auto h-full flex flex-col">
+      <div className="p-6 max-w-4xl mx-auto flex flex-col">
         <div className="mb-6">
           <Link
             href="/"
@@ -634,7 +634,7 @@ function VisionBoard({
   // Empty state with add form visible
   if (isEmpty && showAddForm && areasWithoutVision.length === 0) {
     return (
-      <div className="p-6 max-w-4xl mx-auto h-full flex flex-col">
+      <div className="p-6 max-w-4xl mx-auto flex flex-col">
         <div className="mb-6">
           <Link
             href="/"
@@ -675,7 +675,7 @@ function VisionBoard({
 
   // Vision board (State 2) — also shown when there are stub areas but no visions
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6 overflow-y-auto h-full">
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div className="mb-6">
         <button
           onClick={() => window.history.back()}
@@ -783,7 +783,7 @@ function VisionWriter({
   });
 
   return (
-    <div className="p-6 max-w-3xl mx-auto h-full flex flex-col">
+    <div className="p-6 max-w-3xl mx-auto flex flex-col">
       {/* Top bar */}
       <div className="flex items-center justify-between mb-8">
         <button
