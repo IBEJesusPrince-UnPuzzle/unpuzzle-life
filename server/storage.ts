@@ -2,11 +2,14 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, and, or, desc, asc, isNull, gte } from "drizzle-orm";
 import {
+  users, invitations,
   purposes, visions, goals, areas, projects, actions,
   identities, habits, habitLogs, inboxItems, weeklyReviews,
   routineItems, routineLogs, plannerTasks, wizardState,
   environmentEntities, beliefs, antiHabits, immutableLaws, immutableLawLogs,
   preferences, areaVisionSnapshots,
+  type User, type InsertUser,
+  type Invitation, type InsertInvitation,
   type Purpose, type InsertPurpose,
   type Vision, type InsertVision,
   type Goal, type InsertGoal,
@@ -61,15 +64,43 @@ function renameColumnIfExists(table: string, oldName: string, newName: string) {
     }
   } catch (_) { /* ignore if table doesn't exist or rename fails */ }
 }
+
+// ============================================================
+// TABLE CREATION
+// ============================================================
 sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT,
+    display_name TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT 'user',
+    status TEXT NOT NULL DEFAULT 'active',
+    invited_by INTEGER,
+    created_at TEXT NOT NULL,
+    last_login_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS invitations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    invited_by INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS purposes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     statement TEXT NOT NULL,
     principles TEXT,
     created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS visions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     title TEXT NOT NULL,
     description TEXT,
     timeframe TEXT,
@@ -79,6 +110,7 @@ sqlite.exec(`
   );
   CREATE TABLE IF NOT EXISTS goals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     title TEXT NOT NULL,
     description TEXT,
     vision_id INTEGER REFERENCES visions(id),
@@ -88,6 +120,7 @@ sqlite.exec(`
   );
   CREATE TABLE IF NOT EXISTS areas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
     description TEXT,
     category TEXT,
@@ -97,6 +130,7 @@ sqlite.exec(`
   );
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     title TEXT NOT NULL,
     description TEXT,
     area_id INTEGER REFERENCES areas(id),
@@ -107,6 +141,7 @@ sqlite.exec(`
   );
   CREATE TABLE IF NOT EXISTS actions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     title TEXT NOT NULL,
     notes TEXT,
     project_id INTEGER REFERENCES projects(id),
@@ -121,6 +156,7 @@ sqlite.exec(`
   );
   CREATE TABLE IF NOT EXISTS identities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     statement TEXT NOT NULL,
     area_id INTEGER REFERENCES areas(id),
     vision_id INTEGER REFERENCES visions(id),
@@ -136,6 +172,7 @@ sqlite.exec(`
   );
   CREATE TABLE IF NOT EXISTS habits (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
     description TEXT,
     identity_id INTEGER REFERENCES identities(id),
@@ -152,6 +189,7 @@ sqlite.exec(`
   );
   CREATE TABLE IF NOT EXISTS habit_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     habit_id INTEGER NOT NULL REFERENCES habits(id),
     date TEXT NOT NULL,
     count INTEGER NOT NULL DEFAULT 1,
@@ -159,6 +197,7 @@ sqlite.exec(`
   );
   CREATE TABLE IF NOT EXISTS routine_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     sort_order INTEGER NOT NULL DEFAULT 0,
     time TEXT NOT NULL,
     duration_minutes INTEGER NOT NULL DEFAULT 10,
@@ -176,6 +215,7 @@ sqlite.exec(`
   );
   CREATE TABLE IF NOT EXISTS routine_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     routine_item_id INTEGER NOT NULL REFERENCES routine_items(id),
     date TEXT NOT NULL,
     completed_at TEXT,
@@ -183,6 +223,7 @@ sqlite.exec(`
   );
   CREATE TABLE IF NOT EXISTS planner_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     date TEXT NOT NULL,
     area_id INTEGER REFERENCES areas(id),
     goal TEXT NOT NULL,
@@ -198,6 +239,7 @@ sqlite.exec(`
   );
   CREATE TABLE IF NOT EXISTS inbox_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     content TEXT NOT NULL,
     notes TEXT,
     processed INTEGER NOT NULL DEFAULT 0,
@@ -210,6 +252,7 @@ sqlite.exec(`
   );
   CREATE TABLE IF NOT EXISTS weekly_reviews (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     week_of TEXT NOT NULL,
     wins TEXT,
     lessons TEXT,
@@ -221,12 +264,14 @@ sqlite.exec(`
   );
   CREATE TABLE IF NOT EXISTS wizard_state (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     current_phase INTEGER NOT NULL DEFAULT 1,
     completed INTEGER NOT NULL DEFAULT 0,
     completed_at TEXT
   );
   CREATE TABLE IF NOT EXISTS environment_entities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     identity_id INTEGER REFERENCES identities(id),
     area_id INTEGER REFERENCES areas(id),
     puzzle_piece TEXT,
@@ -247,6 +292,7 @@ sqlite.exec(`
 
   CREATE TABLE IF NOT EXISTS beliefs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     puzzle_piece TEXT NOT NULL,
     area_id INTEGER REFERENCES areas(id),
     old_belief TEXT NOT NULL DEFAULT '',
@@ -261,6 +307,7 @@ sqlite.exec(`
 
   CREATE TABLE IF NOT EXISTS anti_habits (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     puzzle_piece TEXT NOT NULL,
     area_id INTEGER REFERENCES areas(id),
     identity_id INTEGER REFERENCES identities(id),
@@ -279,6 +326,7 @@ sqlite.exec(`
 
   CREATE TABLE IF NOT EXISTS immutable_laws (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     puzzle_piece TEXT NOT NULL,
     title TEXT NOT NULL DEFAULT '',
     statement TEXT NOT NULL DEFAULT '',
@@ -294,6 +342,7 @@ sqlite.exec(`
 
   CREATE TABLE IF NOT EXISTS immutable_law_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     immutable_law_id INTEGER NOT NULL REFERENCES immutable_laws(id),
     puzzle_piece TEXT NOT NULL,
     date TEXT NOT NULL,
@@ -308,12 +357,14 @@ sqlite.exec(`
 
   CREATE TABLE IF NOT EXISTS preferences (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     display_name TEXT NOT NULL DEFAULT '',
     time_format TEXT NOT NULL DEFAULT '12h'
   );
 
   CREATE TABLE IF NOT EXISTS area_vision_snapshots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
     area_id INTEGER NOT NULL REFERENCES areas(id),
     previous_vision TEXT NOT NULL,
     note TEXT,
@@ -325,7 +376,7 @@ sqlite.exec(`
 try {
   const prefRow = sqlite.prepare("SELECT id FROM preferences LIMIT 1").get();
   if (!prefRow) {
-    sqlite.exec("INSERT INTO preferences (display_name, time_format) VALUES ('', '12h')");
+    sqlite.exec("INSERT INTO preferences (user_id, display_name, time_format) VALUES (1, '', '12h')");
   }
 } catch (_) { /* table will be handled above */ }
 
@@ -427,336 +478,398 @@ addColumnIfMissing("projects", "archived_at", "TEXT");
 addColumnIfMissing("actions", "archived", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("actions", "archived_at", "TEXT");
 
+// Multi-tenancy: add user_id to ALL existing tables
+const allDataTables = [
+  "purposes", "visions", "goals", "areas", "projects", "actions",
+  "identities", "habits", "habit_logs", "routine_items", "routine_logs",
+  "planner_tasks", "inbox_items", "weekly_reviews", "wizard_state",
+  "environment_entities", "beliefs", "anti_habits", "immutable_laws",
+  "immutable_law_logs", "preferences", "area_vision_snapshots",
+];
+for (const table of allDataTables) {
+  addColumnIfMissing(table, "user_id", "INTEGER NOT NULL DEFAULT 1");
+}
+
 export { sqlite };
 export const db = drizzle(sqlite);
 
 export interface IStorage {
+  // Users
+  getUserById(id: number): User | undefined;
+  getUserByEmail(email: string): User | undefined;
+  createUser(data: InsertUser): User;
+  updateUser(id: number, data: Partial<InsertUser>): User | undefined;
+  getAllUsers(): User[];
+
+  // Invitations
+  getInvitations(): Invitation[];
+  getInvitationByToken(token: string): Invitation | undefined;
+  createInvitation(data: InsertInvitation): Invitation;
+  updateInvitation(id: number, data: Partial<InsertInvitation>): Invitation | undefined;
+  deleteInvitation(id: number): void;
+
   // Purposes
-  getPurposes(): Purpose[];
-  createPurpose(data: InsertPurpose): Purpose;
-  updatePurpose(id: number, data: Partial<InsertPurpose>): Purpose | undefined;
-  deletePurpose(id: number): void;
+  getPurposes(userId: number): Purpose[];
+  createPurpose(userId: number, data: InsertPurpose): Purpose;
+  updatePurpose(userId: number, id: number, data: Partial<InsertPurpose>): Purpose | undefined;
+  deletePurpose(userId: number, id: number): void;
 
   // Visions
-  getVisions(): Vision[];
-  createVision(data: InsertVision): Vision;
-  updateVision(id: number, data: Partial<InsertVision>): Vision | undefined;
-  deleteVision(id: number): void;
+  getVisions(userId: number): Vision[];
+  createVision(userId: number, data: InsertVision): Vision;
+  updateVision(userId: number, id: number, data: Partial<InsertVision>): Vision | undefined;
+  deleteVision(userId: number, id: number): void;
 
   // Goals
-  getGoals(): Goal[];
-  createGoal(data: InsertGoal): Goal;
-  updateGoal(id: number, data: Partial<InsertGoal>): Goal | undefined;
-  deleteGoal(id: number): void;
+  getGoals(userId: number): Goal[];
+  createGoal(userId: number, data: InsertGoal): Goal;
+  updateGoal(userId: number, id: number, data: Partial<InsertGoal>): Goal | undefined;
+  deleteGoal(userId: number, id: number): void;
 
   // Areas
-  getAreas(): Area[];
-  getAllAreasIncludingArchived(): Area[];
-  createArea(data: InsertArea): Area;
-  updateArea(id: number, data: Partial<InsertArea>): Area | undefined;
-  deleteArea(id: number): void;
+  getAreas(userId: number): Area[];
+  getAllAreasIncludingArchived(userId: number): Area[];
+  createArea(userId: number, data: InsertArea): Area;
+  updateArea(userId: number, id: number, data: Partial<InsertArea>): Area | undefined;
+  deleteArea(userId: number, id: number): void;
 
   // Area Vision Snapshots
-  getAreaVisionSnapshots(areaId: number): AreaVisionSnapshot[];
-  createAreaVisionSnapshot(data: InsertAreaVisionSnapshot): AreaVisionSnapshot;
+  getAreaVisionSnapshots(userId: number, areaId: number): AreaVisionSnapshot[];
+  createAreaVisionSnapshot(userId: number, data: InsertAreaVisionSnapshot): AreaVisionSnapshot;
 
   // Projects
-  getProjects(): Project[];
-  createProject(data: InsertProject): Project;
-  updateProject(id: number, data: Partial<InsertProject>): Project | undefined;
-  deleteProject(id: number): void;
+  getProjects(userId: number): Project[];
+  createProject(userId: number, data: InsertProject): Project;
+  updateProject(userId: number, id: number, data: Partial<InsertProject>): Project | undefined;
+  deleteProject(userId: number, id: number): void;
 
   // Actions
-  getActions(): Action[];
-  getActionsByProject(projectId: number): Action[];
-  createAction(data: InsertAction): Action;
-  updateAction(id: number, data: Partial<InsertAction>): Action | undefined;
-  deleteAction(id: number): void;
+  getActions(userId: number): Action[];
+  getActionsByProject(userId: number, projectId: number): Action[];
+  createAction(userId: number, data: InsertAction): Action;
+  updateAction(userId: number, id: number, data: Partial<InsertAction>): Action | undefined;
+  deleteAction(userId: number, id: number): void;
 
   // Identities
-  getIdentities(): Identity[];
-  createIdentity(data: InsertIdentity): Identity;
-  updateIdentity(id: number, data: Partial<InsertIdentity>): Identity | undefined;
-  deleteIdentity(id: number): void;
+  getIdentities(userId: number): Identity[];
+  createIdentity(userId: number, data: InsertIdentity): Identity;
+  updateIdentity(userId: number, id: number, data: Partial<InsertIdentity>): Identity | undefined;
+  deleteIdentity(userId: number, id: number): void;
 
   // Habits
-  getHabits(): Habit[];
-  createHabit(data: InsertHabit): Habit;
-  updateHabit(id: number, data: Partial<InsertHabit>): Habit | undefined;
-  deleteHabit(id: number): void;
+  getHabits(userId: number): Habit[];
+  createHabit(userId: number, data: InsertHabit): Habit;
+  updateHabit(userId: number, id: number, data: Partial<InsertHabit>): Habit | undefined;
+  deleteHabit(userId: number, id: number): void;
 
   // Habit Logs
-  getHabitLogs(habitId: number): HabitLog[];
-  getHabitLogsByDate(date: string): HabitLog[];
-  createHabitLog(data: InsertHabitLog): HabitLog;
-  deleteHabitLog(id: number): void;
+  getHabitLogs(userId: number, habitId: number): HabitLog[];
+  getHabitLogsByDate(userId: number, date: string): HabitLog[];
+  createHabitLog(userId: number, data: InsertHabitLog): HabitLog;
+  deleteHabitLog(userId: number, id: number): void;
 
   // Inbox
-  getInboxItems(): InboxItem[];
-  getTrashedInboxItems(): InboxItem[];
-  createInboxItem(data: InsertInboxItem): InboxItem;
-  updateInboxItem(id: number, data: Partial<InsertInboxItem>): InboxItem | undefined;
-  softDeleteInboxItem(id: number): InboxItem | undefined;
-  restoreInboxItem(id: number): InboxItem | undefined;
-  deleteInboxItem(id: number): void;
-  getOrCreateSomedayProject(): Project;
+  getInboxItems(userId: number): InboxItem[];
+  getTrashedInboxItems(userId: number): InboxItem[];
+  createInboxItem(userId: number, data: InsertInboxItem): InboxItem;
+  updateInboxItem(userId: number, id: number, data: Partial<InsertInboxItem>): InboxItem | undefined;
+  softDeleteInboxItem(userId: number, id: number): InboxItem | undefined;
+  restoreInboxItem(userId: number, id: number): InboxItem | undefined;
+  deleteInboxItem(userId: number, id: number): void;
+  getOrCreateSomedayProject(userId: number): Project;
 
   // Weekly Reviews
-  getWeeklyReviews(): WeeklyReview[];
-  createWeeklyReview(data: InsertWeeklyReview): WeeklyReview;
-  updateWeeklyReview(id: number, data: Partial<InsertWeeklyReview>): WeeklyReview | undefined;
+  getWeeklyReviews(userId: number): WeeklyReview[];
+  createWeeklyReview(userId: number, data: InsertWeeklyReview): WeeklyReview;
+  updateWeeklyReview(userId: number, id: number, data: Partial<InsertWeeklyReview>): WeeklyReview | undefined;
 
   // Routine Items
-  getRoutineItems(): RoutineItem[];
-  createRoutineItem(data: InsertRoutineItem): RoutineItem;
-  updateRoutineItem(id: number, data: Partial<InsertRoutineItem>): RoutineItem | undefined;
-  deleteRoutineItem(id: number): void;
+  getRoutineItems(userId: number): RoutineItem[];
+  createRoutineItem(userId: number, data: InsertRoutineItem): RoutineItem;
+  updateRoutineItem(userId: number, id: number, data: Partial<InsertRoutineItem>): RoutineItem | undefined;
+  deleteRoutineItem(userId: number, id: number): void;
 
   // Routine Logs
-  getRoutineLogsByDate(date: string): RoutineLog[];
-  createRoutineLog(data: InsertRoutineLog): RoutineLog;
-  deleteRoutineLog(id: number): void;
+  getRoutineLogsByDate(userId: number, date: string): RoutineLog[];
+  createRoutineLog(userId: number, data: InsertRoutineLog): RoutineLog;
+  deleteRoutineLog(userId: number, id: number): void;
 
   // Planner Tasks
-  getPlannerTasksByDate(date: string): PlannerTask[];
-  getPlannerTasksByArea(areaId: number): PlannerTask[];
-  getAllPlannerTasks(): PlannerTask[];
-  getDraftTasks(): PlannerTask[];
-  createPlannerTask(data: InsertPlannerTask): PlannerTask;
-  updatePlannerTask(id: number, data: Partial<InsertPlannerTask>): PlannerTask | undefined;
-  deletePlannerTask(id: number): void;
+  getPlannerTasksByDate(userId: number, date: string): PlannerTask[];
+  getPlannerTasksByArea(userId: number, areaId: number): PlannerTask[];
+  getAllPlannerTasks(userId: number): PlannerTask[];
+  getDraftTasks(userId: number): PlannerTask[];
+  createPlannerTask(userId: number, data: InsertPlannerTask): PlannerTask;
+  updatePlannerTask(userId: number, id: number, data: Partial<InsertPlannerTask>): PlannerTask | undefined;
+  deletePlannerTask(userId: number, id: number): void;
 
   // Environment Entities
-  getEnvironmentEntities(): EnvironmentEntity[];
-  getEnvironmentEntitiesByIdentity(identityId: number): EnvironmentEntity[];
-  getEnvironmentEntitiesByArea(areaId: number): EnvironmentEntity[];
-  createEnvironmentEntity(data: InsertEnvironmentEntity): EnvironmentEntity;
-  updateEnvironmentEntity(id: number, data: Partial<InsertEnvironmentEntity>): EnvironmentEntity | undefined;
-  deleteEnvironmentEntity(id: number): void;
+  getEnvironmentEntities(userId: number): EnvironmentEntity[];
+  getEnvironmentEntitiesByIdentity(userId: number, identityId: number): EnvironmentEntity[];
+  getEnvironmentEntitiesByArea(userId: number, areaId: number): EnvironmentEntity[];
+  createEnvironmentEntity(userId: number, data: InsertEnvironmentEntity): EnvironmentEntity;
+  updateEnvironmentEntity(userId: number, id: number, data: Partial<InsertEnvironmentEntity>): EnvironmentEntity | undefined;
+  deleteEnvironmentEntity(userId: number, id: number): void;
 
   // Beliefs
-  getBeliefs(): Belief[];
-  getBeliefsByPuzzlePiece(puzzlePiece: string): Belief[];
-  createBelief(data: InsertBelief): Belief;
-  updateBelief(id: number, data: Partial<InsertBelief>): Belief | undefined;
-  deleteBelief(id: number): void;
+  getBeliefs(userId: number): Belief[];
+  getBeliefsByPuzzlePiece(userId: number, puzzlePiece: string): Belief[];
+  createBelief(userId: number, data: InsertBelief): Belief;
+  updateBelief(userId: number, id: number, data: Partial<InsertBelief>): Belief | undefined;
+  deleteBelief(userId: number, id: number): void;
 
   // Anti-Habits
-  getAntiHabits(): AntiHabit[];
-  getAntiHabitsByPuzzlePiece(puzzlePiece: string): AntiHabit[];
-  createAntiHabit(data: InsertAntiHabit): AntiHabit;
-  updateAntiHabit(id: number, data: Partial<InsertAntiHabit>): AntiHabit | undefined;
-  deleteAntiHabit(id: number): void;
+  getAntiHabits(userId: number): AntiHabit[];
+  getAntiHabitsByPuzzlePiece(userId: number, puzzlePiece: string): AntiHabit[];
+  createAntiHabit(userId: number, data: InsertAntiHabit): AntiHabit;
+  updateAntiHabit(userId: number, id: number, data: Partial<InsertAntiHabit>): AntiHabit | undefined;
+  deleteAntiHabit(userId: number, id: number): void;
 
   // Immutable Laws
-  getImmutableLaws(): ImmutableLaw[];
-  getImmutableLawsByPuzzlePiece(puzzlePiece: string): ImmutableLaw[];
-  createImmutableLaw(data: InsertImmutableLaw): ImmutableLaw;
-  updateImmutableLaw(id: number, data: Partial<InsertImmutableLaw>): ImmutableLaw | undefined;
-  deleteImmutableLaw(id: number): void;
+  getImmutableLaws(userId: number): ImmutableLaw[];
+  getImmutableLawsByPuzzlePiece(userId: number, puzzlePiece: string): ImmutableLaw[];
+  createImmutableLaw(userId: number, data: InsertImmutableLaw): ImmutableLaw;
+  updateImmutableLaw(userId: number, id: number, data: Partial<InsertImmutableLaw>): ImmutableLaw | undefined;
+  deleteImmutableLaw(userId: number, id: number): void;
 
   // Immutable Law Logs
-  getImmutableLawLogs(): ImmutableLawLog[];
-  getImmutableLawLogsByLaw(lawId: number): ImmutableLawLog[];
-  getImmutableLawLogsByDate(date: string): ImmutableLawLog[];
-  createImmutableLawLog(data: InsertImmutableLawLog): ImmutableLawLog;
+  getImmutableLawLogs(userId: number): ImmutableLawLog[];
+  getImmutableLawLogsByLaw(userId: number, lawId: number): ImmutableLawLog[];
+  getImmutableLawLogsByDate(userId: number, date: string): ImmutableLawLog[];
+  createImmutableLawLog(userId: number, data: InsertImmutableLawLog): ImmutableLawLog;
 
   // Wizard State
-  getWizardState(): WizardState | undefined;
-  upsertWizardState(data: Partial<InsertWizardState>): WizardState;
+  getWizardState(userId: number): WizardState | undefined;
+  upsertWizardState(userId: number, data: Partial<InsertWizardState>): WizardState;
 
   // Preferences
-  getPreferences(): { displayName: string; timeFormat: string };
-  updatePreferences(data: { displayName?: string; timeFormat?: string }): { displayName: string; timeFormat: string };
+  getPreferences(userId: number): { displayName: string; timeFormat: string };
+  updatePreferences(userId: number, data: { displayName?: string; timeFormat?: string }): { displayName: string; timeFormat: string };
 
   // Reset
-  resetDatabase(): void;
+  resetDatabase(userId: number): void;
 
   // Export
-  getAllDataForExport(): Record<string, any[]>;
+  getAllDataForExport(userId: number): Record<string, any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
+  // Users
+  getUserById(id: number): User | undefined {
+    return db.select().from(users).where(eq(users.id, id)).get();
+  }
+  getUserByEmail(email: string): User | undefined {
+    return db.select().from(users).where(eq(users.email, email)).get();
+  }
+  createUser(data: InsertUser): User {
+    return db.insert(users).values(data).returning().get();
+  }
+  updateUser(id: number, data: Partial<InsertUser>): User | undefined {
+    return db.update(users).set(data).where(eq(users.id, id)).returning().get();
+  }
+  getAllUsers(): User[] {
+    return db.select().from(users).all();
+  }
+
+  // Invitations
+  getInvitations(): Invitation[] {
+    return db.select().from(invitations).orderBy(desc(invitations.createdAt)).all();
+  }
+  getInvitationByToken(token: string): Invitation | undefined {
+    return db.select().from(invitations).where(eq(invitations.token, token)).get();
+  }
+  createInvitation(data: InsertInvitation): Invitation {
+    return db.insert(invitations).values(data).returning().get();
+  }
+  updateInvitation(id: number, data: Partial<InsertInvitation>): Invitation | undefined {
+    return db.update(invitations).set(data).where(eq(invitations.id, id)).returning().get();
+  }
+  deleteInvitation(id: number): void {
+    db.delete(invitations).where(eq(invitations.id, id)).run();
+  }
+
   // Purposes
-  getPurposes(): Purpose[] {
-    return db.select().from(purposes).all();
+  getPurposes(userId: number): Purpose[] {
+    return db.select().from(purposes).where(eq(purposes.userId, userId)).all();
   }
-  createPurpose(data: InsertPurpose): Purpose {
-    return db.insert(purposes).values(data).returning().get();
+  createPurpose(userId: number, data: InsertPurpose): Purpose {
+    return db.insert(purposes).values({ ...data, userId }).returning().get();
   }
-  updatePurpose(id: number, data: Partial<InsertPurpose>): Purpose | undefined {
-    return db.update(purposes).set(data).where(eq(purposes.id, id)).returning().get();
+  updatePurpose(userId: number, id: number, data: Partial<InsertPurpose>): Purpose | undefined {
+    return db.update(purposes).set(data).where(and(eq(purposes.id, id), eq(purposes.userId, userId))).returning().get();
   }
-  deletePurpose(id: number): void {
-    db.delete(purposes).where(eq(purposes.id, id)).run();
+  deletePurpose(userId: number, id: number): void {
+    db.delete(purposes).where(and(eq(purposes.id, id), eq(purposes.userId, userId))).run();
   }
 
   // Visions
-  getVisions(): Vision[] {
-    return db.select().from(visions).orderBy(desc(visions.createdAt)).all();
+  getVisions(userId: number): Vision[] {
+    return db.select().from(visions).where(eq(visions.userId, userId)).orderBy(desc(visions.createdAt)).all();
   }
-  createVision(data: InsertVision): Vision {
-    return db.insert(visions).values(data).returning().get();
+  createVision(userId: number, data: InsertVision): Vision {
+    return db.insert(visions).values({ ...data, userId }).returning().get();
   }
-  updateVision(id: number, data: Partial<InsertVision>): Vision | undefined {
-    return db.update(visions).set(data).where(eq(visions.id, id)).returning().get();
+  updateVision(userId: number, id: number, data: Partial<InsertVision>): Vision | undefined {
+    return db.update(visions).set(data).where(and(eq(visions.id, id), eq(visions.userId, userId))).returning().get();
   }
-  deleteVision(id: number): void {
-    db.delete(visions).where(eq(visions.id, id)).run();
+  deleteVision(userId: number, id: number): void {
+    db.delete(visions).where(and(eq(visions.id, id), eq(visions.userId, userId))).run();
   }
 
   // Goals
-  getGoals(): Goal[] {
-    return db.select().from(goals).orderBy(desc(goals.createdAt)).all();
+  getGoals(userId: number): Goal[] {
+    return db.select().from(goals).where(eq(goals.userId, userId)).orderBy(desc(goals.createdAt)).all();
   }
-  createGoal(data: InsertGoal): Goal {
-    return db.insert(goals).values(data).returning().get();
+  createGoal(userId: number, data: InsertGoal): Goal {
+    return db.insert(goals).values({ ...data, userId }).returning().get();
   }
-  updateGoal(id: number, data: Partial<InsertGoal>): Goal | undefined {
-    return db.update(goals).set(data).where(eq(goals.id, id)).returning().get();
+  updateGoal(userId: number, id: number, data: Partial<InsertGoal>): Goal | undefined {
+    return db.update(goals).set(data).where(and(eq(goals.id, id), eq(goals.userId, userId))).returning().get();
   }
-  deleteGoal(id: number): void {
-    db.delete(goals).where(eq(goals.id, id)).run();
+  deleteGoal(userId: number, id: number): void {
+    db.delete(goals).where(and(eq(goals.id, id), eq(goals.userId, userId))).run();
   }
 
   // Areas
-  getAreas(): Area[] {
-    return db.select().from(areas).where(or(eq(areas.archived, 0), isNull(areas.archived))).orderBy(asc(areas.sortOrder)).all();
+  getAreas(userId: number): Area[] {
+    return db.select().from(areas).where(and(eq(areas.userId, userId), or(eq(areas.archived, 0), isNull(areas.archived)))).orderBy(asc(areas.sortOrder)).all();
   }
-  getAllAreasIncludingArchived(): Area[] {
-    return db.select().from(areas).orderBy(asc(areas.sortOrder)).all();
+  getAllAreasIncludingArchived(userId: number): Area[] {
+    return db.select().from(areas).where(eq(areas.userId, userId)).orderBy(asc(areas.sortOrder)).all();
   }
-  createArea(data: InsertArea): Area {
-    return db.insert(areas).values(data).returning().get();
+  createArea(userId: number, data: InsertArea): Area {
+    return db.insert(areas).values({ ...data, userId }).returning().get();
   }
-  updateArea(id: number, data: Partial<InsertArea>): Area | undefined {
-    return db.update(areas).set(data).where(eq(areas.id, id)).returning().get();
+  updateArea(userId: number, id: number, data: Partial<InsertArea>): Area | undefined {
+    return db.update(areas).set(data).where(and(eq(areas.id, id), eq(areas.userId, userId))).returning().get();
   }
-  deleteArea(id: number): void {
-    db.delete(areas).where(eq(areas.id, id)).run();
+  deleteArea(userId: number, id: number): void {
+    db.delete(areas).where(and(eq(areas.id, id), eq(areas.userId, userId))).run();
   }
 
   // Area Vision Snapshots
-  getAreaVisionSnapshots(areaId: number): AreaVisionSnapshot[] {
-    return db.select().from(areaVisionSnapshots).where(eq(areaVisionSnapshots.areaId, areaId)).orderBy(desc(areaVisionSnapshots.changedAt)).all();
+  getAreaVisionSnapshots(userId: number, areaId: number): AreaVisionSnapshot[] {
+    return db.select().from(areaVisionSnapshots).where(and(eq(areaVisionSnapshots.areaId, areaId), eq(areaVisionSnapshots.userId, userId))).orderBy(desc(areaVisionSnapshots.changedAt)).all();
   }
-  createAreaVisionSnapshot(data: InsertAreaVisionSnapshot): AreaVisionSnapshot {
-    return db.insert(areaVisionSnapshots).values(data).returning().get();
+  createAreaVisionSnapshot(userId: number, data: InsertAreaVisionSnapshot): AreaVisionSnapshot {
+    return db.insert(areaVisionSnapshots).values({ ...data, userId }).returning().get();
   }
 
   // Projects
-  getProjects(): Project[] {
-    return db.select().from(projects).where(or(eq(projects.archived, 0), isNull(projects.archived))).orderBy(desc(projects.createdAt)).all();
+  getProjects(userId: number): Project[] {
+    return db.select().from(projects).where(and(eq(projects.userId, userId), or(eq(projects.archived, 0), isNull(projects.archived)))).orderBy(desc(projects.createdAt)).all();
   }
-  createProject(data: InsertProject): Project {
-    return db.insert(projects).values(data).returning().get();
+  createProject(userId: number, data: InsertProject): Project {
+    return db.insert(projects).values({ ...data, userId }).returning().get();
   }
-  updateProject(id: number, data: Partial<InsertProject>): Project | undefined {
-    return db.update(projects).set(data).where(eq(projects.id, id)).returning().get();
+  updateProject(userId: number, id: number, data: Partial<InsertProject>): Project | undefined {
+    return db.update(projects).set(data).where(and(eq(projects.id, id), eq(projects.userId, userId))).returning().get();
   }
-  deleteProject(id: number): void {
-    db.delete(projects).where(eq(projects.id, id)).run();
+  deleteProject(userId: number, id: number): void {
+    db.delete(projects).where(and(eq(projects.id, id), eq(projects.userId, userId))).run();
   }
 
   // Actions
-  getActions(): Action[] {
-    return db.select().from(actions).where(or(eq(actions.archived, 0), isNull(actions.archived))).orderBy(desc(actions.createdAt)).all();
+  getActions(userId: number): Action[] {
+    return db.select().from(actions).where(and(eq(actions.userId, userId), or(eq(actions.archived, 0), isNull(actions.archived)))).orderBy(desc(actions.createdAt)).all();
   }
-  getActionsByProject(projectId: number): Action[] {
-    return db.select().from(actions).where(eq(actions.projectId, projectId)).all();
+  getActionsByProject(userId: number, projectId: number): Action[] {
+    return db.select().from(actions).where(and(eq(actions.projectId, projectId), eq(actions.userId, userId))).all();
   }
-  createAction(data: InsertAction): Action {
-    return db.insert(actions).values(data).returning().get();
+  createAction(userId: number, data: InsertAction): Action {
+    return db.insert(actions).values({ ...data, userId }).returning().get();
   }
-  updateAction(id: number, data: Partial<InsertAction>): Action | undefined {
-    return db.update(actions).set(data).where(eq(actions.id, id)).returning().get();
+  updateAction(userId: number, id: number, data: Partial<InsertAction>): Action | undefined {
+    return db.update(actions).set(data).where(and(eq(actions.id, id), eq(actions.userId, userId))).returning().get();
   }
-  deleteAction(id: number): void {
-    db.delete(actions).where(eq(actions.id, id)).run();
+  deleteAction(userId: number, id: number): void {
+    db.delete(actions).where(and(eq(actions.id, id), eq(actions.userId, userId))).run();
   }
 
   // Identities
-  getIdentities(): Identity[] {
-    return db.select().from(identities).where(or(eq(identities.archived, 0), isNull(identities.archived))).all();
+  getIdentities(userId: number): Identity[] {
+    return db.select().from(identities).where(and(eq(identities.userId, userId), or(eq(identities.archived, 0), isNull(identities.archived)))).all();
   }
-  createIdentity(data: InsertIdentity): Identity {
-    return db.insert(identities).values(data).returning().get();
+  createIdentity(userId: number, data: InsertIdentity): Identity {
+    return db.insert(identities).values({ ...data, userId }).returning().get();
   }
-  updateIdentity(id: number, data: Partial<InsertIdentity>): Identity | undefined {
-    return db.update(identities).set(data).where(eq(identities.id, id)).returning().get();
+  updateIdentity(userId: number, id: number, data: Partial<InsertIdentity>): Identity | undefined {
+    return db.update(identities).set(data).where(and(eq(identities.id, id), eq(identities.userId, userId))).returning().get();
   }
-  deleteIdentity(id: number): void {
-    db.delete(identities).where(eq(identities.id, id)).run();
+  deleteIdentity(userId: number, id: number): void {
+    db.delete(identities).where(and(eq(identities.id, id), eq(identities.userId, userId))).run();
   }
 
   // Habits
-  getHabits(): Habit[] {
-    return db.select().from(habits).where(or(eq(habits.archived, 0), isNull(habits.archived))).all();
+  getHabits(userId: number): Habit[] {
+    return db.select().from(habits).where(and(eq(habits.userId, userId), or(eq(habits.archived, 0), isNull(habits.archived)))).all();
   }
-  createHabit(data: InsertHabit): Habit {
-    return db.insert(habits).values(data).returning().get();
+  createHabit(userId: number, data: InsertHabit): Habit {
+    return db.insert(habits).values({ ...data, userId }).returning().get();
   }
-  updateHabit(id: number, data: Partial<InsertHabit>): Habit | undefined {
-    return db.update(habits).set(data).where(eq(habits.id, id)).returning().get();
+  updateHabit(userId: number, id: number, data: Partial<InsertHabit>): Habit | undefined {
+    return db.update(habits).set(data).where(and(eq(habits.id, id), eq(habits.userId, userId))).returning().get();
   }
-  deleteHabit(id: number): void {
-    db.delete(habits).where(eq(habits.id, id)).run();
+  deleteHabit(userId: number, id: number): void {
+    db.delete(habits).where(and(eq(habits.id, id), eq(habits.userId, userId))).run();
   }
 
   // Habit Logs
-  getHabitLogs(habitId: number): HabitLog[] {
-    return db.select().from(habitLogs).where(eq(habitLogs.habitId, habitId)).orderBy(desc(habitLogs.date)).all();
+  getHabitLogs(userId: number, habitId: number): HabitLog[] {
+    return db.select().from(habitLogs).where(and(eq(habitLogs.habitId, habitId), eq(habitLogs.userId, userId))).orderBy(desc(habitLogs.date)).all();
   }
-  getHabitLogsByDate(date: string): HabitLog[] {
-    return db.select().from(habitLogs).where(eq(habitLogs.date, date)).all();
+  getHabitLogsByDate(userId: number, date: string): HabitLog[] {
+    return db.select().from(habitLogs).where(and(eq(habitLogs.date, date), eq(habitLogs.userId, userId))).all();
   }
-  createHabitLog(data: InsertHabitLog): HabitLog {
-    return db.insert(habitLogs).values(data).returning().get();
+  createHabitLog(userId: number, data: InsertHabitLog): HabitLog {
+    return db.insert(habitLogs).values({ ...data, userId }).returning().get();
   }
-  deleteHabitLog(id: number): void {
-    db.delete(habitLogs).where(eq(habitLogs.id, id)).run();
+  deleteHabitLog(userId: number, id: number): void {
+    db.delete(habitLogs).where(and(eq(habitLogs.id, id), eq(habitLogs.userId, userId))).run();
   }
 
   // Inbox
-  getInboxItems(): InboxItem[] {
-    return db.select().from(inboxItems).where(isNull(inboxItems.deletedAt)).orderBy(desc(inboxItems.createdAt)).all();
+  getInboxItems(userId: number): InboxItem[] {
+    return db.select().from(inboxItems).where(and(eq(inboxItems.userId, userId), isNull(inboxItems.deletedAt))).orderBy(desc(inboxItems.createdAt)).all();
   }
-  getTrashedInboxItems(): InboxItem[] {
+  getTrashedInboxItems(userId: number): InboxItem[] {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     return db.select().from(inboxItems)
       .where(and(
+        eq(inboxItems.userId, userId),
         gte(inboxItems.deletedAt, sevenDaysAgo),
       ))
       .orderBy(desc(inboxItems.deletedAt)).all();
   }
-  createInboxItem(data: InsertInboxItem): InboxItem {
-    return db.insert(inboxItems).values(data).returning().get();
+  createInboxItem(userId: number, data: InsertInboxItem): InboxItem {
+    return db.insert(inboxItems).values({ ...data, userId }).returning().get();
   }
-  updateInboxItem(id: number, data: Partial<InsertInboxItem>): InboxItem | undefined {
-    return db.update(inboxItems).set(data).where(eq(inboxItems.id, id)).returning().get();
+  updateInboxItem(userId: number, id: number, data: Partial<InsertInboxItem>): InboxItem | undefined {
+    return db.update(inboxItems).set(data).where(and(eq(inboxItems.id, id), eq(inboxItems.userId, userId))).returning().get();
   }
-  softDeleteInboxItem(id: number): InboxItem | undefined {
+  softDeleteInboxItem(userId: number, id: number): InboxItem | undefined {
     return db.update(inboxItems).set({
       deletedAt: new Date().toISOString(),
       processed: 1,
       processedAs: "trash",
-    }).where(eq(inboxItems.id, id)).returning().get();
+    }).where(and(eq(inboxItems.id, id), eq(inboxItems.userId, userId))).returning().get();
   }
-  restoreInboxItem(id: number): InboxItem | undefined {
+  restoreInboxItem(userId: number, id: number): InboxItem | undefined {
     return db.update(inboxItems).set({
       deletedAt: null,
       processed: 0,
       processedAs: null,
-    }).where(eq(inboxItems.id, id)).returning().get();
+    }).where(and(eq(inboxItems.id, id), eq(inboxItems.userId, userId))).returning().get();
   }
-  deleteInboxItem(id: number): void {
-    db.delete(inboxItems).where(eq(inboxItems.id, id)).run();
+  deleteInboxItem(userId: number, id: number): void {
+    db.delete(inboxItems).where(and(eq(inboxItems.id, id), eq(inboxItems.userId, userId))).run();
   }
-  getOrCreateSomedayProject(): Project {
+  getOrCreateSomedayProject(userId: number): Project {
     const existing = db.select().from(projects)
-      .where(eq(projects.title, "Someday/Maybe")).get();
+      .where(and(eq(projects.title, "Someday/Maybe"), eq(projects.userId, userId))).get();
     if (existing) return existing;
     return db.insert(projects).values({
+      userId,
       title: "Someday/Maybe",
       description: "Items to revisit when the time is right",
       status: "someday",
@@ -765,167 +878,169 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Weekly Reviews
-  getWeeklyReviews(): WeeklyReview[] {
-    return db.select().from(weeklyReviews).orderBy(desc(weeklyReviews.weekOf)).all();
+  getWeeklyReviews(userId: number): WeeklyReview[] {
+    return db.select().from(weeklyReviews).where(eq(weeklyReviews.userId, userId)).orderBy(desc(weeklyReviews.weekOf)).all();
   }
-  createWeeklyReview(data: InsertWeeklyReview): WeeklyReview {
-    return db.insert(weeklyReviews).values(data).returning().get();
+  createWeeklyReview(userId: number, data: InsertWeeklyReview): WeeklyReview {
+    return db.insert(weeklyReviews).values({ ...data, userId }).returning().get();
   }
-  updateWeeklyReview(id: number, data: Partial<InsertWeeklyReview>): WeeklyReview | undefined {
-    return db.update(weeklyReviews).set(data).where(eq(weeklyReviews.id, id)).returning().get();
+  updateWeeklyReview(userId: number, id: number, data: Partial<InsertWeeklyReview>): WeeklyReview | undefined {
+    return db.update(weeklyReviews).set(data).where(and(eq(weeklyReviews.id, id), eq(weeklyReviews.userId, userId))).returning().get();
   }
 
   // Routine Items
-  getRoutineItems(): RoutineItem[] {
-    return db.select().from(routineItems).orderBy(asc(routineItems.sortOrder)).all();
+  getRoutineItems(userId: number): RoutineItem[] {
+    return db.select().from(routineItems).where(eq(routineItems.userId, userId)).orderBy(asc(routineItems.sortOrder)).all();
   }
-  createRoutineItem(data: InsertRoutineItem): RoutineItem {
-    return db.insert(routineItems).values(data).returning().get();
+  createRoutineItem(userId: number, data: InsertRoutineItem): RoutineItem {
+    return db.insert(routineItems).values({ ...data, userId }).returning().get();
   }
-  updateRoutineItem(id: number, data: Partial<InsertRoutineItem>): RoutineItem | undefined {
-    return db.update(routineItems).set(data).where(eq(routineItems.id, id)).returning().get();
+  updateRoutineItem(userId: number, id: number, data: Partial<InsertRoutineItem>): RoutineItem | undefined {
+    return db.update(routineItems).set(data).where(and(eq(routineItems.id, id), eq(routineItems.userId, userId))).returning().get();
   }
-  deleteRoutineItem(id: number): void {
-    db.delete(routineLogs).where(eq(routineLogs.routineItemId, id)).run();
-    db.delete(routineItems).where(eq(routineItems.id, id)).run();
+  deleteRoutineItem(userId: number, id: number): void {
+    // Delete related logs first, then the item — both scoped to user
+    db.delete(routineLogs).where(and(eq(routineLogs.routineItemId, id), eq(routineLogs.userId, userId))).run();
+    db.delete(routineItems).where(and(eq(routineItems.id, id), eq(routineItems.userId, userId))).run();
   }
 
   // Routine Logs
-  getRoutineLogsByDate(date: string): RoutineLog[] {
-    return db.select().from(routineLogs).where(eq(routineLogs.date, date)).all();
+  getRoutineLogsByDate(userId: number, date: string): RoutineLog[] {
+    return db.select().from(routineLogs).where(and(eq(routineLogs.date, date), eq(routineLogs.userId, userId))).all();
   }
-  createRoutineLog(data: InsertRoutineLog): RoutineLog {
-    return db.insert(routineLogs).values(data).returning().get();
+  createRoutineLog(userId: number, data: InsertRoutineLog): RoutineLog {
+    return db.insert(routineLogs).values({ ...data, userId }).returning().get();
   }
-  deleteRoutineLog(id: number): void {
-    db.delete(routineLogs).where(eq(routineLogs.id, id)).run();
+  deleteRoutineLog(userId: number, id: number): void {
+    db.delete(routineLogs).where(and(eq(routineLogs.id, id), eq(routineLogs.userId, userId))).run();
   }
 
   // Planner Tasks
-  getPlannerTasksByDate(date: string): PlannerTask[] {
-    return db.select().from(plannerTasks).where(eq(plannerTasks.date, date)).all();
+  getPlannerTasksByDate(userId: number, date: string): PlannerTask[] {
+    return db.select().from(plannerTasks).where(and(eq(plannerTasks.date, date), eq(plannerTasks.userId, userId))).all();
   }
-  getPlannerTasksByArea(areaId: number): PlannerTask[] {
-    return db.select().from(plannerTasks).where(eq(plannerTasks.areaId, areaId)).orderBy(desc(plannerTasks.date)).all();
+  getPlannerTasksByArea(userId: number, areaId: number): PlannerTask[] {
+    return db.select().from(plannerTasks).where(and(eq(plannerTasks.areaId, areaId), eq(plannerTasks.userId, userId))).orderBy(desc(plannerTasks.date)).all();
   }
-  getAllPlannerTasks(): PlannerTask[] {
-    return db.select().from(plannerTasks).all();
+  getAllPlannerTasks(userId: number): PlannerTask[] {
+    return db.select().from(plannerTasks).where(eq(plannerTasks.userId, userId)).all();
   }
-  getDraftTasks(): PlannerTask[] {
-    return db.select().from(plannerTasks).where(eq(plannerTasks.isDraft, 1)).all();
+  getDraftTasks(userId: number): PlannerTask[] {
+    return db.select().from(plannerTasks).where(and(eq(plannerTasks.isDraft, 1), eq(plannerTasks.userId, userId))).all();
   }
-  createPlannerTask(data: InsertPlannerTask): PlannerTask {
-    return db.insert(plannerTasks).values(data).returning().get();
+  createPlannerTask(userId: number, data: InsertPlannerTask): PlannerTask {
+    return db.insert(plannerTasks).values({ ...data, userId }).returning().get();
   }
-  updatePlannerTask(id: number, data: Partial<InsertPlannerTask>): PlannerTask | undefined {
+  updatePlannerTask(userId: number, id: number, data: Partial<InsertPlannerTask>): PlannerTask | undefined {
     // Auto-publish: if startTime is being set and task is a draft, auto-set isDraft to 0
     if (data.startTime) {
-      const existing = db.select().from(plannerTasks).where(eq(plannerTasks.id, id)).get();
+      const existing = db.select().from(plannerTasks).where(and(eq(plannerTasks.id, id), eq(plannerTasks.userId, userId))).get();
       if (existing && existing.isDraft === 1) {
         data.isDraft = 0;
       }
     }
-    return db.update(plannerTasks).set(data).where(eq(plannerTasks.id, id)).returning().get();
+    return db.update(plannerTasks).set(data).where(and(eq(plannerTasks.id, id), eq(plannerTasks.userId, userId))).returning().get();
   }
-  deletePlannerTask(id: number): void {
-    db.delete(plannerTasks).where(eq(plannerTasks.id, id)).run();
+  deletePlannerTask(userId: number, id: number): void {
+    db.delete(plannerTasks).where(and(eq(plannerTasks.id, id), eq(plannerTasks.userId, userId))).run();
   }
 
   // Environment Entities
-  getEnvironmentEntities(): EnvironmentEntity[] {
-    return db.select().from(environmentEntities).all();
+  getEnvironmentEntities(userId: number): EnvironmentEntity[] {
+    return db.select().from(environmentEntities).where(eq(environmentEntities.userId, userId)).all();
   }
-  getEnvironmentEntitiesByIdentity(identityId: number): EnvironmentEntity[] {
-    return db.select().from(environmentEntities).where(eq(environmentEntities.identityId, identityId)).all();
+  getEnvironmentEntitiesByIdentity(userId: number, identityId: number): EnvironmentEntity[] {
+    return db.select().from(environmentEntities).where(and(eq(environmentEntities.identityId, identityId), eq(environmentEntities.userId, userId))).all();
   }
-  getEnvironmentEntitiesByArea(areaId: number): EnvironmentEntity[] {
-    return db.select().from(environmentEntities).where(eq(environmentEntities.areaId, areaId)).all();
+  getEnvironmentEntitiesByArea(userId: number, areaId: number): EnvironmentEntity[] {
+    return db.select().from(environmentEntities).where(and(eq(environmentEntities.areaId, areaId), eq(environmentEntities.userId, userId))).all();
   }
-  createEnvironmentEntity(data: InsertEnvironmentEntity): EnvironmentEntity {
-    return db.insert(environmentEntities).values(data).returning().get();
+  createEnvironmentEntity(userId: number, data: InsertEnvironmentEntity): EnvironmentEntity {
+    return db.insert(environmentEntities).values({ ...data, userId }).returning().get();
   }
-  updateEnvironmentEntity(id: number, data: Partial<InsertEnvironmentEntity>): EnvironmentEntity | undefined {
-    return db.update(environmentEntities).set(data).where(eq(environmentEntities.id, id)).returning().get();
+  updateEnvironmentEntity(userId: number, id: number, data: Partial<InsertEnvironmentEntity>): EnvironmentEntity | undefined {
+    return db.update(environmentEntities).set(data).where(and(eq(environmentEntities.id, id), eq(environmentEntities.userId, userId))).returning().get();
   }
-  deleteEnvironmentEntity(id: number): void {
-    db.delete(environmentEntities).where(eq(environmentEntities.id, id)).run();
+  deleteEnvironmentEntity(userId: number, id: number): void {
+    db.delete(environmentEntities).where(and(eq(environmentEntities.id, id), eq(environmentEntities.userId, userId))).run();
   }
 
   // Beliefs
-  getBeliefs(): Belief[] {
-    return db.select().from(beliefs).orderBy(desc(beliefs.createdAt)).all();
+  getBeliefs(userId: number): Belief[] {
+    return db.select().from(beliefs).where(eq(beliefs.userId, userId)).orderBy(desc(beliefs.createdAt)).all();
   }
-  getBeliefsByPuzzlePiece(puzzlePiece: string): Belief[] {
-    return db.select().from(beliefs).where(eq(beliefs.puzzlePiece, puzzlePiece)).all();
+  getBeliefsByPuzzlePiece(userId: number, puzzlePiece: string): Belief[] {
+    return db.select().from(beliefs).where(and(eq(beliefs.puzzlePiece, puzzlePiece), eq(beliefs.userId, userId))).all();
   }
-  createBelief(data: InsertBelief): Belief {
-    return db.insert(beliefs).values(data).returning().get();
+  createBelief(userId: number, data: InsertBelief): Belief {
+    return db.insert(beliefs).values({ ...data, userId }).returning().get();
   }
-  updateBelief(id: number, data: Partial<InsertBelief>): Belief | undefined {
-    return db.update(beliefs).set(data).where(eq(beliefs.id, id)).returning().get();
+  updateBelief(userId: number, id: number, data: Partial<InsertBelief>): Belief | undefined {
+    return db.update(beliefs).set(data).where(and(eq(beliefs.id, id), eq(beliefs.userId, userId))).returning().get();
   }
-  deleteBelief(id: number): void {
-    db.delete(beliefs).where(eq(beliefs.id, id)).run();
+  deleteBelief(userId: number, id: number): void {
+    db.delete(beliefs).where(and(eq(beliefs.id, id), eq(beliefs.userId, userId))).run();
   }
 
   // Anti-Habits
-  getAntiHabits(): AntiHabit[] {
-    return db.select().from(antiHabits).orderBy(desc(antiHabits.createdAt)).all();
+  getAntiHabits(userId: number): AntiHabit[] {
+    return db.select().from(antiHabits).where(eq(antiHabits.userId, userId)).orderBy(desc(antiHabits.createdAt)).all();
   }
-  getAntiHabitsByPuzzlePiece(puzzlePiece: string): AntiHabit[] {
-    return db.select().from(antiHabits).where(eq(antiHabits.puzzlePiece, puzzlePiece)).all();
+  getAntiHabitsByPuzzlePiece(userId: number, puzzlePiece: string): AntiHabit[] {
+    return db.select().from(antiHabits).where(and(eq(antiHabits.puzzlePiece, puzzlePiece), eq(antiHabits.userId, userId))).all();
   }
-  createAntiHabit(data: InsertAntiHabit): AntiHabit {
-    return db.insert(antiHabits).values(data).returning().get();
+  createAntiHabit(userId: number, data: InsertAntiHabit): AntiHabit {
+    return db.insert(antiHabits).values({ ...data, userId }).returning().get();
   }
-  updateAntiHabit(id: number, data: Partial<InsertAntiHabit>): AntiHabit | undefined {
-    return db.update(antiHabits).set(data).where(eq(antiHabits.id, id)).returning().get();
+  updateAntiHabit(userId: number, id: number, data: Partial<InsertAntiHabit>): AntiHabit | undefined {
+    return db.update(antiHabits).set(data).where(and(eq(antiHabits.id, id), eq(antiHabits.userId, userId))).returning().get();
   }
-  deleteAntiHabit(id: number): void {
-    db.delete(antiHabits).where(eq(antiHabits.id, id)).run();
+  deleteAntiHabit(userId: number, id: number): void {
+    db.delete(antiHabits).where(and(eq(antiHabits.id, id), eq(antiHabits.userId, userId))).run();
   }
 
   // Immutable Laws
-  getImmutableLaws(): ImmutableLaw[] {
-    return db.select().from(immutableLaws).orderBy(desc(immutableLaws.createdAt)).all();
+  getImmutableLaws(userId: number): ImmutableLaw[] {
+    return db.select().from(immutableLaws).where(eq(immutableLaws.userId, userId)).orderBy(desc(immutableLaws.createdAt)).all();
   }
-  getImmutableLawsByPuzzlePiece(puzzlePiece: string): ImmutableLaw[] {
-    return db.select().from(immutableLaws).where(eq(immutableLaws.puzzlePiece, puzzlePiece)).all();
+  getImmutableLawsByPuzzlePiece(userId: number, puzzlePiece: string): ImmutableLaw[] {
+    return db.select().from(immutableLaws).where(and(eq(immutableLaws.puzzlePiece, puzzlePiece), eq(immutableLaws.userId, userId))).all();
   }
-  createImmutableLaw(data: InsertImmutableLaw): ImmutableLaw {
-    return db.insert(immutableLaws).values(data).returning().get();
+  createImmutableLaw(userId: number, data: InsertImmutableLaw): ImmutableLaw {
+    return db.insert(immutableLaws).values({ ...data, userId }).returning().get();
   }
-  updateImmutableLaw(id: number, data: Partial<InsertImmutableLaw>): ImmutableLaw | undefined {
-    return db.update(immutableLaws).set(data).where(eq(immutableLaws.id, id)).returning().get();
+  updateImmutableLaw(userId: number, id: number, data: Partial<InsertImmutableLaw>): ImmutableLaw | undefined {
+    return db.update(immutableLaws).set(data).where(and(eq(immutableLaws.id, id), eq(immutableLaws.userId, userId))).returning().get();
   }
-  deleteImmutableLaw(id: number): void {
-    db.delete(immutableLaws).where(eq(immutableLaws.id, id)).run();
+  deleteImmutableLaw(userId: number, id: number): void {
+    db.delete(immutableLaws).where(and(eq(immutableLaws.id, id), eq(immutableLaws.userId, userId))).run();
   }
 
   // Immutable Law Logs
-  getImmutableLawLogs(): ImmutableLawLog[] {
-    return db.select().from(immutableLawLogs).orderBy(desc(immutableLawLogs.createdAt)).all();
+  getImmutableLawLogs(userId: number): ImmutableLawLog[] {
+    return db.select().from(immutableLawLogs).where(eq(immutableLawLogs.userId, userId)).orderBy(desc(immutableLawLogs.createdAt)).all();
   }
-  getImmutableLawLogsByLaw(lawId: number): ImmutableLawLog[] {
-    return db.select().from(immutableLawLogs).where(eq(immutableLawLogs.immutableLawId, lawId)).all();
+  getImmutableLawLogsByLaw(userId: number, lawId: number): ImmutableLawLog[] {
+    return db.select().from(immutableLawLogs).where(and(eq(immutableLawLogs.immutableLawId, lawId), eq(immutableLawLogs.userId, userId))).all();
   }
-  getImmutableLawLogsByDate(date: string): ImmutableLawLog[] {
-    return db.select().from(immutableLawLogs).where(eq(immutableLawLogs.date, date)).all();
+  getImmutableLawLogsByDate(userId: number, date: string): ImmutableLawLog[] {
+    return db.select().from(immutableLawLogs).where(and(eq(immutableLawLogs.date, date), eq(immutableLawLogs.userId, userId))).all();
   }
-  createImmutableLawLog(data: InsertImmutableLawLog): ImmutableLawLog {
-    return db.insert(immutableLawLogs).values(data).returning().get();
+  createImmutableLawLog(userId: number, data: InsertImmutableLawLog): ImmutableLawLog {
+    return db.insert(immutableLawLogs).values({ ...data, userId }).returning().get();
   }
 
   // Wizard State
-  getWizardState(): WizardState | undefined {
-    return db.select().from(wizardState).get();
+  getWizardState(userId: number): WizardState | undefined {
+    return db.select().from(wizardState).where(eq(wizardState.userId, userId)).get();
   }
-  upsertWizardState(data: Partial<InsertWizardState>): WizardState {
-    const existing = this.getWizardState();
+  upsertWizardState(userId: number, data: Partial<InsertWizardState>): WizardState {
+    const existing = this.getWizardState(userId);
     if (existing) {
       return db.update(wizardState).set(data).where(eq(wizardState.id, existing.id)).returning().get();
     }
     return db.insert(wizardState).values({
+      userId,
       currentPhase: data.currentPhase ?? 1,
       completed: data.completed ?? 0,
       completedAt: data.completedAt ?? null,
@@ -933,13 +1048,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Preferences
-  getPreferences(): { displayName: string; timeFormat: string } {
-    const row = db.select().from(preferences).get();
+  getPreferences(userId: number): { displayName: string; timeFormat: string } {
+    const row = db.select().from(preferences).where(eq(preferences.userId, userId)).get();
     if (!row) return { displayName: "", timeFormat: "12h" };
     return { displayName: row.displayName, timeFormat: row.timeFormat };
   }
-  updatePreferences(data: { displayName?: string; timeFormat?: string }): { displayName: string; timeFormat: string } {
-    const existing = db.select().from(preferences).get();
+  updatePreferences(userId: number, data: { displayName?: string; timeFormat?: string }): { displayName: string; timeFormat: string } {
+    const existing = db.select().from(preferences).where(eq(preferences.userId, userId)).get();
     if (existing) {
       const updated: any = {};
       if (data.displayName !== undefined) updated.displayName = data.displayName;
@@ -947,15 +1062,16 @@ export class DatabaseStorage implements IStorage {
       db.update(preferences).set(updated).where(eq(preferences.id, existing.id)).run();
     } else {
       db.insert(preferences).values({
+        userId,
         displayName: data.displayName ?? "",
         timeFormat: data.timeFormat ?? "12h",
       }).run();
     }
-    return this.getPreferences();
+    return this.getPreferences(userId);
   }
 
   // Reset
-  resetDatabase(): void {
+  resetDatabase(userId: number): void {
     const tables = [
       "purposes", "visions", "goals", "areas", "projects", "actions",
       "identities", "habits", "habit_logs", "routine_items", "routine_logs",
@@ -964,14 +1080,14 @@ export class DatabaseStorage implements IStorage {
       "area_vision_snapshots",
     ];
     for (const table of tables) {
-      sqlite.exec(`DELETE FROM ${table}`);
+      sqlite.exec(`DELETE FROM ${table} WHERE user_id = ${userId}`);
     }
-    // Reset preferences to defaults
-    sqlite.exec("UPDATE preferences SET display_name = '', time_format = '12h'");
+    // Reset preferences to defaults for this user
+    sqlite.exec(`UPDATE preferences SET display_name = '', time_format = '12h' WHERE user_id = ${userId}`);
   }
 
   // Export — use raw SQL SELECT * to avoid Drizzle schema mismatch with live DB
-  getAllDataForExport(): Record<string, any[]> {
+  getAllDataForExport(userId: number): Record<string, any[]> {
     const tableMap: Record<string, string> = {
       purposes: "purposes",
       visions: "visions",
@@ -998,7 +1114,7 @@ export class DatabaseStorage implements IStorage {
     const result: Record<string, any[]> = {};
     for (const [key, sqlName] of Object.entries(tableMap)) {
       try {
-        result[key] = sqlite.prepare(`SELECT * FROM ${sqlName}`).all();
+        result[key] = sqlite.prepare(`SELECT * FROM ${sqlName} WHERE user_id = ?`).all(userId);
       } catch {
         result[key] = [];
       }

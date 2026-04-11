@@ -3,12 +3,39 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // ============================================================
+// USERS & INVITATIONS (Multi-tenancy)
+// ============================================================
+
+export const users = sqliteTable("users", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash"),
+  displayName: text("display_name").notNull().default(""),
+  role: text("role").notNull().default("user"), // 'super_admin' | 'admin' | 'user'
+  status: text("status").notNull().default("active"), // 'active' | 'suspended' | 'pending_approval'
+  invitedBy: integer("invited_by"),
+  createdAt: text("created_at").notNull(),
+  lastLoginAt: text("last_login_at"),
+});
+
+export const invitations = sqliteTable("invitations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  email: text("email").notNull(),
+  token: text("token").notNull().unique(),
+  invitedBy: integer("invited_by").notNull(),
+  status: text("status").notNull().default("pending"), // 'pending' | 'accepted' | 'expired'
+  createdAt: text("created_at").notNull(),
+  expiresAt: text("expires_at").notNull(),
+});
+
+// ============================================================
 // CLARITY OF LIFE (Top-down clarity)
 // ============================================================
 
 // C5: Purpose & Principles
 export const purposes = sqliteTable("purposes", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   statement: text("statement").notNull(),
   principles: text("principles"), // JSON array of strings
   createdAt: text("created_at").notNull(),
@@ -17,6 +44,7 @@ export const purposes = sqliteTable("purposes", {
 // C4: Vision (3-5 year picture)
 export const visions = sqliteTable("visions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   title: text("title").notNull(),
   description: text("description"),
   timeframe: text("timeframe"), // e.g. "2027", "3 years"
@@ -28,6 +56,7 @@ export const visions = sqliteTable("visions", {
 // C3: Responsibility
 export const goals = sqliteTable("goals", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   title: text("title").notNull(),
   description: text("description"),
   visionId: integer("vision_id").references(() => visions.id),
@@ -39,6 +68,7 @@ export const goals = sqliteTable("goals", {
 // C2: Areas of Focus
 export const areas = sqliteTable("areas", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   name: text("name").notNull(),
   description: text("description"),
   category: text("category"), // responsibility: UnPuzzle, Chores, Routines, Roles, Getting Things Done
@@ -53,6 +83,7 @@ export const areas = sqliteTable("areas", {
 // Area Vision Snapshots (history of vision changes)
 export const areaVisionSnapshots = sqliteTable("area_vision_snapshots", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   areaId: integer("area_id").notNull().references(() => areas.id),
   previousVision: text("previous_vision").notNull(),
   note: text("note"),
@@ -62,6 +93,7 @@ export const areaVisionSnapshots = sqliteTable("area_vision_snapshots", {
 // C1: Identity (projects & routines derived from identities)
 export const projects = sqliteTable("projects", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   title: text("title").notNull(),
   description: text("description"),
   areaId: integer("area_id").references(() => areas.id),
@@ -78,6 +110,7 @@ export const projects = sqliteTable("projects", {
 // Ground: Next Actions
 export const actions = sqliteTable("actions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   title: text("title").notNull(),
   notes: text("notes"),
   projectId: integer("project_id").references(() => projects.id),
@@ -100,6 +133,7 @@ export const actions = sqliteTable("actions", {
 // Identity Statements ("I am the type of person who...")
 export const identities = sqliteTable("identities", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   statement: text("statement").notNull(), // "I am a healthy person"
   areaId: integer("area_id").references(() => areas.id),
   visionId: integer("vision_id").references(() => visions.id),
@@ -140,6 +174,7 @@ export const identities = sqliteTable("identities", {
 // Habits linked to identities
 export const habits = sqliteTable("habits", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   name: text("name").notNull(),
   description: text("description"),
   identityId: integer("identity_id").references(() => identities.id),
@@ -160,6 +195,7 @@ export const habits = sqliteTable("habits", {
 // Daily habit completions
 export const habitLogs = sqliteTable("habit_logs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   habitId: integer("habit_id").notNull().references(() => habits.id),
   date: text("date").notNull(), // YYYY-MM-DD
   count: integer("count").notNull().default(1),
@@ -172,6 +208,7 @@ export const habitLogs = sqliteTable("habit_logs", {
 
 export const routineItems = sqliteTable("routine_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   sortOrder: integer("sort_order").notNull().default(0),
   time: text("time").notNull(), // HH:MM format
   durationMinutes: integer("duration_minutes").notNull().default(10),
@@ -191,6 +228,7 @@ export const routineItems = sqliteTable("routine_items", {
 // Daily routine completion logs
 export const routineLogs = sqliteTable("routine_logs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   routineItemId: integer("routine_item_id").notNull().references(() => routineItems.id),
   date: text("date").notNull(), // YYYY-MM-DD
   completedAt: text("completed_at"),
@@ -203,6 +241,7 @@ export const routineLogs = sqliteTable("routine_logs", {
 
 export const plannerTasks = sqliteTable("planner_tasks", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   date: text("date").notNull(), // YYYY-MM-DD
   areaId: integer("area_id").references(() => areas.id),
   goal: text("goal").notNull(), // task description (what to do)
@@ -223,6 +262,7 @@ export const plannerTasks = sqliteTable("planner_tasks", {
 
 export const inboxItems = sqliteTable("inbox_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   content: text("content").notNull(),
   notes: text("notes"),
   processed: integer("processed").notNull().default(0),
@@ -240,6 +280,7 @@ export const inboxItems = sqliteTable("inbox_items", {
 
 export const weeklyReviews = sqliteTable("weekly_reviews", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   weekOf: text("week_of").notNull(), // YYYY-MM-DD (Monday)
   wins: text("wins"), // JSON array
   lessons: text("lessons"), // JSON array
@@ -257,6 +298,7 @@ export const weeklyReviews = sqliteTable("weekly_reviews", {
 
 export const wizardState = sqliteTable("wizard_state", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   currentPhase: integer("current_phase").notNull().default(1), // 1-4
   completed: integer("completed").notNull().default(0),
   completedAt: text("completed_at"),
@@ -268,6 +310,7 @@ export const wizardState = sqliteTable("wizard_state", {
 
 export const environmentEntities = sqliteTable("environment_entities", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   identityId: integer("identity_id").references(() => identities.id),
   areaId: integer("area_id").references(() => areas.id),
   puzzlePiece: text("puzzle_piece"),
@@ -299,6 +342,7 @@ export const environmentEntities = sqliteTable("environment_entities", {
 
 export const beliefs = sqliteTable("beliefs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   puzzlePiece: text("puzzle_piece").notNull(), // reason | finance | fitness | talent | pleasure
   areaId: integer("area_id").references(() => areas.id), // optional area link
   oldBelief: text("old_belief").notNull(),         // the limiting belief being replaced
@@ -317,6 +361,7 @@ export const beliefs = sqliteTable("beliefs", {
 
 export const antiHabits = sqliteTable("anti_habits", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   puzzlePiece: text("puzzle_piece").notNull(), // reason | finance | fitness | talent | pleasure
   areaId: integer("area_id").references(() => areas.id),
   identityId: integer("identity_id").references(() => identities.id), // the identity this protects
@@ -341,6 +386,7 @@ export const antiHabits = sqliteTable("anti_habits", {
 
 export const immutableLaws = sqliteTable("immutable_laws", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   puzzlePiece: text("puzzle_piece").notNull(), // reason | finance | fitness | talent | pleasure
   title: text("title").notNull(),               // short name, e.g. "No Sleep Sacrifice Law"
   statement: text("statement").notNull(),        // one-sentence law
@@ -362,6 +408,7 @@ export const immutableLaws = sqliteTable("immutable_laws", {
 
 export const immutableLawLogs = sqliteTable("immutable_law_logs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   immutableLawId: integer("immutable_law_id").notNull().references(() => immutableLaws.id),
   puzzlePiece: text("puzzle_piece").notNull(),
   date: text("date").notNull(),                  // YYYY-MM-DD
@@ -382,6 +429,7 @@ export const immutableLawLogs = sqliteTable("immutable_law_logs", {
 
 export const preferences = sqliteTable("preferences", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
   displayName: text("display_name").notNull().default(""),
   timeFormat: text("time_format").notNull().default("12h"), // "12h" | "24h"
 });
@@ -389,6 +437,9 @@ export const preferences = sqliteTable("preferences", {
 // ============================================================
 // INSERT SCHEMAS & TYPES
 // ============================================================
+
+export const insertUserSchema = createInsertSchema(users).omit({ id: true });
+export const insertInvitationSchema = createInsertSchema(invitations).omit({ id: true });
 
 export const insertPurposeSchema = createInsertSchema(purposes).omit({ id: true });
 export const insertVisionSchema = createInsertSchema(visions).omit({ id: true });
@@ -407,6 +458,11 @@ export const insertRoutineLogSchema = createInsertSchema(routineLogs).omit({ id:
 export const insertPlannerTaskSchema = createInsertSchema(plannerTasks).omit({ id: true });
 export const insertEnvironmentEntitySchema = createInsertSchema(environmentEntities).omit({ id: true });
 export const insertWizardStateSchema = createInsertSchema(wizardState).omit({ id: true });
+
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type Invitation = typeof invitations.$inferSelect;
+export type InsertInvitation = z.infer<typeof insertInvitationSchema>;
 
 export type Purpose = typeof purposes.$inferSelect;
 export type InsertPurpose = z.infer<typeof insertPurposeSchema>;

@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage, sqlite } from "./storage";
+import { requireAuth, getEffectiveUserId } from "./auth";
 import {
   insertPurposeSchema, insertVisionSchema, insertGoalSchema,
   insertAreaSchema, insertProjectSchema, insertActionSchema,
@@ -13,87 +14,111 @@ import {
 } from "@shared/schema";
 
 export function registerRoutes(server: Server, app: Express) {
+  // Apply requireAuth to all /api/* routes EXCEPT auth endpoints
+  // Auth endpoints are registered in auth.ts and handled before this middleware
+  app.use("/api", (req, res, next) => {
+    // Skip auth check for auth endpoints
+    if (req.path.startsWith("/auth/")) return next();
+    return requireAuth(req, res, next);
+  });
+
   // ============================================================
   // PURPOSES
   // ============================================================
-  app.get("/api/purposes", (_req, res) => {
-    res.json(storage.getPurposes());
+  app.get("/api/purposes", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getPurposes(userId));
   });
   app.post("/api/purposes", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertPurposeSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createPurpose(parsed.data));
+    res.json(storage.createPurpose(userId, parsed.data));
   });
   app.patch("/api/purposes/:id", (req, res) => {
-    const result = storage.updatePurpose(Number(req.params.id), req.body);
+    const userId = getEffectiveUserId(req);
+    const result = storage.updatePurpose(userId, Number(req.params.id), req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.delete("/api/purposes/:id", (req, res) => {
-    storage.deletePurpose(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deletePurpose(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
   // ============================================================
   // VISIONS
   // ============================================================
-  app.get("/api/visions", (_req, res) => {
-    res.json(storage.getVisions());
+  app.get("/api/visions", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getVisions(userId));
   });
   app.post("/api/visions", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertVisionSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createVision(parsed.data));
+    res.json(storage.createVision(userId, parsed.data));
   });
   app.patch("/api/visions/:id", (req, res) => {
-    const result = storage.updateVision(Number(req.params.id), req.body);
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateVision(userId, Number(req.params.id), req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.delete("/api/visions/:id", (req, res) => {
-    storage.deleteVision(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deleteVision(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
   // ============================================================
   // GOALS
   // ============================================================
-  app.get("/api/goals", (_req, res) => {
-    res.json(storage.getGoals());
+  app.get("/api/goals", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getGoals(userId));
   });
   app.post("/api/goals", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertGoalSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createGoal(parsed.data));
+    res.json(storage.createGoal(userId, parsed.data));
   });
   app.patch("/api/goals/:id", (req, res) => {
-    const result = storage.updateGoal(Number(req.params.id), req.body);
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateGoal(userId, Number(req.params.id), req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.delete("/api/goals/:id", (req, res) => {
-    storage.deleteGoal(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deleteGoal(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
   // ============================================================
   // AREAS
   // ============================================================
-  app.get("/api/areas", (_req, res) => {
-    res.json(storage.getAreas());
+  app.get("/api/areas", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getAreas(userId));
   });
   app.post("/api/areas", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertAreaSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createArea(parsed.data));
+    res.json(storage.createArea(userId, parsed.data));
   });
   app.patch("/api/areas/:id", (req, res) => {
-    const result = storage.updateArea(Number(req.params.id), req.body);
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateArea(userId, Number(req.params.id), req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.delete("/api/areas/:id", (req, res) => {
-    storage.deleteArea(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deleteArea(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
@@ -102,18 +127,17 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   app.patch("/api/areas/:id/vision", (req, res) => {
     try {
+      const userId = getEffectiveUserId(req);
       const id = Number(req.params.id);
       const { vision, note } = req.body;
       if (typeof vision !== "string") return res.status(400).json({ error: "vision is required" });
 
-      // Get current area
-      const allAreas = storage.getAllAreasIncludingArchived();
+      const allAreas = storage.getAllAreasIncludingArchived(userId);
       const area = allAreas.find(a => a.id === id);
       if (!area) return res.status(404).json({ error: "Area not found" });
 
-      // Only create snapshot if vision actually changed
       if (area.visionText && area.visionText !== vision) {
-        storage.createAreaVisionSnapshot({
+        storage.createAreaVisionSnapshot(userId, {
           areaId: id,
           previousVision: area.visionText,
           note: note || null,
@@ -121,7 +145,7 @@ export function registerRoutes(server: Server, app: Express) {
         });
       }
 
-      const updated = storage.updateArea(id, { visionText: vision });
+      const updated = storage.updateArea(userId, id, { visionText: vision });
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ error: err?.message || "Internal server error" });
@@ -130,7 +154,8 @@ export function registerRoutes(server: Server, app: Express) {
 
   app.get("/api/areas/:id/snapshots", (req, res) => {
     try {
-      const snapshots = storage.getAreaVisionSnapshots(Number(req.params.id));
+      const userId = getEffectiveUserId(req);
+      const snapshots = storage.getAreaVisionSnapshots(userId, Number(req.params.id));
       res.json(snapshots);
     } catch (err: any) {
       res.status(500).json({ error: err?.message || "Internal server error" });
@@ -139,12 +164,12 @@ export function registerRoutes(server: Server, app: Express) {
 
   app.get("/api/areas/:id/archive-preview", (req, res) => {
     try {
+      const userId = getEffectiveUserId(req);
       const areaId = Number(req.params.id);
-      // Use raw SQL to avoid schema mismatch on live DB
-      const identityRows = sqlite.prepare("SELECT id, statement as name FROM identities WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId) as any[];
-      const projectRows = sqlite.prepare("SELECT id, title as name FROM projects WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId) as any[];
-      const habitRows = sqlite.prepare("SELECT id, name FROM habits WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId) as any[];
-      const actionRows = sqlite.prepare("SELECT id, title as name FROM actions WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId) as any[];
+      const identityRows = sqlite.prepare("SELECT id, statement as name FROM identities WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId, userId) as any[];
+      const projectRows = sqlite.prepare("SELECT id, title as name FROM projects WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId, userId) as any[];
+      const habitRows = sqlite.prepare("SELECT id, name FROM habits WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId, userId) as any[];
+      const actionRows = sqlite.prepare("SELECT id, title as name FROM actions WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId, userId) as any[];
       res.json({
         identities: identityRows,
         projects: projectRows,
@@ -158,27 +183,21 @@ export function registerRoutes(server: Server, app: Express) {
 
   app.post("/api/areas/:id/archive", (req, res) => {
     try {
+      const userId = getEffectiveUserId(req);
       const areaId = Number(req.params.id);
       const now = new Date().toISOString();
 
-      // Archive the area
-      storage.updateArea(areaId, { archived: 1, archivedAt: now } as any);
+      storage.updateArea(userId, areaId, { archived: 1, archivedAt: now } as any);
 
-      // Archive linked items using raw SQL for safety
-      sqlite.prepare("UPDATE identities SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
-      sqlite.prepare("UPDATE projects SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
-      sqlite.prepare("UPDATE habits SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
-      sqlite.prepare("UPDATE actions SET archived = 1, archived_at = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId);
+      sqlite.prepare("UPDATE identities SET archived = 1, archived_at = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId, userId);
+      sqlite.prepare("UPDATE projects SET archived = 1, archived_at = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId, userId);
+      sqlite.prepare("UPDATE habits SET archived = 1, archived_at = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId, userId);
+      sqlite.prepare("UPDATE actions SET archived = 1, archived_at = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId, userId);
 
-      // Count what was archived
-      const counts = {
-        identities: (sqlite.prepare("SELECT changes() as c").get() as any)?.c || 0,
-      };
-      // Re-count properly
-      const identitiesArchived = sqlite.prepare("SELECT COUNT(*) as c FROM identities WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
-      const projectsArchived = sqlite.prepare("SELECT COUNT(*) as c FROM projects WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
-      const habitsArchived = sqlite.prepare("SELECT COUNT(*) as c FROM habits WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
-      const tasksArchived = sqlite.prepare("SELECT COUNT(*) as c FROM actions WHERE area_id = ? AND archived_at = ?").get(areaId, now) as any;
+      const identitiesArchived = sqlite.prepare("SELECT COUNT(*) as c FROM identities WHERE area_id = ? AND user_id = ? AND archived_at = ?").get(areaId, userId, now) as any;
+      const projectsArchived = sqlite.prepare("SELECT COUNT(*) as c FROM projects WHERE area_id = ? AND user_id = ? AND archived_at = ?").get(areaId, userId, now) as any;
+      const habitsArchived = sqlite.prepare("SELECT COUNT(*) as c FROM habits WHERE area_id = ? AND user_id = ? AND archived_at = ?").get(areaId, userId, now) as any;
+      const tasksArchived = sqlite.prepare("SELECT COUNT(*) as c FROM actions WHERE area_id = ? AND user_id = ? AND archived_at = ?").get(areaId, userId, now) as any;
 
       res.json({
         success: true,
@@ -196,24 +215,22 @@ export function registerRoutes(server: Server, app: Express) {
 
   app.post("/api/areas/:id/duplicate-and-archive", (req, res) => {
     try {
+      const userId = getEffectiveUserId(req);
       const areaId = Number(req.params.id);
       const { newName } = req.body;
       if (!newName || typeof newName !== "string") return res.status(400).json({ error: "newName is required" });
 
-      // Check name collision with ALL areas (active + archived)
-      const allAreas = storage.getAllAreasIncludingArchived();
+      const allAreas = storage.getAllAreasIncludingArchived(userId);
       if (allAreas.some(a => a.name.toLowerCase() === newName.toLowerCase())) {
         return res.status(400).json({ error: "An area with this name already exists (or was previously used)." });
       }
 
-      // Get original area
       const originalArea = allAreas.find(a => a.id === areaId);
       if (!originalArea) return res.status(404).json({ error: "Area not found" });
 
-      const activeAreas = storage.getAreas();
+      const activeAreas = storage.getAreas(userId);
 
-      // Create new area with copied vision
-      const newArea = storage.createArea({
+      const newArea = storage.createArea(userId, {
         name: newName,
         description: originalArea.description,
         category: originalArea.category,
@@ -224,22 +241,19 @@ export function registerRoutes(server: Server, app: Express) {
         archived: 0,
       });
 
-      // Move all linked items to the new area (re-point area_id)
       const newAreaId = (newArea as any).id;
-      sqlite.prepare("UPDATE identities SET area_id = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId);
-      sqlite.prepare("UPDATE projects SET area_id = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId);
-      sqlite.prepare("UPDATE habits SET area_id = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId);
-      sqlite.prepare("UPDATE actions SET area_id = ? WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId);
+      sqlite.prepare("UPDATE identities SET area_id = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId, userId);
+      sqlite.prepare("UPDATE projects SET area_id = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId, userId);
+      sqlite.prepare("UPDATE habits SET area_id = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId, userId);
+      sqlite.prepare("UPDATE actions SET area_id = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId, userId);
 
-      // Count what was moved
-      const identitiesMoved = sqlite.prepare("SELECT COUNT(*) as c FROM identities WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId) as any;
-      const projectsMoved = sqlite.prepare("SELECT COUNT(*) as c FROM projects WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId) as any;
-      const habitsMoved = sqlite.prepare("SELECT COUNT(*) as c FROM habits WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId) as any;
-      const tasksMoved = sqlite.prepare("SELECT COUNT(*) as c FROM actions WHERE area_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId) as any;
+      const identitiesMoved = sqlite.prepare("SELECT COUNT(*) as c FROM identities WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId, userId) as any;
+      const projectsMoved = sqlite.prepare("SELECT COUNT(*) as c FROM projects WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId, userId) as any;
+      const habitsMoved = sqlite.prepare("SELECT COUNT(*) as c FROM habits WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId, userId) as any;
+      const tasksMoved = sqlite.prepare("SELECT COUNT(*) as c FROM actions WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId, userId) as any;
 
-      // Archive only the original area (linked items are now under the new area)
       const now = new Date().toISOString();
-      storage.updateArea(areaId, { archived: 1, archivedAt: now } as any);
+      storage.updateArea(userId, areaId, { archived: 1, archivedAt: now } as any);
 
       res.json({
         newArea,
@@ -258,62 +272,66 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   // PROJECTS
   // ============================================================
-  app.get("/api/projects", (_req, res) => {
-    res.json(storage.getProjects());
+  app.get("/api/projects", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getProjects(userId));
   });
   app.post("/api/projects", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertProjectSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createProject(parsed.data));
+    res.json(storage.createProject(userId, parsed.data));
   });
   app.patch("/api/projects/:id", (req, res) => {
-    const result = storage.updateProject(Number(req.params.id), req.body);
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateProject(userId, Number(req.params.id), req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.delete("/api/projects/:id", (req, res) => {
-    storage.deleteProject(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deleteProject(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
-  // Project detail: actions + references + related tasks + identity + environment entity
+  // Project detail
   app.get("/api/projects/:id/details", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const projectId = Number(req.params.id);
-    const project = storage.getProjects().find(p => p.id === projectId);
+    const project = storage.getProjects(userId).find(p => p.id === projectId);
     if (!project) return res.status(404).json({ error: "Not found" });
 
-    const actions = storage.getActions().filter(a => a.projectId === projectId);
-    const references = storage.getInboxItems().filter(
+    const projectActions = storage.getActions(userId).filter(a => a.projectId === projectId);
+    const references = storage.getInboxItems(userId).filter(
       i => i.processedAs === "reference" && i.referenceProjectId === projectId
     );
-    const areas = storage.getAreas();
+    const allAreas = storage.getAreas(userId);
 
-    // Include linked identity and environment entity if this project was auto-created from an identity
     const identityId = (project as any).identityId;
-    const identity = identityId ? storage.getIdentities().find(i => i.id === identityId) : null;
-    const environmentEntity = identity ? storage.getEnvironmentEntitiesByIdentity(identity.id)[0] || null : null;
+    const identity = identityId ? storage.getIdentities(userId).find(i => i.id === identityId) : null;
+    const environmentEntity = identity ? storage.getEnvironmentEntitiesByIdentity(userId, identity.id)[0] || null : null;
 
     res.json({
       project,
-      actions,
+      actions: projectActions,
       references,
-      areas,
+      areas: allAreas,
       identity: identity || null,
       environmentEntity: environmentEntity || null,
     });
   });
 
-  // Identity-based project detail: builds project view from identity chain
+  // Identity-based project detail
   app.get("/api/identity-projects/:identityId", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const identityId = Number(req.params.identityId);
-    const identity = storage.getIdentities().find(i => i.id === identityId);
+    const identity = storage.getIdentities(userId).find(i => i.id === identityId);
     if (!identity) return res.status(404).json({ error: "Identity not found" });
 
-    const area = identity.areaId ? storage.getAreas().find(a => a.id === identity.areaId) : null;
-    const areas = storage.getAreas();
-    // habitId column on routineItems/plannerTasks now stores identityId
-    const routineItems = storage.getRoutineItems().filter(r => r.habitId === identityId);
-    const plannerTasks = storage.getAllPlannerTasks().filter(t => t.habitId === identityId);
+    const area = identity.areaId ? storage.getAreas(userId).find(a => a.id === identity.areaId) : null;
+    const allAreas = storage.getAreas(userId);
+    const allRoutineItems = storage.getRoutineItems(userId).filter(r => r.habitId === identityId);
+    const allPlannerTasks = storage.getAllPlannerTasks(userId).filter(t => t.habitId === identityId);
 
     const title = identity.cue ? `${identity.statement} when ${identity.cue}` : identity.statement;
     const tag = area ? `${area.category || ""}.${area.name}` : "";
@@ -322,21 +340,22 @@ export function registerRoutes(server: Server, app: Express) {
       identityId: identity.id,
       identity,
       area,
-      areas,
+      areas: allAreas,
       title,
       tag,
-      routineItems,
-      plannerTasks,
+      routineItems: allRoutineItems,
+      plannerTasks: allPlannerTasks,
     });
   });
 
-  // Lightweight identity chain lookup for project task badges in agenda
+  // Lightweight identity chain lookup
   app.get("/api/identity-chain/:identityId", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const identityId = Number(req.params.identityId);
-    const identity = storage.getIdentities().find(i => i.id === identityId);
+    const identity = storage.getIdentities(userId).find(i => i.id === identityId);
     if (!identity) return res.status(404).json({ error: "Identity not found" });
 
-    const area = identity.areaId ? storage.getAreas().find(a => a.id === identity.areaId) : null;
+    const area = identity.areaId ? storage.getAreas(userId).find(a => a.id === identity.areaId) : null;
 
     const projectTitle = identity.cue ? `${identity.statement} when ${identity.cue}` : identity.statement;
     const tag = area ? `${area.category || ""}.${area.name}` : "";
@@ -352,12 +371,13 @@ export function registerRoutes(server: Server, app: Express) {
     });
   });
 
-  // One-time migration: copy habit fields to linked identities, update FK references
-  app.post("/api/migrate-habits-to-identities", (_req, res) => {
-    const allHabits = storage.getHabits();
-    const allIdentities = storage.getIdentities();
-    const allRoutineItems = storage.getRoutineItems();
-    const allPlannerTasks = storage.getAllPlannerTasks();
+  // One-time migration: copy habit fields to linked identities
+  app.post("/api/migrate-habits-to-identities", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const allHabits = storage.getHabits(userId);
+    const allIdentities = storage.getIdentities(userId);
+    const allRoutineItems = storage.getRoutineItems(userId);
+    const allPlannerTasks = storage.getAllPlannerTasks(userId);
     let migratedIdentities = 0;
     let migratedRoutineItems = 0;
     let migratedPlannerTasks = 0;
@@ -367,8 +387,7 @@ export function registerRoutes(server: Server, app: Express) {
       const identity = allIdentities.find(i => i.id === habit.identityId);
       if (!identity) continue;
 
-      // Copy habit fields to identity
-      storage.updateIdentity(identity.id, {
+      storage.updateIdentity(userId, identity.id, {
         cue: habit.cue || identity.cue || null,
         craving: habit.craving || identity.craving || null,
         reward: habit.reward || identity.reward || null,
@@ -380,18 +399,16 @@ export function registerRoutes(server: Server, app: Express) {
       });
       migratedIdentities++;
 
-      // Update routineItems: habitId was habit.id, now should be identity.id
       for (const ri of allRoutineItems) {
         if (ri.habitId === habit.id) {
-          storage.updateRoutineItem(ri.id, { habitId: habit.identityId });
+          storage.updateRoutineItem(userId, ri.id, { habitId: habit.identityId });
           migratedRoutineItems++;
         }
       }
 
-      // Update plannerTasks: habitId was habit.id, now should be identity.id
       for (const pt of allPlannerTasks) {
         if (pt.habitId === habit.id) {
-          storage.updatePlannerTask(pt.id, { habitId: habit.identityId });
+          storage.updatePlannerTask(userId, pt.id, { habitId: habit.identityId });
           migratedPlannerTasks++;
         }
       }
@@ -401,9 +418,10 @@ export function registerRoutes(server: Server, app: Express) {
   });
 
   // Backfill: create routine items for identities that don't have one
-  app.post("/api/backfill-routines", (_req, res) => {
-    const allIdentities = storage.getIdentities();
-    const allRoutineItems = storage.getRoutineItems();
+  app.post("/api/backfill-routines", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const allIdentities = storage.getIdentities(userId);
+    const allRoutineItems = storage.getRoutineItems(userId);
     const identityIdsWithRoutine = new Set(allRoutineItems.map(r => r.habitId));
     let created = 0;
 
@@ -417,7 +435,7 @@ export function registerRoutes(server: Server, app: Express) {
       if (identityIdsWithRoutine.has(identity.id)) continue;
 
       const placeholderTime = timeOfDayMap[identity.timeOfDay || ""] || "12:00";
-      storage.createRoutineItem({
+      storage.createRoutineItem(userId, {
         sortOrder: 0,
         time: placeholderTime,
         durationMinutes: 10,
@@ -439,9 +457,10 @@ export function registerRoutes(server: Server, app: Express) {
     res.json({ created, message: `Created ${created} routine items for identities that were missing them.` });
   });
 
-  // References: all filed references, optionally filtered by area or project
+  // References
   app.get("/api/references", (req, res) => {
-    const allInbox = storage.getInboxItems();
+    const userId = getEffectiveUserId(req);
+    const allInbox = storage.getInboxItems(userId);
     let refs = allInbox.filter(i => i.processedAs === "reference");
     if (req.query.areaId) {
       refs = refs.filter(r => r.referenceAreaId === Number(req.query.areaId));
@@ -455,37 +474,42 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   // ACTIONS
   // ============================================================
-  app.get("/api/actions", (_req, res) => {
-    res.json(storage.getActions());
+  app.get("/api/actions", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getActions(userId));
   });
   app.post("/api/actions", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertActionSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createAction(parsed.data));
+    res.json(storage.createAction(userId, parsed.data));
   });
   app.patch("/api/actions/:id", (req, res) => {
-    const result = storage.updateAction(Number(req.params.id), req.body);
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateAction(userId, Number(req.params.id), req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.delete("/api/actions/:id", (req, res) => {
-    storage.deleteAction(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deleteAction(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
   // ============================================================
   // IDENTITIES
   // ============================================================
-  app.get("/api/identities", (_req, res) => {
-    res.json(storage.getIdentities());
+  app.get("/api/identities", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getIdentities(userId));
   });
   app.post("/api/identities", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertIdentitySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    const identity = storage.createIdentity(parsed.data);
+    const identity = storage.createIdentity(userId, parsed.data);
 
-    // Auto-create a Project linked to the identity
-    const project = storage.createProject({
+    const project = storage.createProject(userId, {
       title: identity.response || identity.statement,
       areaId: identity.areaId || null,
       puzzlePiece: identity.puzzlePiece || null,
@@ -494,14 +518,13 @@ export function registerRoutes(server: Server, app: Express) {
       createdAt: new Date().toISOString(),
     });
 
-    // Create a draft routine item linked to the project (habitId stores identityId for legacy compat)
     let routineItem = null;
     const timeOfDayMap: Record<string, string> = {
       early_morning: "03:00", morning: "07:00", late_morning: "10:00",
       afternoon: "13:00", late_afternoon: "16:00", evening: "20:00", waking_hours: "12:00",
     };
     const placeholderTime = timeOfDayMap[identity.timeOfDay || ""] || "12:00";
-    routineItem = storage.createRoutineItem({
+    routineItem = storage.createRoutineItem(userId, {
       sortOrder: 0,
       time: placeholderTime,
       durationMinutes: 10,
@@ -511,16 +534,15 @@ export function registerRoutes(server: Server, app: Express) {
       response: identity.response || identity.statement,
       reward: identity.reward || null,
       areaId: identity.areaId || null,
-      habitId: identity.id, // habitId column stores identityId
+      habitId: identity.id,
       dayVariant: null,
       active: 1,
       isDraft: 1,
       timeOfDay: identity.timeOfDay || null,
     });
 
-    // If identity has environmentType set, auto-create an environmentEntity
     if (identity.environmentType) {
-      storage.createEnvironmentEntity({
+      storage.createEnvironmentEntity(userId, {
         identityId: identity.id,
         areaId: identity.areaId || null,
         puzzlePiece: identity.puzzlePiece || null,
@@ -543,12 +565,12 @@ export function registerRoutes(server: Server, app: Express) {
     res.json({ identity, project, routineItem });
   });
   app.patch("/api/identities/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const identityId = Number(req.params.id);
-    const result = storage.updateIdentity(identityId, req.body);
+    const result = storage.updateIdentity(userId, identityId, req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
 
-    // Sync linked routine item — propagate changes
-    const allRoutineItems = storage.getRoutineItems();
+    const allRoutineItems = storage.getRoutineItems(userId);
     const linkedItem = allRoutineItems.find(ri => ri.habitId === identityId);
     if (linkedItem) {
       const routineUpdate: Record<string, any> = {};
@@ -559,83 +581,95 @@ export function registerRoutes(server: Server, app: Express) {
       if (req.body.cue !== undefined) routineUpdate.cue = req.body.cue;
       if (req.body.location !== undefined) routineUpdate.location = req.body.location;
       if (Object.keys(routineUpdate).length > 0) {
-        storage.updateRoutineItem(linkedItem.id, routineUpdate);
+        storage.updateRoutineItem(userId, linkedItem.id, routineUpdate);
       }
     }
 
-    // Sync linked project — propagate puzzlePiece and response changes
-    const allProjects = storage.getProjects();
+    const allProjects = storage.getProjects(userId);
     const linkedProject = allProjects.find(p => (p as any).identityId === identityId);
     if (linkedProject) {
       const projectUpdate: Record<string, any> = {};
       if (req.body.puzzlePiece !== undefined) projectUpdate.puzzlePiece = req.body.puzzlePiece;
       if (req.body.response !== undefined) projectUpdate.title = req.body.response;
       if (Object.keys(projectUpdate).length > 0) {
-        storage.updateProject(linkedProject.id, projectUpdate);
+        storage.updateProject(userId, linkedProject.id, projectUpdate);
       }
     }
 
     res.json(result);
   });
   app.delete("/api/identities/:id", (req, res) => {
-    storage.deleteIdentity(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deleteIdentity(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
   // ============================================================
   // ENVIRONMENT ENTITIES
   // ============================================================
-  app.get("/api/environment-entities", (_req, res) => {
-    res.json(storage.getEnvironmentEntities());
+  app.get("/api/environment-entities", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getEnvironmentEntities(userId));
   });
   app.get("/api/environment-entities/identity/:identityId", (req, res) => {
-    res.json(storage.getEnvironmentEntitiesByIdentity(Number(req.params.identityId)));
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getEnvironmentEntitiesByIdentity(userId, Number(req.params.identityId)));
   });
   app.get("/api/environment-entities/area/:areaId", (req, res) => {
-    res.json(storage.getEnvironmentEntitiesByArea(Number(req.params.areaId)));
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getEnvironmentEntitiesByArea(userId, Number(req.params.areaId)));
   });
   app.get("/api/environment-entities/:id", (req, res) => {
-    const all = storage.getEnvironmentEntities();
+    const userId = getEffectiveUserId(req);
+    const all = storage.getEnvironmentEntities(userId);
     const entity = all.find(e => e.id === Number(req.params.id));
     if (!entity) return res.status(404).json({ error: "Not found" });
     res.json(entity);
   });
   app.post("/api/environment-entities", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertEnvironmentEntitySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createEnvironmentEntity(parsed.data));
+    res.json(storage.createEnvironmentEntity(userId, parsed.data));
   });
   app.patch("/api/environment-entities/:id", (req, res) => {
-    const result = storage.updateEnvironmentEntity(Number(req.params.id), req.body);
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateEnvironmentEntity(userId, Number(req.params.id), req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.delete("/api/environment-entities/:id", (req, res) => {
-    storage.deleteEnvironmentEntity(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deleteEnvironmentEntity(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
   // ============================================================
   // BELIEFS
   // ============================================================
-  app.get("/api/beliefs", (_req, res) => {
-    res.json(storage.getBeliefs());
+  app.get("/api/beliefs", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getBeliefs(userId));
   });
   app.get("/api/beliefs/puzzle-piece/:piece", (req, res) => {
-    res.json(storage.getBeliefsByPuzzlePiece(req.params.piece));
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getBeliefsByPuzzlePiece(userId, req.params.piece));
   });
   app.post("/api/beliefs", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertBeliefSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createBelief(parsed.data));
+    res.json(storage.createBelief(userId, parsed.data));
   });
   app.patch("/api/beliefs/:id", (req, res) => {
-    const result = storage.updateBelief(Number(req.params.id), req.body);
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateBelief(userId, Number(req.params.id), req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.post("/api/beliefs/:id/graduate", (req, res) => {
-    const result = storage.updateBelief(Number(req.params.id), {
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateBelief(userId, Number(req.params.id), {
       graduated: 1,
       graduatedAt: new Date().toISOString(),
     });
@@ -643,116 +677,134 @@ export function registerRoutes(server: Server, app: Express) {
     res.json(result);
   });
   app.post("/api/beliefs/:id/reviewed", (req, res) => {
-    const all = storage.getBeliefs();
+    const userId = getEffectiveUserId(req);
+    const all = storage.getBeliefs(userId);
     const belief = all.find(b => b.id === Number(req.params.id));
     if (!belief) return res.status(404).json({ error: "Not found" });
-    const result = storage.updateBelief(belief.id, {
+    const result = storage.updateBelief(userId, belief.id, {
       repetitionCount: belief.repetitionCount + 1,
     });
     res.json(result);
   });
   app.delete("/api/beliefs/:id", (req, res) => {
-    storage.deleteBelief(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deleteBelief(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
   // ============================================================
   // ANTI-HABITS
   // ============================================================
-  app.get("/api/anti-habits", (_req, res) => {
-    res.json(storage.getAntiHabits());
+  app.get("/api/anti-habits", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getAntiHabits(userId));
   });
   app.get("/api/anti-habits/puzzle-piece/:piece", (req, res) => {
-    res.json(storage.getAntiHabitsByPuzzlePiece(req.params.piece));
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getAntiHabitsByPuzzlePiece(userId, req.params.piece));
   });
   app.post("/api/anti-habits", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertAntiHabitSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createAntiHabit(parsed.data));
+    res.json(storage.createAntiHabit(userId, parsed.data));
   });
   app.patch("/api/anti-habits/:id", (req, res) => {
-    const result = storage.updateAntiHabit(Number(req.params.id), req.body);
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateAntiHabit(userId, Number(req.params.id), req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.post("/api/anti-habits/:id/kept", (req, res) => {
-    const all = storage.getAntiHabits();
+    const userId = getEffectiveUserId(req);
+    const all = storage.getAntiHabits(userId);
     const antiHabit = all.find(a => a.id === Number(req.params.id));
     if (!antiHabit) return res.status(404).json({ error: "Not found" });
     const newStreak = antiHabit.currentStreak + 1;
-    const result = storage.updateAntiHabit(antiHabit.id, {
+    const result = storage.updateAntiHabit(userId, antiHabit.id, {
       currentStreak: newStreak,
       longestStreak: Math.max(newStreak, antiHabit.longestStreak),
     });
     res.json(result);
   });
   app.post("/api/anti-habits/:id/slip", (req, res) => {
-    const all = storage.getAntiHabits();
+    const userId = getEffectiveUserId(req);
+    const all = storage.getAntiHabits(userId);
     const antiHabit = all.find(a => a.id === Number(req.params.id));
     if (!antiHabit) return res.status(404).json({ error: "Not found" });
-    const result = storage.updateAntiHabit(antiHabit.id, {
+    const result = storage.updateAntiHabit(userId, antiHabit.id, {
       currentStreak: 0,
       lastSlipDate: new Date().toISOString().split("T")[0],
     });
     res.json(result);
   });
   app.delete("/api/anti-habits/:id", (req, res) => {
-    storage.deleteAntiHabit(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deleteAntiHabit(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
   // ============================================================
   // IMMUTABLE LAWS
   // ============================================================
-  app.get("/api/immutable-laws", (_req, res) => {
-    res.json(storage.getImmutableLaws());
+  app.get("/api/immutable-laws", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getImmutableLaws(userId));
   });
   app.get("/api/immutable-laws/puzzle-piece/:piece", (req, res) => {
-    res.json(storage.getImmutableLawsByPuzzlePiece(req.params.piece));
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getImmutableLawsByPuzzlePiece(userId, req.params.piece));
   });
   app.post("/api/immutable-laws", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertImmutableLawSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createImmutableLaw(parsed.data));
+    res.json(storage.createImmutableLaw(userId, parsed.data));
   });
   app.patch("/api/immutable-laws/:id", (req, res) => {
-    const result = storage.updateImmutableLaw(Number(req.params.id), req.body);
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateImmutableLaw(userId, Number(req.params.id), req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.delete("/api/immutable-laws/:id", (req, res) => {
-    storage.deleteImmutableLaw(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deleteImmutableLaw(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
   // ============================================================
   // IMMUTABLE LAW LOGS
   // ============================================================
-  app.get("/api/immutable-law-logs", (_req, res) => {
-    res.json(storage.getImmutableLawLogs());
+  app.get("/api/immutable-law-logs", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getImmutableLawLogs(userId));
   });
   app.get("/api/immutable-law-logs/law/:lawId", (req, res) => {
-    res.json(storage.getImmutableLawLogsByLaw(Number(req.params.lawId)));
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getImmutableLawLogsByLaw(userId, Number(req.params.lawId)));
   });
   app.get("/api/immutable-law-logs/date/:date", (req, res) => {
-    res.json(storage.getImmutableLawLogsByDate(req.params.date));
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getImmutableLawLogsByDate(userId, req.params.date));
   });
   app.post("/api/immutable-law-logs", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertImmutableLawLogSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createImmutableLawLog(parsed.data));
+    res.json(storage.createImmutableLawLog(userId, parsed.data));
   });
   app.post("/api/immutable-law-logs/check-in", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const { lawId, kept, triggerType, note, wasOverride, overrideReason } = req.body;
     if (lawId == null || kept == null) {
       return res.status(400).json({ error: "lawId and kept are required" });
     }
-    // Look up the law to get its puzzlePiece
-    const allLaws = storage.getImmutableLaws();
+    const allLaws = storage.getImmutableLaws(userId);
     const law = allLaws.find(l => l.id === Number(lawId));
     if (!law) return res.status(404).json({ error: "Law not found" });
 
-    const log = storage.createImmutableLawLog({
+    const log = storage.createImmutableLawLog(userId, {
       immutableLawId: law.id,
       puzzlePiece: law.puzzlePiece,
       date: new Date().toISOString().split("T")[0],
@@ -765,10 +817,9 @@ export function registerRoutes(server: Server, app: Express) {
       createdAt: new Date().toISOString(),
     });
 
-    // If broken and triggerType provided, suggest anti-habits for the same puzzle piece
     let antiHabitSuggestions: any[] = [];
     if (!kept && triggerType) {
-      antiHabitSuggestions = storage.getAntiHabitsByPuzzlePiece(law.puzzlePiece);
+      antiHabitSuggestions = storage.getAntiHabitsByPuzzlePiece(userId, law.puzzlePiece);
     }
 
     res.json({ log, antiHabitSuggestions });
@@ -777,28 +828,23 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   // HABITS
   // ============================================================
-  app.get("/api/habits", (_req, res) => {
-    res.json(storage.getHabits());
+  app.get("/api/habits", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getHabits(userId));
   });
   app.post("/api/habits", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertHabitSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    const habit = storage.createHabit(parsed.data);
+    const habit = storage.createHabit(userId, parsed.data);
 
-    // Create a draft routine item linked to this habit
-    // Map timeOfDay to a default placeholder time for grouping
     const timeOfDayMap: Record<string, string> = {
-      early_morning: "03:00",
-      morning: "07:00",
-      late_morning: "10:00",
-      afternoon: "13:00",
-      late_afternoon: "16:00",
-      evening: "20:00",
-      waking_hours: "12:00",
+      early_morning: "03:00", morning: "07:00", late_morning: "10:00",
+      afternoon: "13:00", late_afternoon: "16:00", evening: "20:00", waking_hours: "12:00",
     };
     const placeholderTime = timeOfDayMap[habit.timeOfDay || ""] || "12:00";
 
-    storage.createRoutineItem({
+    storage.createRoutineItem(userId, {
       sortOrder: 0,
       time: placeholderTime,
       durationMinutes: 10,
@@ -818,12 +864,12 @@ export function registerRoutes(server: Server, app: Express) {
     res.json(habit);
   });
   app.patch("/api/habits/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const habitId = Number(req.params.id);
-    const result = storage.updateHabit(habitId, req.body);
+    const result = storage.updateHabit(userId, habitId, req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
 
-    // Sync linked routine item — propagate name/craving/reward changes
-    const allRoutineItems = storage.getRoutineItems();
+    const allRoutineItems = storage.getRoutineItems(userId);
     const linkedItem = allRoutineItems.find(ri => ri.habitId === habitId);
     if (linkedItem) {
       const routineUpdate: Record<string, any> = {};
@@ -832,14 +878,15 @@ export function registerRoutes(server: Server, app: Express) {
       if (req.body.reward !== undefined) routineUpdate.reward = req.body.reward;
       if (req.body.areaId !== undefined) routineUpdate.areaId = req.body.areaId;
       if (Object.keys(routineUpdate).length > 0) {
-        storage.updateRoutineItem(linkedItem.id, routineUpdate);
+        storage.updateRoutineItem(userId, linkedItem.id, routineUpdate);
       }
     }
 
     res.json(result);
   });
   app.delete("/api/habits/:id", (req, res) => {
-    storage.deleteHabit(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deleteHabit(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
@@ -847,77 +894,91 @@ export function registerRoutes(server: Server, app: Express) {
   // HABIT LOGS
   // ============================================================
   app.get("/api/habit-logs", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const { date, habitId } = req.query;
     if (date) {
-      res.json(storage.getHabitLogsByDate(date as string));
+      res.json(storage.getHabitLogsByDate(userId, date as string));
     } else if (habitId) {
-      res.json(storage.getHabitLogs(Number(habitId)));
+      res.json(storage.getHabitLogs(userId, Number(habitId)));
     } else {
       res.json([]);
     }
   });
   app.post("/api/habit-logs", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertHabitLogSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createHabitLog(parsed.data));
+    res.json(storage.createHabitLog(userId, parsed.data));
   });
   app.delete("/api/habit-logs/:id", (req, res) => {
-    storage.deleteHabitLog(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deleteHabitLog(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
   // ============================================================
   // INBOX
   // ============================================================
-  app.get("/api/inbox", (_req, res) => {
-    res.json(storage.getInboxItems());
+  app.get("/api/inbox", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getInboxItems(userId));
   });
-  app.get("/api/inbox/trashed", (_req, res) => {
-    res.json(storage.getTrashedInboxItems());
+  app.get("/api/inbox/trashed", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getTrashedInboxItems(userId));
   });
   app.post("/api/inbox", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertInboxItemSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createInboxItem(parsed.data));
+    res.json(storage.createInboxItem(userId, parsed.data));
   });
   app.patch("/api/inbox/:id", (req, res) => {
-    const result = storage.updateInboxItem(Number(req.params.id), req.body);
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateInboxItem(userId, Number(req.params.id), req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.post("/api/inbox/:id/soft-delete", (req, res) => {
-    const result = storage.softDeleteInboxItem(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    const result = storage.softDeleteInboxItem(userId, Number(req.params.id));
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.post("/api/inbox/:id/restore", (req, res) => {
-    const result = storage.restoreInboxItem(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    const result = storage.restoreInboxItem(userId, Number(req.params.id));
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.delete("/api/inbox/:id", (req, res) => {
-    storage.deleteInboxItem(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deleteInboxItem(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
-  // Someday/Maybe project (auto-create)
-  app.get("/api/someday-project", (_req, res) => {
-    res.json(storage.getOrCreateSomedayProject());
+  // Someday/Maybe project
+  app.get("/api/someday-project", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getOrCreateSomedayProject(userId));
   });
 
   // ============================================================
   // WEEKLY REVIEWS
   // ============================================================
-  app.get("/api/weekly-reviews", (_req, res) => {
-    res.json(storage.getWeeklyReviews());
+  app.get("/api/weekly-reviews", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getWeeklyReviews(userId));
   });
   app.post("/api/weekly-reviews", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertWeeklyReviewSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createWeeklyReview(parsed.data));
+    res.json(storage.createWeeklyReview(userId, parsed.data));
   });
   app.patch("/api/weekly-reviews/:id", (req, res) => {
-    const result = storage.updateWeeklyReview(Number(req.params.id), req.body);
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateWeeklyReview(userId, Number(req.params.id), req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
@@ -925,21 +986,25 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   // ROUTINE ITEMS
   // ============================================================
-  app.get("/api/routine-items", (_req, res) => {
-    res.json(storage.getRoutineItems());
+  app.get("/api/routine-items", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getRoutineItems(userId));
   });
   app.post("/api/routine-items", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertRoutineItemSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createRoutineItem(parsed.data));
+    res.json(storage.createRoutineItem(userId, parsed.data));
   });
   app.patch("/api/routine-items/:id", (req, res) => {
-    const result = storage.updateRoutineItem(Number(req.params.id), req.body);
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateRoutineItem(userId, Number(req.params.id), req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.delete("/api/routine-items/:id", (req, res) => {
-    storage.deleteRoutineItem(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deleteRoutineItem(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
@@ -947,31 +1012,35 @@ export function registerRoutes(server: Server, app: Express) {
   // ROUTINE LOGS
   // ============================================================
   app.get("/api/routine-logs", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const { date } = req.query;
     if (date) {
-      res.json(storage.getRoutineLogsByDate(date as string));
+      res.json(storage.getRoutineLogsByDate(userId, date as string));
     } else {
       res.json([]);
     }
   });
   app.post("/api/routine-logs", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertRoutineLogSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createRoutineLog(parsed.data));
+    res.json(storage.createRoutineLog(userId, parsed.data));
   });
   app.delete("/api/routine-logs/:id", (req, res) => {
-    storage.deleteRoutineLog(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deleteRoutineLog(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
-  // Seed routine from JSON file
+  // Seed routine from JSON
   app.post("/api/routine-items/seed", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const items = req.body;
     if (!Array.isArray(items)) return res.status(400).json({ error: "Expected array" });
     const created = items.map((item: any) => {
       const parsed = insertRoutineItemSchema.safeParse(item);
       if (!parsed.success) return null;
-      return storage.createRoutineItem(parsed.data);
+      return storage.createRoutineItem(userId, parsed.data);
     }).filter(Boolean);
     res.json({ created: created.length });
   });
@@ -979,43 +1048,46 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   // PLANNER TASKS
   // ============================================================
-  app.get("/api/planner-tasks/drafts", (_req, res) => {
-    res.json(storage.getDraftTasks());
+  app.get("/api/planner-tasks/drafts", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getDraftTasks(userId));
   });
   app.get("/api/planner-tasks", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const { date, areaId, habitId, sourceType } = req.query;
     if (date) {
-      res.json(storage.getPlannerTasksByDate(date as string));
+      res.json(storage.getPlannerTasksByDate(userId, date as string));
     } else if (areaId) {
-      res.json(storage.getPlannerTasksByArea(Number(areaId)));
+      res.json(storage.getPlannerTasksByArea(userId, Number(areaId)));
     } else if (habitId && sourceType) {
-      const all = storage.getAllPlannerTasks();
+      const all = storage.getAllPlannerTasks(userId);
       res.json(all.filter(t => t.habitId === Number(habitId) && t.sourceType === sourceType));
     } else if (habitId) {
-      const all = storage.getAllPlannerTasks();
+      const all = storage.getAllPlannerTasks(userId);
       res.json(all.filter(t => t.habitId === Number(habitId)));
     } else {
-      res.json(storage.getAllPlannerTasks());
+      res.json(storage.getAllPlannerTasks(userId));
     }
   });
   app.post("/api/planner-tasks", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const parsed = insertPlannerTaskSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createPlannerTask(parsed.data));
+    res.json(storage.createPlannerTask(userId, parsed.data));
   });
 
-  // Generate recurring task instances for a date range
+  // Generate recurring task instances
   app.post("/api/planner-tasks/generate-recurring", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const { startDate, endDate } = req.body;
     if (!startDate || !endDate) return res.status(400).json({ error: "startDate and endDate required" });
-    const allTasks = storage.getAllPlannerTasks();
+    const allTasks = storage.getAllPlannerTasks(userId);
     const templates = allTasks.filter(t => t.recurrence);
     let created = 0;
     const start = new Date(startDate + "T12:00:00");
     const end = new Date(endDate + "T12:00:00");
     const DAY_NAMES = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
 
-    // Helper: get the Nth weekday occurrence in a month (1-based, 5=last)
     function getNthWeekdayOfMonth(year: number, month: number, dayIndex: number, nth: number): number | null {
       const first = new Date(year, month, 1);
       const last = new Date(year, month + 1, 0);
@@ -1024,7 +1096,7 @@ export function registerRoutes(server: Server, app: Express) {
         const test = new Date(year, month, d);
         if (test.getDay() === dayIndex) dates.push(d);
       }
-      if (nth === 5) return dates[dates.length - 1] || null; // Last
+      if (nth === 5) return dates[dates.length - 1] || null;
       return dates[nth - 1] || null;
     }
 
@@ -1032,13 +1104,12 @@ export function registerRoutes(server: Server, app: Express) {
       const dateStr = d.toISOString().split("T")[0];
       const dow = d.getDay();
       const dayName = DAY_NAMES[dow];
-      const existingForDate = storage.getPlannerTasksByDate(dateStr);
+      const existingForDate = storage.getPlannerTasksByDate(userId, dateStr);
 
       for (const tpl of templates) {
         const rec = tpl.recurrence!;
         let matches = false;
 
-        // Try parsing as JSON pattern first
         let pattern: any = null;
         try { pattern = JSON.parse(rec); } catch {}
 
@@ -1053,9 +1124,7 @@ export function registerRoutes(server: Server, app: Express) {
             const sameWeekCycle = daysDiff >= 0 && weeksDiff % pattern.interval === 0;
             const days: string[] = pattern.days || [];
             matches = sameWeekCycle && days.includes(dayName);
-            // For interval > 1 we need to check if this week aligns
             if (pattern.interval > 1) {
-              // Calculate week offset from original date
               const origWeekStart = new Date(origDate);
               origWeekStart.setDate(origWeekStart.getDate() - origWeekStart.getDay());
               const curWeekStart = new Date(d);
@@ -1064,12 +1133,10 @@ export function registerRoutes(server: Server, app: Express) {
               matches = weeksBetween >= 0 && weeksBetween % pattern.interval === 0 && days.includes(dayName);
             }
           } else if (pattern.type === "monthly") {
-            // Check if this month aligns with interval
             const monthsDiff = (d.getFullYear() - origDate.getFullYear()) * 12 + d.getMonth() - origDate.getMonth();
             const monthAligned = monthsDiff >= 0 && monthsDiff % (pattern.interval || 1) === 0;
             if (monthAligned) {
               if (pattern.weekOfMonth && pattern.dayOfWeek) {
-                // "3rd Friday" style
                 const targetDayIndex = DAY_NAMES.indexOf(pattern.dayOfWeek);
                 const targetDate = getNthWeekdayOfMonth(d.getFullYear(), d.getMonth(), targetDayIndex, pattern.weekOfMonth);
                 matches = targetDate === d.getDate();
@@ -1079,7 +1146,6 @@ export function registerRoutes(server: Server, app: Express) {
             }
           }
         } else {
-          // Legacy string formats
           if (rec === "daily") matches = true;
           else if (rec === "weekdays") matches = dow >= 1 && dow <= 5;
           else if (rec === "weekend") matches = dow === 0 || dow === 6;
@@ -1093,7 +1159,7 @@ export function registerRoutes(server: Server, app: Express) {
         if (!matches) continue;
         const dup = existingForDate.find(e => e.goal === tpl.goal && e.areaId === tpl.areaId && e.habitId === tpl.habitId);
         if (dup) continue;
-        storage.createPlannerTask({
+        storage.createPlannerTask(userId, {
           date: dateStr,
           areaId: tpl.areaId,
           goal: tpl.goal,
@@ -1109,23 +1175,26 @@ export function registerRoutes(server: Server, app: Express) {
     res.json({ created });
   });
   app.patch("/api/planner-tasks/:id", (req, res) => {
-    const result = storage.updatePlannerTask(Number(req.params.id), req.body);
+    const userId = getEffectiveUserId(req);
+    const result = storage.updatePlannerTask(userId, Number(req.params.id), req.body);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.delete("/api/planner-tasks/:id", (req, res) => {
-    storage.deletePlannerTask(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    storage.deletePlannerTask(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
-  // Seed areas from DPT
+  // Seed areas
   app.post("/api/areas/seed", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const items = req.body;
     if (!Array.isArray(items)) return res.status(400).json({ error: "Expected array" });
     const created = items.map((item: any) => {
       const parsed = insertAreaSchema.safeParse(item);
       if (!parsed.success) return null;
-      return storage.createArea(parsed.data);
+      return storage.createArea(userId, parsed.data);
     }).filter(Boolean);
     res.json({ created: created.length });
   });
@@ -1133,41 +1202,37 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   // WIZARD STATE
   // ============================================================
-  app.get("/api/wizard-state", (_req, res) => {
-    let state = storage.getWizardState();
+  app.get("/api/wizard-state", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    let state = storage.getWizardState(userId);
     if (!state) {
-      state = storage.upsertWizardState({ currentPhase: 1, completed: 0 });
+      state = storage.upsertWizardState(userId, { currentPhase: 1, completed: 0 });
     }
     res.json(state);
   });
   app.patch("/api/wizard-state", (req, res) => {
-    const state = storage.upsertWizardState(req.body);
+    const userId = getEffectiveUserId(req);
+    const state = storage.upsertWizardState(userId, req.body);
     res.json(state);
   });
-  app.post("/api/wizard/complete", (_req, res) => {
-    // For every active identity with areaId, create a draft routine_item
-    const allIdentities = storage.getIdentities();
-    const allRoutineItems = storage.getRoutineItems();
+  app.post("/api/wizard/complete", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const allIdentities = storage.getIdentities(userId);
+    const allRoutineItems = storage.getRoutineItems(userId);
     const activeIdentities = allIdentities.filter(i => i.active && i.areaId);
 
     const timeOfDayMap: Record<string, string> = {
-      early_morning: "03:00",
-      morning: "07:00",
-      late_morning: "10:00",
-      afternoon: "13:00",
-      late_afternoon: "16:00",
-      evening: "20:00",
-      waking_hours: "12:00",
+      early_morning: "03:00", morning: "07:00", late_morning: "10:00",
+      afternoon: "13:00", late_afternoon: "16:00", evening: "20:00", waking_hours: "12:00",
     };
 
     let created = 0;
     for (const identity of activeIdentities) {
-      // Skip if already has a linked routine item (habitId column stores identityId)
       const existing = allRoutineItems.find(r => r.habitId === identity.id);
       if (existing) continue;
 
       const placeholderTime = timeOfDayMap[identity.timeOfDay || ""] || "12:00";
-      storage.createRoutineItem({
+      storage.createRoutineItem(userId, {
         sortOrder: 0,
         time: placeholderTime,
         durationMinutes: 10,
@@ -1177,7 +1242,7 @@ export function registerRoutes(server: Server, app: Express) {
         response: identity.statement,
         reward: identity.reward || null,
         areaId: identity.areaId || null,
-        habitId: identity.id, // habitId column repurposed to store identityId
+        habitId: identity.id,
         dayVariant: null,
         active: 1,
         isDraft: 1,
@@ -1186,8 +1251,7 @@ export function registerRoutes(server: Server, app: Express) {
       created++;
     }
 
-    // Mark wizard completed
-    storage.upsertWizardState({
+    storage.upsertWizardState(userId, {
       completed: 1,
       completedAt: new Date().toISOString(),
     });
@@ -1198,23 +1262,23 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   // DASHBOARD STATS
   // ============================================================
-  app.get("/api/stats", (_req, res) => {
+  app.get("/api/stats", (req, res) => {
     try {
-    // Wrap legacy table queries in try/catch — production DB may lack newer columns
+    const userId = getEffectiveUserId(req);
     let allActions: any[] = [];
-    try { allActions = storage.getActions(); } catch {}
+    try { allActions = storage.getActions(userId); } catch {}
     let allProjects: any[] = [];
-    try { allProjects = storage.getProjects(); } catch {}
+    try { allProjects = storage.getProjects(userId); } catch {}
     let inboxCount = 0;
-    try { inboxCount = storage.getInboxItems().filter(i => !i.processed).length; } catch {}
-    const allIdentities = storage.getIdentities();
-    const allRoutineItems = storage.getRoutineItems();
+    try { inboxCount = storage.getInboxItems(userId).filter(i => !i.processed).length; } catch {}
+    const allIdentities = storage.getIdentities(userId);
+    const allRoutineItems = storage.getRoutineItems(userId);
     const now = new Date();
     const today = now.toISOString().split("T")[0];
     const currentHHMM = now.toTimeString().slice(0, 5);
     const activeIdentities = allIdentities.filter(i => i.active);
 
-    const allPlannerTasks = storage.getAllPlannerTasks();
+    const allPlannerTasks = storage.getAllPlannerTasks(userId);
     const missedTasksCount = allPlannerTasks.filter(t => {
       if (t.status !== "planned" || !t.endTime) return false;
       if (t.date < today) return true;
@@ -1224,12 +1288,10 @@ export function registerRoutes(server: Server, app: Express) {
 
     const pendingActionsCount = allRoutineItems.filter(r => r.isDraft === 1).length;
 
-    // identityVotePercent: active identities with areaId → routine items → planner tasks
     const identitiesWithArea = allIdentities.filter(i => i.active && i.areaId != null);
     let identityDone = 0;
     let identityTotal = 0;
     for (const identity of identitiesWithArea) {
-      // habitId column stores identityId
       const linkedRoutineItems = allRoutineItems.filter(r => r.habitId === identity.id);
       if (linkedRoutineItems.length === 0) continue;
       const linkedTasks = allPlannerTasks.filter(t => {
@@ -1264,30 +1326,30 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   // COMBINED DASHBOARD DATA
   // ============================================================
-  app.get("/api/dashboard-data", (_req, res) => {
+  app.get("/api/dashboard-data", (req, res) => {
     try {
+    const userId = getEffectiveUserId(req);
     const now = new Date();
     const today = now.toISOString().split("T")[0];
     const currentHHMM = now.toTimeString().slice(0, 5);
 
-    // Wrap legacy table queries in try/catch — production DB may lack newer columns
     let allActions: any[] = [];
-    try { allActions = storage.getActions(); } catch {}
+    try { allActions = storage.getActions(userId); } catch {}
     let inboxCount = 0;
-    try { inboxCount = storage.getInboxItems().filter(i => !i.processed).length; } catch {}
-    const allIdentities = storage.getIdentities();
-    const allRoutineItems = storage.getRoutineItems();
-    const allAreas = storage.getAreas();
+    try { inboxCount = storage.getInboxItems(userId).filter(i => !i.processed).length; } catch {}
+    const allIdentities = storage.getIdentities(userId);
+    const allRoutineItems = storage.getRoutineItems(userId);
+    const allAreas = storage.getAreas(userId);
     const activeIdentities = allIdentities.filter(i => i.active);
-    const allPlannerTasks = storage.getAllPlannerTasks();
+    const allPlannerTasks = storage.getAllPlannerTasks(userId);
 
-    // Generate recurring tasks for today (same logic as generate-recurring endpoint)
+    // Generate recurring tasks for today
     const templates = allPlannerTasks.filter(t => t.recurrence);
     const DAY_NAMES = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
     const d = new Date(today + "T12:00:00");
     const dow = d.getDay();
     const dayName = DAY_NAMES[dow];
-    const existingForDate = storage.getPlannerTasksByDate(today);
+    const existingForDate = storage.getPlannerTasksByDate(userId, today);
 
     const getNthWeekdayOfMonthDash = (year: number, month: number, dayIndex: number, nth: number): number | null => {
       const first = new Date(year, month, 1);
@@ -1352,7 +1414,7 @@ export function registerRoutes(server: Server, app: Express) {
       if (!matches) continue;
       const dup = existingForDate.find(e => e.goal === tpl.goal && e.areaId === tpl.areaId && e.habitId === tpl.habitId);
       if (dup) continue;
-      storage.createPlannerTask({
+      storage.createPlannerTask(userId, {
         date: today,
         areaId: tpl.areaId,
         goal: tpl.goal,
@@ -1393,9 +1455,8 @@ export function registerRoutes(server: Server, app: Express) {
     }
     const identityVotePercent = identityTotal > 0 ? Math.round((identityDone / identityTotal) * 100) : 0;
 
-    // Fetch today's data
-    const todaysTasks = recurringCreated > 0 ? storage.getPlannerTasksByDate(today) : existingForDate;
-    const routineLogs = storage.getRoutineLogsByDate(today);
+    const todaysTasks = recurringCreated > 0 ? storage.getPlannerTasksByDate(userId, today) : existingForDate;
+    const routineLogs = storage.getRoutineLogsByDate(userId, today);
 
     res.json({
       stats: {
@@ -1423,21 +1484,21 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   // IDENTITY VOTE DETAILS
   // ============================================================
-  app.get("/api/identity-vote-details", (_req, res) => {
+  app.get("/api/identity-vote-details", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const today = new Date().toISOString().split("T")[0];
     const now = new Date();
     const currentHHMM = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
 
-    const allIdentities = storage.getIdentities();
-    const allRoutineItems = storage.getRoutineItems();
-    const allPlannerTasks = storage.getAllPlannerTasks();
-    const allAreas = storage.getAreas();
+    const allIdentities = storage.getIdentities(userId);
+    const allRoutineItems = storage.getRoutineItems(userId);
+    const allPlannerTasks = storage.getAllPlannerTasks(userId);
+    const allAreas = storage.getAreas(userId);
 
     const activeIdentities = allIdentities.filter(i => i.active && i.areaId != null);
 
     const breakdown = activeIdentities.map(identity => {
       const area = allAreas.find(a => a.id === identity.areaId);
-      // habitId column stores identityId
       const linkedRoutineItems = allRoutineItems.filter(r => r.habitId === identity.id);
 
       const pastTasks = allPlannerTasks.filter(t => {
@@ -1487,7 +1548,6 @@ export function registerRoutes(server: Server, app: Express) {
     const totalAll = breakdown.reduce((s, b) => s + b.total, 0);
     const overallPercent = totalAll > 0 ? Math.round((totalDone / totalAll) * 100) : 0;
 
-    // Identities with area but no routine (can't contribute)
     const identitiesWithoutRoutine = activeIdentities.filter(i => {
       return !allRoutineItems.some(r => r.habitId === i.id);
     }).map(i => ({
@@ -1507,8 +1567,9 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   // PENDING ACTIONS
   // ============================================================
-  app.get("/api/pending-actions", (_req, res) => {
-    const allRoutineItems = storage.getRoutineItems();
+  app.get("/api/pending-actions", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const allRoutineItems = storage.getRoutineItems(userId);
     const draftItems = allRoutineItems.filter(r => r.isDraft === 1);
     res.json(draftItems.map(r => ({
       type: "draft_routine",
@@ -1521,11 +1582,12 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   // MISSED TASKS
   // ============================================================
-  app.get("/api/missed-tasks", (_req, res) => {
+  app.get("/api/missed-tasks", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const now = new Date();
     const today = now.toISOString().split("T")[0];
     const currentHHMM = now.toTimeString().slice(0, 5);
-    const allPlannerTasks = storage.getAllPlannerTasks();
+    const allPlannerTasks = storage.getAllPlannerTasks(userId);
     const missed = allPlannerTasks.filter(t => {
       if (t.status !== "planned" || !t.endTime) return false;
       if (t.date < today) return true;
@@ -1539,11 +1601,12 @@ export function registerRoutes(server: Server, app: Express) {
   // POSTPONE PLANNER TASK
   // ============================================================
   app.patch("/api/planner-tasks/:id/postpone", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const { date, startTime, endTime } = req.body;
     if (!date || !startTime || !endTime) {
       return res.status(400).json({ error: "date, startTime, and endTime are required" });
     }
-    const result = storage.updatePlannerTask(Number(req.params.id), {
+    const result = storage.updatePlannerTask(userId, Number(req.params.id), {
       date,
       startTime,
       endTime,
@@ -1557,15 +1620,16 @@ export function registerRoutes(server: Server, app: Express) {
   // BULK IMPORT
   // ============================================================
   app.post("/api/import", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const { type, rows } = req.body;
     if (!type || !Array.isArray(rows)) {
       return res.status(400).json({ error: "type and rows[] required" });
     }
 
     const now = new Date().toISOString();
-    const allAreas = storage.getAreas();
-    const allIdentities = storage.getIdentities();
-    const allVisions = storage.getVisions();
+    const allAreas = storage.getAreas(userId);
+    const allIdentities = storage.getIdentities(userId);
+    const allVisions = storage.getVisions(userId);
     let created = 0;
     const errors: string[] = [];
 
@@ -1576,23 +1640,22 @@ export function registerRoutes(server: Server, app: Express) {
     try {
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        const rowNum = i + 2; // +2 for header row + 0-indexed
+        const rowNum = i + 2;
         try {
           if (type === "purposes") {
             if (!row.statement) { errors.push(`Row ${rowNum}: missing statement`); continue; }
             const principles = row.principles ? JSON.stringify(row.principles.split("|").map((s: string) => s.trim()).filter(Boolean)) : null;
-            storage.createPurpose({ statement: row.statement, principles, createdAt: now });
+            storage.createPurpose(userId, { statement: row.statement, principles, createdAt: now });
             created++;
           } else if (type === "visions") {
             if (!row.title) { errors.push(`Row ${rowNum}: missing title`); continue; }
-            storage.createVision({ title: row.title, description: row.description || null, timeframe: row.timeframe || null, status: "active", createdAt: now });
+            storage.createVision(userId, { title: row.title, description: row.description || null, timeframe: row.timeframe || null, status: "active", createdAt: now });
             created++;
           } else if (type === "areas") {
             if (!row.name) { errors.push(`Row ${rowNum}: missing name`); continue; }
-            storage.createArea({ name: row.name, description: row.description || null, category: row.responsibility || row.category || null, puzzlePiece: row.puzzle_piece || null, icon: null, sortOrder: allAreas.length + created });
+            storage.createArea(userId, { name: row.name, description: row.description || null, category: row.responsibility || row.category || null, puzzlePiece: row.puzzle_piece || null, icon: null, sortOrder: allAreas.length + created });
             created++;
           } else if (type === "identities") {
-            // All 7 fields required
             const missing: string[] = [];
             if (!row.statement) missing.push("statement");
             if (!row.area_name) missing.push("area_name");
@@ -1604,7 +1667,6 @@ export function registerRoutes(server: Server, app: Express) {
             if (missing.length > 0) { errors.push(`Row ${rowNum}: missing ${missing.join(", ")}`); continue; }
             const area = findAreaByName(row.area_name);
             if (!area) { errors.push(`Row ${rowNum}: area "${row.area_name}" not found — import areas first`); continue; }
-            // Map simple recurrence keywords to JSON patterns (matching RecurrenceBuilder output)
             const recurrenceMap: Record<string, string> = {
               "daily": JSON.stringify({ type: "daily", interval: 1 }),
               "weekly": JSON.stringify({ type: "weekly", interval: 1, days: ["monday"] }),
@@ -1615,11 +1677,10 @@ export function registerRoutes(server: Server, app: Express) {
             const recKey = row.recurrence.toLowerCase().trim();
             const freq = recurrenceMap[recKey];
             if (!freq) { errors.push(`Row ${rowNum}: invalid recurrence "${row.recurrence}" — use daily, weekly, monthly, quarterly, or yearly`); continue; }
-            // Validate time_of_day
             const validTimes = ["early_morning", "morning", "late_morning", "afternoon", "late_afternoon", "evening", "waking_hours"];
             const todKey = row.time_of_day.toLowerCase().trim();
             if (!validTimes.includes(todKey)) { errors.push(`Row ${rowNum}: invalid time_of_day "${row.time_of_day}" — use ${validTimes.join(", ")}`); continue; }
-            const newIdentity = storage.createIdentity({
+            const newIdentity = storage.createIdentity(userId, {
               statement: row.statement,
               areaId: area.id,
               visionId: null,
@@ -1634,14 +1695,13 @@ export function registerRoutes(server: Server, app: Express) {
               puzzlePiece: row.puzzle_piece || null,
               createdAt: now,
             });
-            // Create linked routine item (same logic as POST /api/identities)
             if (newIdentity.cue || newIdentity.timeOfDay) {
               const timeOfDayMap: Record<string, string> = {
                 early_morning: "03:00", morning: "07:00", late_morning: "10:00",
                 afternoon: "13:00", late_afternoon: "16:00", evening: "20:00", waking_hours: "12:00",
               };
               const placeholderTime = timeOfDayMap[newIdentity.timeOfDay || ""] || "12:00";
-              storage.createRoutineItem({
+              storage.createRoutineItem(userId, {
                 sortOrder: 0,
                 time: placeholderTime,
                 durationMinutes: 10,
@@ -1660,7 +1720,6 @@ export function registerRoutes(server: Server, app: Express) {
             }
             created++;
           } else if (type === "habits") {
-            // Legacy "habits" import now creates identities with habit fields
             if (!row.name) { errors.push(`Row ${rowNum}: missing name`); continue; }
             const area = row.area_name ? findAreaByName(row.area_name) : null;
             const freqMap: Record<string, string> = {
@@ -1668,7 +1727,7 @@ export function registerRoutes(server: Server, app: Express) {
               "weekly": JSON.stringify({ type: "weekly", interval: 1, days: ["monday"] }),
               "weekdays": JSON.stringify({ type: "weekly", interval: 1, days: ["monday","tuesday","wednesday","thursday","friday"] }),
             };
-            storage.createIdentity({
+            storage.createIdentity(userId, {
               statement: row.name,
               areaId: area?.id || null,
               visionId: null,
@@ -1686,10 +1745,10 @@ export function registerRoutes(server: Server, app: Express) {
           } else if (type === "goals") {
             if (!row.title) { errors.push(`Row ${rowNum}: missing title`); continue; }
             const vision = row.vision_title ? findVisionByTitle(row.vision_title) : null;
-            storage.createGoal({ title: row.title, description: row.description || null, visionId: vision?.id || null, targetDate: row.target_date || null, status: "active", createdAt: now });
+            storage.createGoal(userId, { title: row.title, description: row.description || null, visionId: vision?.id || null, targetDate: row.target_date || null, status: "active", createdAt: now });
             created++;
           } else if (type === "tasks") {
-            const taskText = row.task || row.goal; // accept 'task' or legacy 'goal' column
+            const taskText = row.task || row.goal;
             if (!taskText || !row.date) { errors.push(`Row ${rowNum}: missing task or date`); continue; }
             const area = row.area_name ? findAreaByName(row.area_name) : null;
             let hours: string | null = null;
@@ -1699,7 +1758,7 @@ export function registerRoutes(server: Server, app: Express) {
               const diff = (eh * 60 + em - sh * 60 - sm) / 60;
               if (diff > 0) hours = diff.toFixed(2);
             }
-            storage.createPlannerTask({
+            storage.createPlannerTask(userId, {
               date: row.date,
               areaId: area?.id || null,
               goal: taskText,
@@ -1731,22 +1790,25 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   // PREFERENCES
   // ============================================================
-  app.get("/api/preferences", (_req, res) => {
-    res.json(storage.getPreferences());
+  app.get("/api/preferences", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getPreferences(userId));
   });
   app.put("/api/preferences", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const { displayName, timeFormat } = req.body;
     const data: { displayName?: string; timeFormat?: string } = {};
     if (displayName !== undefined) data.displayName = String(displayName).slice(0, 50);
     if (timeFormat !== undefined && (timeFormat === "12h" || timeFormat === "24h")) data.timeFormat = timeFormat;
-    res.json(storage.updatePreferences(data));
+    res.json(storage.updatePreferences(userId, data));
   });
 
   // ============================================================
   // EXPORT
   // ============================================================
-  app.get("/api/export/json", (_req, res) => {
-    const allData = storage.getAllDataForExport();
+  app.get("/api/export/json", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const allData = storage.getAllDataForExport(userId);
     const payload = {
       exportDate: new Date().toISOString(),
       version: 1,
@@ -1758,9 +1820,10 @@ export function registerRoutes(server: Server, app: Express) {
     res.json(payload);
   });
 
-  app.get("/api/export/csv", async (_req, res) => {
+  app.get("/api/export/csv", async (req, res) => {
+    const userId = getEffectiveUserId(req);
     const archiver = await import("archiver");
-    const allData = storage.getAllDataForExport();
+    const allData = storage.getAllDataForExport(userId);
     const dateStr = new Date().toISOString().split("T")[0];
 
     res.setHeader("Content-Disposition", `attachment; filename="unpuzzle-life-export-${dateStr}.zip"`);
@@ -1797,6 +1860,7 @@ export function registerRoutes(server: Server, app: Express) {
   // IMPORT (full JSON replacement)
   // ============================================================
   app.post("/api/import/json", (req, res) => {
+    const userId = getEffectiveUserId(req);
     const body = req.body;
     if (!body || !body.data || typeof body.data !== "object") {
       return res.status(400).json({ error: "Invalid import format: missing 'data' key" });
@@ -1835,7 +1899,8 @@ export function registerRoutes(server: Server, app: Express) {
           const mapping = tableMap[key];
           if (!mapping || !Array.isArray(rows)) continue;
 
-          sqlite.prepare(`DELETE FROM ${mapping.sqlName}`).run();
+          // Delete only this user's data
+          sqlite.prepare(`DELETE FROM ${mapping.sqlName} WHERE user_id = ?`).run(userId);
 
           if (rows.length === 0) {
             counts[key] = 0;
@@ -1844,7 +1909,12 @@ export function registerRoutes(server: Server, app: Express) {
 
           const firstRow = rows[0];
           const camelKeys = Object.keys(firstRow);
+          // Ensure user_id is included
+          const hasUserId = camelKeys.includes("userId") || camelKeys.includes("user_id");
           const snakeKeys = camelKeys.map(camelToSnake);
+          if (!hasUserId) {
+            snakeKeys.push("user_id");
+          }
 
           const placeholders = snakeKeys.map(() => "?").join(", ");
           const insertStmt = sqlite.prepare(
@@ -1856,6 +1926,9 @@ export function registerRoutes(server: Server, app: Express) {
               const v = (row as any)[k];
               return v === undefined ? null : v;
             });
+            if (!hasUserId) {
+              values.push(userId);
+            }
             insertStmt.run(...values);
           }
           counts[key] = rows.length;
@@ -1872,9 +1945,10 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   // RESET
   // ============================================================
-  app.post("/api/reset", (_req, res) => {
+  app.post("/api/reset", (req, res) => {
     try {
-      storage.resetDatabase();
+      const userId = getEffectiveUserId(req);
+      storage.resetDatabase(userId);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
