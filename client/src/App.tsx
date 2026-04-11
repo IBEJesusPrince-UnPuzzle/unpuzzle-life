@@ -66,7 +66,7 @@ export default function App() {
       <TooltipProvider>
         <Router hook={useHashLocation}>
           <SidebarProvider defaultOpen={true}>
-            <div className="flex h-screen w-full overflow-hidden">
+            <div className="flex h-full w-full">
               <AppSidebar />
               <div className="flex flex-col flex-1 min-w-0">
                 <main className="flex-1 overflow-auto pb-20 md:pb-0">
