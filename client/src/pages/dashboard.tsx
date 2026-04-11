@@ -265,7 +265,7 @@ export default function Dashboard() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (quickCapture.trim() && captureAreaId) {
+          if (quickCapture.trim()) {
             captureToInbox.mutate({
               content: quickCapture.trim(),
               areaId: captureAreaId && captureAreaId !== "none" ? Number(captureAreaId) : null,
@@ -291,7 +291,7 @@ export default function Dashboard() {
               {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Button type="submit" size="sm" disabled={!quickCapture.trim() || !captureAreaId} data-testid="button-capture">
+          <Button type="submit" size="sm" disabled={!quickCapture.trim()} data-testid="button-capture">
             <Plus className="w-4 h-4 mr-1" /> Capture
           </Button>
         </div>
@@ -340,7 +340,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {statsLoading ? (
           Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i}><CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent></Card>
+            <Card key={i}><CardContent className="p-4 flex items-center gap-3"><Skeleton className="w-9 h-9 rounded-lg" /><div className="space-y-2 flex-1"><Skeleton className="h-5 w-12" /><Skeleton className="h-3 w-20" /></div></CardContent></Card>
           ))
         ) : (
           <>

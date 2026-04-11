@@ -420,10 +420,12 @@ export function SorterView({ areas, onAreaClick, embedded }: { areas: Area[]; on
     return phaseOrder.filter(p => phases.has(p));
   }, [phaseGroups, routineByPhase]);
 
-  // Stats
-  const totalTasks = tasks.length;
-  const doneTasks = tasks.filter(t => t.status === "done").length;
-  const totalHours = tasks.reduce((sum, t) => sum + (parseFloat(t.hours || "0") || 0), 0);
+  // Stats — include routine items alongside planner tasks
+  const totalRoutineMinutes = activeRoutineItems.reduce((sum, r) => sum + (r.durationMinutes || 0), 0);
+  const routineCompletedCount = activeRoutineItems.filter(r => routineCompletionSet.has(r.id)).length;
+  const totalTasks = tasks.length + activeRoutineItems.length;
+  const doneTasks = tasks.filter(t => t.status === "done").length + routineCompletedCount;
+  const totalHours = tasks.reduce((sum, t) => sum + (parseFloat(t.hours || "0") || 0), 0) + totalRoutineMinutes / 60;
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4">
@@ -863,7 +865,7 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
                 )}
                 {task.hours && parseFloat(task.hours) > 0 && (
                   <Badge variant="outline" className="text-[10px] h-4 px-1">
-                    {parseFloat(task.hours).toFixed(task.hours.includes(".") ? 1 : 0)}h
+                    {parseFloat(task.hours).toFixed(1)}h
                   </Badge>
                 )}
                 {isProjectTask && ProjectCatIcon ? (

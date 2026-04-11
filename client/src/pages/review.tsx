@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "wouter";
-import type { WeeklyReview, InboxItem, Project, Habit } from "@shared/schema";
+import type { WeeklyReview, InboxItem, Project, Identity } from "@shared/schema";
 import { getPieceColor } from "@/lib/piece-colors";
 
 const PIECES = [
@@ -70,7 +70,7 @@ export default function ReviewPage() {
   const { data: reviews = [] } = useQuery<WeeklyReview[]>({ queryKey: ["/api/weekly-reviews"] });
   const { data: inboxItems = [] } = useQuery<InboxItem[]>({ queryKey: ["/api/inbox"] });
   const { data: projects = [] } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
-  const { data: habits = [] } = useQuery<Habit[]>({ queryKey: ["/api/habits"] });
+  const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
 
   const currentReview = reviews.find(r => r.weekOf === monday);
   const unprocessedInbox = inboxItems.filter(i => !i.processed).length;
@@ -95,7 +95,7 @@ export default function ReviewPage() {
   const checklist = [
     { label: "Clear inbox to zero", done: inboxCleared || (currentReview?.inboxCleared === 1), setter: setInboxCleared, icon: Inbox, detail: unprocessedInbox > 0 ? `${unprocessedInbox} items remaining` : "All clear", linkHref: "/inbox", linkLabel: `Inbox${unprocessedInbox > 0 ? ` (${unprocessedInbox})` : ""}` },
     { label: "Review all active projects", done: projectsReviewed || (currentReview?.projectsReviewed === 1), setter: setProjectsReviewed, icon: FolderOpen, detail: `${activeProjects.length} active projects`, linkHref: "/projects", linkLabel: `Projects (${activeProjects.length})` },
-    { label: "Review habit systems", done: habitsReviewed || (currentReview?.habitsReviewed === 1), setter: setHabitsReviewed, icon: TargetIcon, detail: `${habits.filter(h => h.active).length} active habits`, linkHref: "/routine", linkLabel: `Routines (${habits.filter(h => h.active).length})` },
+    { label: "Review routine systems", done: habitsReviewed || (currentReview?.habitsReviewed === 1), setter: setHabitsReviewed, icon: TargetIcon, detail: `${identities.filter(i => i.active).length} active identities`, linkHref: "/routine", linkLabel: `Routines (${identities.filter(i => i.active).length})` },
   ];
 
   const checklistDone = checklist.filter(c => c.done).length;

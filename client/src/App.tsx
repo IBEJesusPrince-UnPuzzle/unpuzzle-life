@@ -25,14 +25,10 @@ function ProjectDetailRoute({ params }: { params: { id?: string } }) {
   return <ProjectDetailPage id={id} />;
 }
 
-function DashboardWithRedirect() {
-  return <Dashboard />;
-}
-
 function AppRouter() {
   return (
     <Switch>
-      <Route path="/" component={DashboardWithRedirect} />
+      <Route path="/" component={Dashboard} />
       <Route path="/inbox" component={InboxPage} />
       <Route path="/horizons" component={HorizonsPage} />
       <Route path="/unpuzzle" component={UnPuzzlePage} />

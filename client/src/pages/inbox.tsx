@@ -96,7 +96,7 @@ export default function InboxPage() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (newItem.trim() && captureAreaId) {
+          if (newItem.trim()) {
             addItem.mutate({
               content: newItem.trim(),
               areaId: captureAreaId && captureAreaId !== "none" ? Number(captureAreaId) : null,
@@ -122,7 +122,7 @@ export default function InboxPage() {
               {areasList.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Button type="submit" disabled={!newItem.trim() || !captureAreaId} data-testid="button-inbox-add">
+          <Button type="submit" disabled={!newItem.trim()} data-testid="button-inbox-add">
             <Plus className="w-4 h-4 mr-1" /> Add
           </Button>
         </div>

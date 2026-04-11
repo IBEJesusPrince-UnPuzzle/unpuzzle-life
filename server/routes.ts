@@ -1091,7 +1091,7 @@ export function registerRoutes(server: Server, app: Express) {
         }
 
         if (!matches) continue;
-        const dup = existingForDate.find(e => e.goal === tpl.goal && e.areaId === tpl.areaId);
+        const dup = existingForDate.find(e => e.goal === tpl.goal && e.areaId === tpl.areaId && e.habitId === tpl.habitId);
         if (dup) continue;
         storage.createPlannerTask({
           date: dateStr,
@@ -1350,7 +1350,7 @@ export function registerRoutes(server: Server, app: Express) {
         }
       }
       if (!matches) continue;
-      const dup = existingForDate.find(e => e.goal === tpl.goal && e.areaId === tpl.areaId);
+      const dup = existingForDate.find(e => e.goal === tpl.goal && e.areaId === tpl.areaId && e.habitId === tpl.habitId);
       if (dup) continue;
       storage.createPlannerTask({
         date: today,

@@ -832,7 +832,28 @@ function VisionWriter({
 // CLARITY PAGE — main export
 // ============================================================
 export default function HorizonsPage() {
-  const [view, setView] = useState<ClarityView>({ type: "board" });
+  // Sync view state to URL hash params for deep linking
+  const [view, setViewState] = useState<ClarityView>(() => {
+    const hash = window.location.hash;
+    const searchIdx = hash.indexOf("?");
+    if (searchIdx !== -1) {
+      const params = new URLSearchParams(hash.slice(searchIdx));
+      const areaId = params.get("areaId");
+      if (areaId) return { type: "writer", areaId: Number(areaId) };
+    }
+    return { type: "board" };
+  });
+
+  const setView = (v: ClarityView) => {
+    setViewState(v);
+    const basePath = "#/horizons";
+    if (v.type === "writer") {
+      window.history.replaceState(null, "", `${basePath}?areaId=${v.areaId}`);
+    } else {
+      window.history.replaceState(null, "", basePath);
+    }
+  };
+
   const { data: areas = [] } = useQuery<Area[]>({
     queryKey: ["/api/areas"],
   });
