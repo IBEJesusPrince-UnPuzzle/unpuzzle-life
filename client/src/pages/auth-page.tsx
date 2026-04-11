@@ -19,6 +19,10 @@ export default function AuthPage() {
     loginMutation.mutate(
       { email, password },
       {
+        onSuccess: () => {
+          // Use window.location.hash for reliable navigation with hash routing
+          window.location.hash = "#/";
+        },
         onError: (error: Error) => {
           toast({
             variant: "destructive",
@@ -98,6 +102,9 @@ export function RegisterPage() {
     registerMutation.mutate(
       { email, password, displayName, token },
       {
+        onSuccess: () => {
+          window.location.hash = "#/";
+        },
         onError: (error: Error) => {
           toast({
             variant: "destructive",
