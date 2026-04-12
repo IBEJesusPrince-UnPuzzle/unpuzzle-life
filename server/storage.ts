@@ -90,7 +90,6 @@ sqlite.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     statement TEXT NOT NULL,
-    mission TEXT,
     created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS areas (
@@ -385,8 +384,7 @@ addColumnIfMissing("wizard_state", "current_phase", "INTEGER NOT NULL DEFAULT 1"
 addColumnIfMissing("wizard_state", "completed", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("wizard_state", "completed_at", "TEXT");
 
-// Phase 1B: Rename purposes.principles → mission
-renameColumnIfExists("purposes", "principles", "mission");
+// Phase 1B: Legacy migration (principles/mission removed — immutable laws handle this now)
 
 // Phase 1G: Rename routine_items.habit_id → identity_id, add puzzle_piece
 renameColumnIfExists("routine_items", "habit_id", "identity_id");

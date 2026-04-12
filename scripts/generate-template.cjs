@@ -17,10 +17,9 @@ const WHITE = "FFFFFF";
 const SHEETS = [
   {
     name: "Purposes",
-    purpose: "Life purpose statements and mission",
+    purpose: "Life purpose statements",
     columns: [
       { key: "statement", header: "statement", desc: "Your purpose statement (e.g. 'To live with intention and serve others')", required: true },
-      { key: "mission", header: "mission", desc: "Mission statement", required: false },
     ],
   },
   {

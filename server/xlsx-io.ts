@@ -319,7 +319,6 @@ function getExportRows(userId: number): Record<string, string[][]> {
   // Purposes
   result["Purposes"] = q("purposes").map(r => [
     cellVal(r.statement),
-    cellVal(r.mission),
   ]);
 
   // Areas
@@ -724,8 +723,8 @@ function insertRow(
   switch (sheetName) {
     case "Purposes": {
       if (!row.statement) throw new Error("missing statement");
-      sqlite.prepare(`INSERT INTO purposes (user_id, statement, mission, created_at) VALUES (?, ?, ?, ?)`)
-        .run(userId, row.statement, cellOrNull(row.mission), now);
+      sqlite.prepare(`INSERT INTO purposes (user_id, statement, created_at) VALUES (?, ?, ?)`)
+        .run(userId, row.statement, now);
       break;
     }
     case "Areas": {
@@ -864,7 +863,6 @@ function insertRow(
 const SHEET_COLUMNS: Record<string, { header: string; desc: string; required: boolean }[]> = {
   "Purposes": [
     { header: "statement", desc: "Your purpose statement", required: true },
-    { header: "mission", desc: "Mission statement", required: false },
   ],
   "Areas": [
     { header: "name", desc: "Area name", required: true },

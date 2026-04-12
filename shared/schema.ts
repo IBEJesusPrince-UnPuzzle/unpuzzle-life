@@ -32,12 +32,11 @@ export const invitations = sqliteTable("invitations", {
 // CLARITY OF LIFE (Top-down clarity)
 // ============================================================
 
-// C5: Purpose & Mission
+// C5: Purpose
 export const purposes = sqliteTable("purposes", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().default(1),
   statement: text("statement").notNull(),
-  mission: text("mission"),
   createdAt: text("created_at").notNull(),
 });
 

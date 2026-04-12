@@ -2,33 +2,20 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
-  Puzzle, ChevronRight, ChevronLeft, Plus, Sparkles, Trash2,
+  Puzzle, ChevronRight, ChevronLeft, Sparkles,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useLocation, Link } from "wouter";
 import type { Area, Identity } from "@shared/schema";
 import { IdentityForm } from "./unpuzzle";
 
-// ============================================================
-// TYPES
-// ============================================================
-
-interface PrincipleCard {
-  statement: string;
-  alwaysNever: string;
-  testScenarios: string[];
-  violationSignal: string;
-  courseCorrect: string;
-}
-
 const CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles", "Getting Things Done", "Other"];
 
 const PHASES = [
-  { num: 1, title: "Purpose & Mission", subtitle: "The corner pieces and edge frame \u2014 the immutable laws everything else clicks into" },
+  { num: 1, title: "Purpose", subtitle: "The corner pieces and edge frame \u2014 the foundation everything else clicks into" },
   { num: 2, title: "Responsibilities & Areas", subtitle: "The major sections and sub-assemblies \u2014 decide which parts of your life structure matter" },
   { num: 3, title: "Identity", subtitle: "The detailed, interlocking pieces \u2014 where the science meets the art" },
 ];
@@ -43,9 +30,6 @@ export default function WizardPage() {
 
   // Phase 1 state
   const [purposeStatement, setPurposeStatement] = useState("");
-  const [missionCards, setMissionCards] = useState<PrincipleCard[]>([{
-    statement: "", alwaysNever: "", testScenarios: ["", "", ""], violationSignal: "", courseCorrect: "",
-  }]);
 
   // Phase 3 state (identity) — managed by IdentityForm component
 
@@ -61,7 +45,6 @@ export default function WizardPage() {
   const savePurpose = useMutation({
     mutationFn: () => apiRequest("POST", "/api/purposes", {
       statement: purposeStatement,
-      mission: JSON.stringify(missionCards.filter(p => p.statement.trim())),
       createdAt: new Date().toISOString(),
     }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/purposes"] }),
@@ -176,8 +159,6 @@ export default function WizardPage() {
           <Phase1Purpose
             purposeStatement={purposeStatement}
             setPurposeStatement={setPurposeStatement}
-            missionCards={missionCards}
-            setMissionCards={setMissionCards}
           />
         )}
         {phase === 2 && (
@@ -260,38 +241,14 @@ export default function WizardPage() {
 }
 
 // ============================================================
-// PHASE 1: PURPOSE & PRINCIPLES
+// PHASE 1: PURPOSE
 // ============================================================
 
 function Phase1Purpose({
   purposeStatement, setPurposeStatement,
-  missionCards, setMissionCards,
 }: {
   purposeStatement: string; setPurposeStatement: (v: string) => void;
-  missionCards: PrincipleCard[]; setMissionCards: (v: PrincipleCard[]) => void;
 }) {
-  const addMissionCard = () => {
-    setMissionCards([...missionCards, {
-      statement: "", alwaysNever: "", testScenarios: ["", "", ""], violationSignal: "", courseCorrect: "",
-    }]);
-  };
-
-  const removeMissionCard = (idx: number) => {
-    setMissionCards(missionCards.filter((_, i) => i !== idx));
-  };
-
-  const updateMissionCard = (idx: number, field: keyof PrincipleCard, value: string | string[]) => {
-    const next = [...missionCards];
-    (next[idx] as any)[field] = value;
-    setMissionCards(next);
-  };
-
-  const updateScenario = (pIdx: number, sIdx: number, value: string) => {
-    const next = [...missionCards];
-    next[pIdx].testScenarios[sIdx] = value;
-    setMissionCards(next);
-  };
-
   return (
     <div className="space-y-6">
       <div>
@@ -305,92 +262,9 @@ function Phase1Purpose({
           className="min-h-[120px] text-sm"
           data-testid="input-purpose"
         />
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Mission</h3>
-          <Button variant="outline" size="sm" onClick={addMissionCard} className="h-7 text-xs gap-1">
-            <Plus className="w-3 h-3" /> Add Mission Card
-          </Button>
-        </div>
-
-        {missionCards.map((p, idx) => (
-          <Card key={idx} className="border-amber-500/20">
-            <CardContent className="p-4 space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <span className="text-xs font-bold text-amber-600 dark:text-amber-400 mt-1">
-                  #{idx + 1}
-                </span>
-                {missionCards.length > 1 && (
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive"
-                    onClick={() => removeMissionCard(idx)}>
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
-                )}
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Mission Statement</label>
-                <Input
-                  value={p.statement}
-                  onChange={e => updateMissionCard(idx, "statement", e.target.value)}
-                  placeholder="e.g. Integrity above convenience"
-                  className="text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  This means I always / I never...
-                </label>
-                <Input
-                  value={p.alwaysNever}
-                  onChange={e => updateMissionCard(idx, "alwaysNever", e.target.value)}
-                  placeholder="e.g. I always tell the truth, even when it's uncomfortable"
-                  className="text-sm"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground block">Test scenarios</label>
-                {["When I'm stressed...", "When I'm with family...", "When I'm at work..."].map((ph, sIdx) => (
-                  <Input
-                    key={sIdx}
-                    value={p.testScenarios[sIdx] || ""}
-                    onChange={e => updateScenario(idx, sIdx, e.target.value)}
-                    placeholder={ph}
-                    className="text-sm"
-                  />
-                ))}
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  Violation signal
-                </label>
-                <Input
-                  value={p.violationSignal}
-                  onChange={e => updateMissionCard(idx, "violationSignal", e.target.value)}
-                  placeholder="How will you know you're breaking this?"
-                  className="text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  Course-correct move
-                </label>
-                <Input
-                  value={p.courseCorrect}
-                  onChange={e => updateMissionCard(idx, "courseCorrect", e.target.value)}
-                  placeholder="How do you get back on track that same day?"
-                  className="text-sm"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        <p className="text-xs text-muted-foreground mt-2">
+          Your purpose is the big-picture why behind everything you do. Boundaries and non-negotiables live in Immutable Laws under each puzzle piece.
+        </p>
       </div>
     </div>
   );

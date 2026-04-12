@@ -303,7 +303,7 @@ export default function Dashboard() {
         <Card className="border-dashed bg-muted/30">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">Define Your Purpose & Mission</p>
+              <p className="text-sm font-medium">Define Your Purpose</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Start by defining why you exist and what you stand for.
               </p>
