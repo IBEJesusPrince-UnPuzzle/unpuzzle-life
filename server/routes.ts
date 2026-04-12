@@ -11,9 +11,9 @@ import { fileURLToPath } from "url";
 const __filename_routes = typeof __filename !== "undefined" ? __filename : fileURLToPath(import.meta.url);
 const __dirname_routes = path.dirname(__filename_routes);
 import {
-  insertPurposeSchema, insertVisionSchema, insertGoalSchema,
-  insertAreaSchema, insertProjectSchema, insertActionSchema,
-  insertIdentitySchema, insertHabitSchema, insertHabitLogSchema,
+  insertPurposeSchema,
+  insertAreaSchema, insertProjectSchema,
+  insertIdentitySchema,
   insertInboxItemSchema, insertWeeklyReviewSchema,
   insertRoutineItemSchema, insertRoutineLogSchema,
   insertPlannerTaskSchema, insertEnvironmentEntitySchema,
@@ -52,56 +52,6 @@ export function registerRoutes(server: Server, app: Express) {
   app.delete("/api/purposes/:id", (req, res) => {
     const userId = getEffectiveUserId(req);
     storage.deletePurpose(userId, Number(req.params.id));
-    res.json({ ok: true });
-  });
-
-  // ============================================================
-  // VISIONS
-  // ============================================================
-  app.get("/api/visions", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    res.json(storage.getVisions(userId));
-  });
-  app.post("/api/visions", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    const parsed = insertVisionSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createVision(userId, parsed.data));
-  });
-  app.patch("/api/visions/:id", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    const result = storage.updateVision(userId, Number(req.params.id), req.body);
-    if (!result) return res.status(404).json({ error: "Not found" });
-    res.json(result);
-  });
-  app.delete("/api/visions/:id", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    storage.deleteVision(userId, Number(req.params.id));
-    res.json({ ok: true });
-  });
-
-  // ============================================================
-  // GOALS
-  // ============================================================
-  app.get("/api/goals", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    res.json(storage.getGoals(userId));
-  });
-  app.post("/api/goals", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    const parsed = insertGoalSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createGoal(userId, parsed.data));
-  });
-  app.patch("/api/goals/:id", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    const result = storage.updateGoal(userId, Number(req.params.id), req.body);
-    if (!result) return res.status(404).json({ error: "Not found" });
-    res.json(result);
-  });
-  app.delete("/api/goals/:id", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    storage.deleteGoal(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
@@ -176,13 +126,9 @@ export function registerRoutes(server: Server, app: Express) {
       const areaId = Number(req.params.id);
       const identityRows = sqlite.prepare("SELECT id, statement as name FROM identities WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId, userId) as any[];
       const projectRows = sqlite.prepare("SELECT id, title as name FROM projects WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId, userId) as any[];
-      const habitRows = sqlite.prepare("SELECT id, name FROM habits WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId, userId) as any[];
-      const actionRows = sqlite.prepare("SELECT id, title as name FROM actions WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").all(areaId, userId) as any[];
       res.json({
         identities: identityRows,
         projects: projectRows,
-        habits: habitRows,
-        tasks: actionRows,
       });
     } catch (err: any) {
       res.status(500).json({ error: err?.message || "Internal server error" });
@@ -199,21 +145,15 @@ export function registerRoutes(server: Server, app: Express) {
 
       sqlite.prepare("UPDATE identities SET archived = 1, archived_at = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId, userId);
       sqlite.prepare("UPDATE projects SET archived = 1, archived_at = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId, userId);
-      sqlite.prepare("UPDATE habits SET archived = 1, archived_at = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId, userId);
-      sqlite.prepare("UPDATE actions SET archived = 1, archived_at = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(now, areaId, userId);
 
       const identitiesArchived = sqlite.prepare("SELECT COUNT(*) as c FROM identities WHERE area_id = ? AND user_id = ? AND archived_at = ?").get(areaId, userId, now) as any;
       const projectsArchived = sqlite.prepare("SELECT COUNT(*) as c FROM projects WHERE area_id = ? AND user_id = ? AND archived_at = ?").get(areaId, userId, now) as any;
-      const habitsArchived = sqlite.prepare("SELECT COUNT(*) as c FROM habits WHERE area_id = ? AND user_id = ? AND archived_at = ?").get(areaId, userId, now) as any;
-      const tasksArchived = sqlite.prepare("SELECT COUNT(*) as c FROM actions WHERE area_id = ? AND user_id = ? AND archived_at = ?").get(areaId, userId, now) as any;
 
       res.json({
         success: true,
         archivedCounts: {
           identities: identitiesArchived?.c || 0,
           projects: projectsArchived?.c || 0,
-          habits: habitsArchived?.c || 0,
-          tasks: tasksArchived?.c || 0,
         },
       });
     } catch (err: any) {
@@ -240,8 +180,6 @@ export function registerRoutes(server: Server, app: Express) {
 
       const newArea = storage.createArea(userId, {
         name: newName,
-        description: originalArea.description,
-        category: originalArea.category,
         puzzlePiece: originalArea.puzzlePiece,
         visionText: originalArea.visionText,
         icon: originalArea.icon,
@@ -252,13 +190,9 @@ export function registerRoutes(server: Server, app: Express) {
       const newAreaId = (newArea as any).id;
       sqlite.prepare("UPDATE identities SET area_id = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId, userId);
       sqlite.prepare("UPDATE projects SET area_id = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId, userId);
-      sqlite.prepare("UPDATE habits SET area_id = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId, userId);
-      sqlite.prepare("UPDATE actions SET area_id = ? WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").run(newAreaId, areaId, userId);
 
       const identitiesMoved = sqlite.prepare("SELECT COUNT(*) as c FROM identities WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId, userId) as any;
       const projectsMoved = sqlite.prepare("SELECT COUNT(*) as c FROM projects WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId, userId) as any;
-      const habitsMoved = sqlite.prepare("SELECT COUNT(*) as c FROM habits WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId, userId) as any;
-      const tasksMoved = sqlite.prepare("SELECT COUNT(*) as c FROM actions WHERE area_id = ? AND user_id = ? AND (archived = 0 OR archived IS NULL)").get(newAreaId, userId) as any;
 
       const now = new Date().toISOString();
       storage.updateArea(userId, areaId, { archived: 1, archivedAt: now } as any);
@@ -268,8 +202,6 @@ export function registerRoutes(server: Server, app: Express) {
         movedCounts: {
           identities: identitiesMoved?.c || 0,
           projects: projectsMoved?.c || 0,
-          habits: habitsMoved?.c || 0,
-          tasks: tasksMoved?.c || 0,
         },
       });
     } catch (err: any) {
@@ -283,12 +215,6 @@ export function registerRoutes(server: Server, app: Express) {
   app.get("/api/projects", (req, res) => {
     const userId = getEffectiveUserId(req);
     res.json(storage.getProjects(userId));
-  });
-  app.post("/api/projects", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    const parsed = insertProjectSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createProject(userId, parsed.data));
   });
   app.patch("/api/projects/:id", (req, res) => {
     const userId = getEffectiveUserId(req);
@@ -309,7 +235,6 @@ export function registerRoutes(server: Server, app: Express) {
     const project = storage.getProjects(userId).find(p => p.id === projectId);
     if (!project) return res.status(404).json({ error: "Not found" });
 
-    const projectActions = storage.getActions(userId).filter(a => a.projectId === projectId);
     const references = storage.getInboxItems(userId).filter(
       i => i.processedAs === "reference" && i.referenceProjectId === projectId
     );
@@ -321,7 +246,6 @@ export function registerRoutes(server: Server, app: Express) {
 
     res.json({
       project,
-      actions: projectActions,
       references,
       areas: allAreas,
       identity: identity || null,
@@ -338,11 +262,11 @@ export function registerRoutes(server: Server, app: Express) {
 
     const area = identity.areaId ? storage.getAreas(userId).find(a => a.id === identity.areaId) : null;
     const allAreas = storage.getAreas(userId);
-    const allRoutineItems = storage.getRoutineItems(userId).filter(r => r.habitId === identityId);
-    const allPlannerTasks = storage.getAllPlannerTasks(userId).filter(t => t.habitId === identityId);
+    const allRoutineItems = storage.getRoutineItems(userId).filter(r => r.identityId === identityId);
+    const allPlannerTasks = storage.getAllPlannerTasks(userId).filter(t => t.identityId === identityId);
 
     const title = identity.cue ? `${identity.statement} when ${identity.cue}` : identity.statement;
-    const tag = area ? `${area.category || ""}.${area.name}` : "";
+    const tag = area?.name || "";
 
     res.json({
       identityId: identity.id,
@@ -366,63 +290,16 @@ export function registerRoutes(server: Server, app: Express) {
     const area = identity.areaId ? storage.getAreas(userId).find(a => a.id === identity.areaId) : null;
 
     const projectTitle = identity.cue ? `${identity.statement} when ${identity.cue}` : identity.statement;
-    const tag = area ? `${area.category || ""}.${area.name}` : "";
+    const tag = area?.name || "";
 
     res.json({
       identityId: identity.id,
       identityStatement: identity.statement,
       cue: identity.cue || null,
       areaName: area?.name || null,
-      areaCategory: area?.category || null,
       projectTitle,
       tag,
     });
-  });
-
-  // One-time migration: copy habit fields to linked identities
-  app.post("/api/migrate-habits-to-identities", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    const allHabits = storage.getHabits(userId);
-    const allIdentities = storage.getIdentities(userId);
-    const allRoutineItems = storage.getRoutineItems(userId);
-    const allPlannerTasks = storage.getAllPlannerTasks(userId);
-    let migratedIdentities = 0;
-    let migratedRoutineItems = 0;
-    let migratedPlannerTasks = 0;
-
-    for (const habit of allHabits) {
-      if (!habit.identityId) continue;
-      const identity = allIdentities.find(i => i.id === habit.identityId);
-      if (!identity) continue;
-
-      storage.updateIdentity(userId, identity.id, {
-        cue: habit.cue || identity.cue || null,
-        craving: habit.craving || identity.craving || null,
-        reward: habit.reward || identity.reward || null,
-        frequency: habit.frequency || identity.frequency,
-        targetCount: habit.targetCount ?? identity.targetCount,
-        active: habit.active ?? identity.active,
-        timeOfDay: habit.timeOfDay || identity.timeOfDay || null,
-        areaId: habit.areaId || identity.areaId || null,
-      });
-      migratedIdentities++;
-
-      for (const ri of allRoutineItems) {
-        if (ri.habitId === habit.id) {
-          storage.updateRoutineItem(userId, ri.id, { habitId: habit.identityId });
-          migratedRoutineItems++;
-        }
-      }
-
-      for (const pt of allPlannerTasks) {
-        if (pt.habitId === habit.id) {
-          storage.updatePlannerTask(userId, pt.id, { habitId: habit.identityId });
-          migratedPlannerTasks++;
-        }
-      }
-    }
-
-    res.json({ migratedIdentities, migratedRoutineItems, migratedPlannerTasks });
   });
 
   // Backfill: create routine items for identities that don't have one
@@ -430,7 +307,7 @@ export function registerRoutes(server: Server, app: Express) {
     const userId = getEffectiveUserId(req);
     const allIdentities = storage.getIdentities(userId);
     const allRoutineItems = storage.getRoutineItems(userId);
-    const identityIdsWithRoutine = new Set(allRoutineItems.map(r => r.habitId));
+    const identityIdsWithRoutine = new Set(allRoutineItems.map(r => r.identityId));
     let created = 0;
 
     const timeOfDayMap: Record<string, string> = {
@@ -447,17 +324,18 @@ export function registerRoutes(server: Server, app: Express) {
         sortOrder: 0,
         time: placeholderTime,
         durationMinutes: 10,
-        location: null,
-        cue: identity.cue || null,
-        craving: identity.craving || null,
+        location: identity.location || "",
+        cue: identity.cue || "",
+        craving: identity.craving || "",
         response: identity.statement,
-        reward: identity.reward || null,
-        areaId: identity.areaId || null,
-        habitId: identity.id,
-        dayVariant: null,
+        reward: identity.reward || "",
+        areaId: identity.areaId,
+        identityId: identity.id,
+        puzzlePiece: identity.puzzlePiece || "",
+        dayVariant: "",
         active: 1,
         isDraft: 1,
-        timeOfDay: identity.timeOfDay || null,
+        timeOfDay: identity.timeOfDay || "",
       });
       created++;
     }
@@ -470,38 +348,10 @@ export function registerRoutes(server: Server, app: Express) {
     const userId = getEffectiveUserId(req);
     const allInbox = storage.getInboxItems(userId);
     let refs = allInbox.filter(i => i.processedAs === "reference");
-    if (req.query.areaId) {
-      refs = refs.filter(r => r.referenceAreaId === Number(req.query.areaId));
-    }
     if (req.query.projectId) {
       refs = refs.filter(r => r.referenceProjectId === Number(req.query.projectId));
     }
     res.json(refs);
-  });
-
-  // ============================================================
-  // ACTIONS
-  // ============================================================
-  app.get("/api/actions", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    res.json(storage.getActions(userId));
-  });
-  app.post("/api/actions", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    const parsed = insertActionSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createAction(userId, parsed.data));
-  });
-  app.patch("/api/actions/:id", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    const result = storage.updateAction(userId, Number(req.params.id), req.body);
-    if (!result) return res.status(404).json({ error: "Not found" });
-    res.json(result);
-  });
-  app.delete("/api/actions/:id", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    storage.deleteAction(userId, Number(req.params.id));
-    res.json({ ok: true });
   });
 
   // ============================================================
@@ -522,7 +372,6 @@ export function registerRoutes(server: Server, app: Express) {
       areaId: identity.areaId || null,
       puzzlePiece: identity.puzzlePiece || null,
       identityId: identity.id,
-      status: "active",
       createdAt: new Date().toISOString(),
     });
 
@@ -536,39 +385,19 @@ export function registerRoutes(server: Server, app: Express) {
       sortOrder: 0,
       time: placeholderTime,
       durationMinutes: 10,
-      location: identity.location || null,
-      cue: identity.cue || null,
-      craving: identity.craving || null,
+      location: identity.location || "",
+      cue: identity.cue || "",
+      craving: identity.craving || "",
       response: identity.response || identity.statement,
-      reward: identity.reward || null,
-      areaId: identity.areaId || null,
-      habitId: identity.id,
-      dayVariant: null,
+      reward: identity.reward || "",
+      areaId: identity.areaId,
+      identityId: identity.id,
+      puzzlePiece: identity.puzzlePiece || "",
+      dayVariant: "",
       active: 1,
       isDraft: 1,
-      timeOfDay: identity.timeOfDay || null,
+      timeOfDay: identity.timeOfDay || "",
     });
-
-    if (identity.environmentType) {
-      storage.createEnvironmentEntity(userId, {
-        identityId: identity.id,
-        areaId: identity.areaId || null,
-        puzzlePiece: identity.puzzlePiece || null,
-        type: identity.environmentType,
-        personName: identity.envPersonName || null,
-        personContactMethod: identity.envPersonContactMethod || null,
-        personContactInfo: identity.envPersonContactInfo || null,
-        personWhy: identity.envPersonWhy || null,
-        placeName: identity.envPlaceName || null,
-        placeAddress: identity.envPlaceAddress || null,
-        placeTravelMethod: identity.envPlaceTravelMethod || null,
-        placeWhy: identity.envPlaceWhy || null,
-        thingName: identity.envThingName || null,
-        thingUsage: identity.envThingUsage || null,
-        thingWhy: identity.envThingWhy || null,
-        createdAt: new Date().toISOString(),
-      });
-    }
 
     res.json({ identity, project, routineItem });
   });
@@ -579,7 +408,7 @@ export function registerRoutes(server: Server, app: Express) {
     if (!result) return res.status(404).json({ error: "Not found" });
 
     const allRoutineItems = storage.getRoutineItems(userId);
-    const linkedItem = allRoutineItems.find(ri => ri.habitId === identityId);
+    const linkedItem = allRoutineItems.find(ri => ri.identityId === identityId);
     if (linkedItem) {
       const routineUpdate: Record<string, any> = {};
       if (req.body.statement !== undefined) routineUpdate.response = req.body.statement;
@@ -588,6 +417,7 @@ export function registerRoutes(server: Server, app: Express) {
       if (req.body.areaId !== undefined) routineUpdate.areaId = req.body.areaId;
       if (req.body.cue !== undefined) routineUpdate.cue = req.body.cue;
       if (req.body.location !== undefined) routineUpdate.location = req.body.location;
+      if (req.body.puzzlePiece !== undefined) routineUpdate.puzzlePiece = req.body.puzzlePiece;
       if (Object.keys(routineUpdate).length > 0) {
         storage.updateRoutineItem(userId, linkedItem.id, routineUpdate);
       }
@@ -834,97 +664,6 @@ export function registerRoutes(server: Server, app: Express) {
   });
 
   // ============================================================
-  // HABITS
-  // ============================================================
-  app.get("/api/habits", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    res.json(storage.getHabits(userId));
-  });
-  app.post("/api/habits", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    const parsed = insertHabitSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    const habit = storage.createHabit(userId, parsed.data);
-
-    const timeOfDayMap: Record<string, string> = {
-      early_morning: "03:00", morning: "07:00", late_morning: "10:00",
-      afternoon: "13:00", late_afternoon: "16:00", evening: "20:00", waking_hours: "12:00",
-    };
-    const placeholderTime = timeOfDayMap[habit.timeOfDay || ""] || "12:00";
-
-    storage.createRoutineItem(userId, {
-      sortOrder: 0,
-      time: placeholderTime,
-      durationMinutes: 10,
-      location: null,
-      cue: null,
-      craving: habit.craving || null,
-      response: habit.name,
-      reward: habit.reward || null,
-      areaId: habit.areaId || null,
-      habitId: habit.id,
-      dayVariant: null,
-      active: 1,
-      isDraft: 1,
-      timeOfDay: habit.timeOfDay || null,
-    });
-
-    res.json(habit);
-  });
-  app.patch("/api/habits/:id", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    const habitId = Number(req.params.id);
-    const result = storage.updateHabit(userId, habitId, req.body);
-    if (!result) return res.status(404).json({ error: "Not found" });
-
-    const allRoutineItems = storage.getRoutineItems(userId);
-    const linkedItem = allRoutineItems.find(ri => ri.habitId === habitId);
-    if (linkedItem) {
-      const routineUpdate: Record<string, any> = {};
-      if (req.body.name !== undefined) routineUpdate.response = req.body.name;
-      if (req.body.craving !== undefined) routineUpdate.craving = req.body.craving;
-      if (req.body.reward !== undefined) routineUpdate.reward = req.body.reward;
-      if (req.body.areaId !== undefined) routineUpdate.areaId = req.body.areaId;
-      if (Object.keys(routineUpdate).length > 0) {
-        storage.updateRoutineItem(userId, linkedItem.id, routineUpdate);
-      }
-    }
-
-    res.json(result);
-  });
-  app.delete("/api/habits/:id", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    storage.deleteHabit(userId, Number(req.params.id));
-    res.json({ ok: true });
-  });
-
-  // ============================================================
-  // HABIT LOGS
-  // ============================================================
-  app.get("/api/habit-logs", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    const { date, habitId } = req.query;
-    if (date) {
-      res.json(storage.getHabitLogsByDate(userId, date as string));
-    } else if (habitId) {
-      res.json(storage.getHabitLogs(userId, Number(habitId)));
-    } else {
-      res.json([]);
-    }
-  });
-  app.post("/api/habit-logs", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    const parsed = insertHabitLogSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createHabitLog(userId, parsed.data));
-  });
-  app.delete("/api/habit-logs/:id", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    storage.deleteHabitLog(userId, Number(req.params.id));
-    res.json({ ok: true });
-  });
-
-  // ============================================================
   // INBOX
   // ============================================================
   app.get("/api/inbox", (req, res) => {
@@ -965,12 +704,6 @@ export function registerRoutes(server: Server, app: Express) {
     res.json({ ok: true });
   });
 
-  // Someday/Maybe project
-  app.get("/api/someday-project", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    res.json(storage.getOrCreateSomedayProject(userId));
-  });
-
   // ============================================================
   // WEEKLY REVIEWS
   // ============================================================
@@ -997,12 +730,6 @@ export function registerRoutes(server: Server, app: Express) {
   app.get("/api/routine-items", (req, res) => {
     const userId = getEffectiveUserId(req);
     res.json(storage.getRoutineItems(userId));
-  });
-  app.post("/api/routine-items", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    const parsed = insertRoutineItemSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createRoutineItem(userId, parsed.data));
   });
   app.patch("/api/routine-items/:id", (req, res) => {
     const userId = getEffectiveUserId(req);
@@ -1040,19 +767,6 @@ export function registerRoutes(server: Server, app: Express) {
     res.json({ ok: true });
   });
 
-  // Seed routine from JSON
-  app.post("/api/routine-items/seed", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    const items = req.body;
-    if (!Array.isArray(items)) return res.status(400).json({ error: "Expected array" });
-    const created = items.map((item: any) => {
-      const parsed = insertRoutineItemSchema.safeParse(item);
-      if (!parsed.success) return null;
-      return storage.createRoutineItem(userId, parsed.data);
-    }).filter(Boolean);
-    res.json({ created: created.length });
-  });
-
   // ============================================================
   // PLANNER TASKS
   // ============================================================
@@ -1062,17 +776,14 @@ export function registerRoutes(server: Server, app: Express) {
   });
   app.get("/api/planner-tasks", (req, res) => {
     const userId = getEffectiveUserId(req);
-    const { date, areaId, habitId, sourceType } = req.query;
+    const { date, areaId, identityId } = req.query;
     if (date) {
       res.json(storage.getPlannerTasksByDate(userId, date as string));
     } else if (areaId) {
       res.json(storage.getPlannerTasksByArea(userId, Number(areaId)));
-    } else if (habitId && sourceType) {
+    } else if (identityId) {
       const all = storage.getAllPlannerTasks(userId);
-      res.json(all.filter(t => t.habitId === Number(habitId) && t.sourceType === sourceType));
-    } else if (habitId) {
-      const all = storage.getAllPlannerTasks(userId);
-      res.json(all.filter(t => t.habitId === Number(habitId)));
+      res.json(all.filter(t => t.identityId === Number(identityId)));
     } else {
       res.json(storage.getAllPlannerTasks(userId));
     }
@@ -1165,12 +876,12 @@ export function registerRoutes(server: Server, app: Express) {
         }
 
         if (!matches) continue;
-        const dup = existingForDate.find(e => e.goal === tpl.goal && e.areaId === tpl.areaId && e.habitId === tpl.habitId);
+        const dup = existingForDate.find(e => e.task === tpl.task && e.areaId === tpl.areaId && e.identityId === tpl.identityId);
         if (dup) continue;
         storage.createPlannerTask(userId, {
           date: dateStr,
           areaId: tpl.areaId,
-          goal: tpl.goal,
+          task: tpl.task,
           startTime: tpl.startTime,
           endTime: tpl.endTime,
           hours: tpl.hours,
@@ -1236,7 +947,7 @@ export function registerRoutes(server: Server, app: Express) {
 
     let created = 0;
     for (const identity of activeIdentities) {
-      const existing = allRoutineItems.find(r => r.habitId === identity.id);
+      const existing = allRoutineItems.find(r => r.identityId === identity.id);
       if (existing) continue;
 
       const placeholderTime = timeOfDayMap[identity.timeOfDay || ""] || "12:00";
@@ -1244,17 +955,18 @@ export function registerRoutes(server: Server, app: Express) {
         sortOrder: 0,
         time: placeholderTime,
         durationMinutes: 10,
-        location: null,
-        cue: identity.cue || null,
-        craving: identity.craving || null,
+        location: identity.location || "",
+        cue: identity.cue || "",
+        craving: identity.craving || "",
         response: identity.statement,
-        reward: identity.reward || null,
-        areaId: identity.areaId || null,
-        habitId: identity.id,
-        dayVariant: null,
+        reward: identity.reward || "",
+        areaId: identity.areaId,
+        identityId: identity.id,
+        puzzlePiece: identity.puzzlePiece || "",
+        dayVariant: "",
         active: 1,
         isDraft: 1,
-        timeOfDay: identity.timeOfDay || null,
+        timeOfDay: identity.timeOfDay || "",
       });
       created++;
     }
@@ -1273,10 +985,6 @@ export function registerRoutes(server: Server, app: Express) {
   app.get("/api/stats", (req, res) => {
     try {
     const userId = getEffectiveUserId(req);
-    let allActions: any[] = [];
-    try { allActions = storage.getActions(userId); } catch {}
-    let allProjects: any[] = [];
-    try { allProjects = storage.getProjects(userId); } catch {}
     let inboxCount = 0;
     try { inboxCount = storage.getInboxItems(userId).filter(i => !i.processed).length; } catch {}
     const allIdentities = storage.getIdentities(userId);
@@ -1300,10 +1008,10 @@ export function registerRoutes(server: Server, app: Express) {
     let identityDone = 0;
     let identityTotal = 0;
     for (const identity of identitiesWithArea) {
-      const linkedRoutineItems = allRoutineItems.filter(r => r.habitId === identity.id);
+      const linkedRoutineItems = allRoutineItems.filter(r => r.identityId === identity.id);
       if (linkedRoutineItems.length === 0) continue;
       const linkedTasks = allPlannerTasks.filter(t => {
-        if (t.habitId !== identity.id) return false;
+        if (t.identityId !== identity.id) return false;
         if (!t.endTime) return false;
         const isPast = t.date < today || (t.date === today && t.endTime < currentHHMM);
         return isPast && (t.status === "done" || t.status === "planned");
@@ -1316,8 +1024,6 @@ export function registerRoutes(server: Server, app: Express) {
     const identityVotePercent = identityTotal > 0 ? Math.round((identityDone / identityTotal) * 100) : 0;
 
     res.json({
-      pendingActions: allActions.filter(a => !a.completed).length,
-      completedToday: allActions.filter(a => a.completedAt?.startsWith(today)).length,
       activeProjects: allIdentities.filter(i => i.active && i.areaId != null).length,
       inboxCount,
       totalActiveIdentities: allRoutineItems.filter(r => r.active && r.isDraft !== 1).length,
@@ -1341,8 +1047,6 @@ export function registerRoutes(server: Server, app: Express) {
     const today = now.toISOString().split("T")[0];
     const currentHHMM = now.toTimeString().slice(0, 5);
 
-    let allActions: any[] = [];
-    try { allActions = storage.getActions(userId); } catch {}
     let inboxCount = 0;
     try { inboxCount = storage.getInboxItems(userId).filter(i => !i.processed).length; } catch {}
     const allIdentities = storage.getIdentities(userId);
@@ -1420,12 +1124,12 @@ export function registerRoutes(server: Server, app: Express) {
         }
       }
       if (!matches) continue;
-      const dup = existingForDate.find(e => e.goal === tpl.goal && e.areaId === tpl.areaId && e.habitId === tpl.habitId);
+      const dup = existingForDate.find(e => e.task === tpl.task && e.areaId === tpl.areaId && e.identityId === tpl.identityId);
       if (dup) continue;
       storage.createPlannerTask(userId, {
         date: today,
         areaId: tpl.areaId,
-        goal: tpl.goal,
+        task: tpl.task,
         startTime: tpl.startTime,
         endTime: tpl.endTime,
         hours: tpl.hours,
@@ -1448,10 +1152,10 @@ export function registerRoutes(server: Server, app: Express) {
     let identityDone = 0;
     let identityTotal = 0;
     for (const identity of identitiesWithArea) {
-      const linkedRoutineItems = allRoutineItems.filter(r => r.habitId === identity.id);
+      const linkedRoutineItems = allRoutineItems.filter(r => r.identityId === identity.id);
       if (linkedRoutineItems.length === 0) continue;
       const linkedTasks = allPlannerTasks.filter(t => {
-        if (t.habitId !== identity.id) return false;
+        if (t.identityId !== identity.id) return false;
         if (!t.endTime) return false;
         const isPast = t.date < today || (t.date === today && t.endTime < currentHHMM);
         return isPast && (t.status === "done" || t.status === "planned");
@@ -1468,8 +1172,6 @@ export function registerRoutes(server: Server, app: Express) {
 
     res.json({
       stats: {
-        pendingActions: allActions.filter(a => !a.completed).length,
-        completedToday: allActions.filter(a => a.completedAt?.startsWith(today)).length,
         activeProjects: allIdentities.filter(i => i.active && i.areaId != null).length,
         inboxCount,
         totalActiveIdentities: allRoutineItems.filter(r => r.active && r.isDraft !== 1).length,
@@ -1507,10 +1209,10 @@ export function registerRoutes(server: Server, app: Express) {
 
     const breakdown = activeIdentities.map(identity => {
       const area = allAreas.find(a => a.id === identity.areaId);
-      const linkedRoutineItems = allRoutineItems.filter(r => r.habitId === identity.id);
+      const linkedRoutineItems = allRoutineItems.filter(r => r.identityId === identity.id);
 
       const pastTasks = allPlannerTasks.filter(t => {
-        if (t.habitId !== identity.id) return false;
+        if (t.identityId !== identity.id) return false;
         if (!t.endTime) return false;
         const isPast = t.date < today || (t.date === today && t.endTime < currentHHMM);
         return isPast && (t.status === "done" || t.status === "planned");
@@ -1520,7 +1222,7 @@ export function registerRoutes(server: Server, app: Express) {
       const total = pastTasks.length;
 
       const upcomingTasks = allPlannerTasks.filter(t => {
-        if (t.habitId !== identity.id) return false;
+        if (t.identityId !== identity.id) return false;
         if (t.status === "done" || t.status === "skipped") return false;
         const isFuture = t.date > today || (t.date === today && (!t.endTime || t.endTime >= currentHHMM));
         return isFuture;
@@ -1537,7 +1239,7 @@ export function registerRoutes(server: Server, app: Express) {
         percent: total > 0 ? Math.round((done / total) * 100) : null,
         upcomingTasks: upcomingTasks.map(t => ({
           id: t.id,
-          goal: t.goal,
+          task: t.task,
           date: t.date,
           startTime: t.startTime,
           endTime: t.endTime,
@@ -1545,7 +1247,7 @@ export function registerRoutes(server: Server, app: Express) {
         })),
         pastTasks: pastTasks.slice(-5).map(t => ({
           id: t.id,
-          goal: t.goal,
+          task: t.task,
           date: t.date,
           status: t.status,
         })),
@@ -1557,7 +1259,7 @@ export function registerRoutes(server: Server, app: Express) {
     const overallPercent = totalAll > 0 ? Math.round((totalDone / totalAll) * 100) : 0;
 
     const identitiesWithoutRoutine = activeIdentities.filter(i => {
-      return !allRoutineItems.some(r => r.habitId === i.id);
+      return !allRoutineItems.some(r => r.identityId === i.id);
     }).map(i => ({
       identityId: i.id,
       identityStatement: i.statement,

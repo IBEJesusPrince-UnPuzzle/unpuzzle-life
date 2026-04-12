@@ -17,7 +17,7 @@ import {
   Users, MapPin, Package
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
-import type { PlannerTask, Area, RoutineItem, RoutineLog } from "@shared/schema";
+import type { PlannerTask, Area, RoutineItem, RoutineLog, Project } from "@shared/schema";
 import { EditRoutineDialog } from "./routine";
 import { Link } from "wouter";
 import { formatTime } from "@/lib/time-format";
@@ -581,24 +581,32 @@ export function SorterView({ areas, onAreaClick, embedded }: { areas: Area[]; on
 function EditTaskDialog({ task, areas, open, onOpenChange }: {
   task: PlannerTask; areas: Area[]; open: boolean; onOpenChange: (open: boolean) => void;
 }) {
-  const [goal, setGoal] = useState(humanizeGoal(task.goal));
+  const [goal, setGoal] = useState(humanizeGoal(task.task));
   const [areaId, setAreaId] = useState<string>(task.areaId ? String(task.areaId) : "none");
   const [startTime, setStartTime] = useState(task.startTime || "");
   const [endTime, setEndTime] = useState(task.endTime || "");
   const [date, setDate] = useState(task.date);
   const [resultText, setResultText] = useState(task.result || "");
   const [recurrenceJson, setRecurrenceJson] = useState<string | null>(task.recurrence || null);
+  const [context, setContext] = useState(task.context || "");
+  const [energy, setEnergy] = useState(task.energy || "");
+  const [projectId, setProjectId] = useState<string>(task.projectId ? String(task.projectId) : "");
+
+  const { data: projectsList = [] } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
 
   // Reset form when dialog opens with new task
   useEffect(() => {
     if (open) {
-      setGoal(humanizeGoal(task.goal));
+      setGoal(humanizeGoal(task.task));
       setAreaId(task.areaId ? String(task.areaId) : "none");
       setStartTime(task.startTime || "");
       setEndTime(task.endTime || "");
       setDate(task.date);
       setResultText(task.result || "");
       setRecurrenceJson(task.recurrence || null);
+      setContext(task.context || "");
+      setEnergy(task.energy || "");
+      setProjectId(task.projectId ? String(task.projectId) : "");
     }
   }, [open, task]);
 
@@ -613,7 +621,7 @@ function EditTaskDialog({ task, areas, open, onOpenChange }: {
   const groupedAreas = useMemo(() => {
     const groups: Record<string, Area[]> = {};
     areas.forEach(a => {
-      const cat = a.category || "Other";
+      const cat = a.puzzlePiece || "other";
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(a);
     });
@@ -622,7 +630,7 @@ function EditTaskDialog({ task, areas, open, onOpenChange }: {
 
   const update = useMutation({
     mutationFn: () => apiRequest("PATCH", `/api/planner-tasks/${task.id}`, {
-      goal,
+      task: goal,
       areaId: areaId && areaId !== "none" ? Number(areaId) : null,
       startTime: startTime || null,
       endTime: endTime || null,
@@ -630,6 +638,9 @@ function EditTaskDialog({ task, areas, open, onOpenChange }: {
       date,
       result: resultText || null,
       recurrence: recurrenceJson,
+      context: context && context !== "none" ? context : null,
+      energy: energy && energy !== "none" ? energy : null,
+      projectId: projectId && projectId !== "none" ? Number(projectId) : null,
     }),
     onSuccess: () => {
       onOpenChange(false);
@@ -687,6 +698,50 @@ function EditTaskDialog({ task, areas, open, onOpenChange }: {
               </div>
             </div>
           </div>
+          {/* Context & Energy */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium mb-1 block text-muted-foreground">Context</label>
+              <Select value={context} onValueChange={setContext}>
+                <SelectTrigger className="text-sm"><SelectValue placeholder="Any context" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Any context</SelectItem>
+                  <SelectItem value="@home">@home</SelectItem>
+                  <SelectItem value="@work">@work</SelectItem>
+                  <SelectItem value="@phone">@phone</SelectItem>
+                  <SelectItem value="@computer">@computer</SelectItem>
+                  <SelectItem value="@errands">@errands</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block text-muted-foreground">Energy</label>
+              <Select value={energy} onValueChange={setEnergy}>
+                <SelectTrigger className="text-sm"><SelectValue placeholder="Any energy" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Any energy</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Project */}
+          <div>
+            <label className="text-xs font-medium mb-1 block text-muted-foreground">Project (optional)</label>
+            <Select value={projectId} onValueChange={setProjectId}>
+              <SelectTrigger className="text-sm"><SelectValue placeholder="No project" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No project</SelectItem>
+                {projectsList.filter(p => !p.archived).map(p => (
+                  <SelectItem key={p.id} value={String(p.id)}>{p.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div>
             <label className="text-xs font-medium mb-1 block text-muted-foreground">Result / Notes</label>
             <Input value={resultText} onChange={e => setResultText(e.target.value)}
@@ -784,15 +839,15 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
   const [chainExpanded, setChainExpanded] = useState(false);
 
   // Detect project task
-  const isProjectTask = task.sourceType?.startsWith("project_") && task.habitId;
-  const ProjectCatIcon = isProjectTask ? PROJECT_CATEGORY_ICONS[task.sourceType!] || FolderOpen : null;
-  const projectCatLabel = isProjectTask ? PROJECT_CATEGORY_LABELS[task.sourceType!] || "Project" : null;
+  const isProjectTask = !!task.projectId;
+  const ProjectCatIcon = isProjectTask ? FolderOpen : null;
+  const projectCatLabel = isProjectTask ? "Project" : null;
 
   // Fetch identity chain for project tasks (only when needed)
   const { data: chain } = useQuery<IdentityChain>({
-    queryKey: ["/api/identity-chain", task.habitId],
-    queryFn: () => apiRequest("GET", `/api/identity-chain/${task.habitId}`).then(r => r.json()),
-    enabled: !!isProjectTask,
+    queryKey: ["/api/identity-chain", task.identityId],
+    queryFn: () => apiRequest("GET", `/api/identity-chain/${task.identityId}`).then(r => r.json()),
+    enabled: !!isProjectTask && !!task.identityId,
     staleTime: 60000,
   });
 
@@ -834,7 +889,7 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
             {/* Project badge row */}
             {isProjectTask && chain && (
               <div className="mb-1">
-                <Link href={`/projects/${task.habitId}`}>
+                <Link href={`/projects/${task.projectId}`}>
                   <div className="flex items-center gap-1 cursor-pointer group/proj">
                     <FolderOpen className="w-3 h-3 text-chart-5 shrink-0" />
                     <span className="text-[10px] font-medium text-chart-5 group-hover/proj:underline truncate">
@@ -853,7 +908,7 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
                 </p>
               )}
               {/* Line 2: Task name — structured for project tasks */}
-              <ProjectTaskGoal goal={task.goal} sourceType={task.sourceType} isDone={isDone} />
+              <p className={`text-sm font-medium leading-snug ${isDone ? "line-through" : ""}`}>{task.task}</p>
               {/* Line 3: Time + Duration + Flags */}
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 {task.startTime && (
@@ -876,6 +931,16 @@ function TaskCard({ task, areas, onAreaClick }: { task: PlannerTask; areas: Area
                 ) : (
                   <Badge variant="outline" className="text-[10px] h-4 px-1">
                     Task
+                  </Badge>
+                )}
+                {task.context && (
+                  <Badge variant="outline" className="text-[10px] h-4 px-1">
+                    {task.context}
+                  </Badge>
+                )}
+                {task.energy && (
+                  <Badge variant="outline" className="text-[10px] h-4 px-1">
+                    {task.energy} energy
                   </Badge>
                 )}
                 {task.recurrence && (
@@ -1262,6 +1327,11 @@ function AddTaskDialog({ open, onOpenChange, areas, defaultDate, defaultAreaId }
   const [endTime, setEndTime] = useState("");
   const [date, setDate] = useState(defaultDate);
   const [recurrenceJson, setRecurrenceJson] = useState<string | null>(null);
+  const [context, setContext] = useState("");
+  const [energy, setEnergy] = useState("");
+  const [projectId, setProjectId] = useState<string>("");
+
+  const { data: projectsList = [] } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
 
   // Reset areaId when dialog opens with a new defaultAreaId
   const [prevDefaultArea, setPrevDefaultArea] = useState(defaultAreaId);
@@ -1283,7 +1353,7 @@ function AddTaskDialog({ open, onOpenChange, areas, defaultDate, defaultAreaId }
   const groupedAreas = useMemo(() => {
     const groups: Record<string, Area[]> = {};
     areas.forEach(a => {
-      const cat = a.category || "Other";
+      const cat = a.puzzlePiece || "other";
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(a);
     });
@@ -1294,15 +1364,19 @@ function AddTaskDialog({ open, onOpenChange, areas, defaultDate, defaultAreaId }
     mutationFn: () => apiRequest("POST", "/api/planner-tasks", {
       date,
       areaId: areaId && areaId !== "none" ? Number(areaId) : null,
-      goal,
+      task: goal,
       startTime: startTime || null,
       endTime: endTime || null,
       hours: hours || null,
       status: "planned",
       recurrence: recurrenceJson,
+      context: context || null,
+      energy: energy || null,
+      projectId: projectId && projectId !== "none" ? Number(projectId) : null,
     }),
     onSuccess: () => {
       setGoal(""); setAreaId(defaultAreaId ? String(defaultAreaId) : ""); setStartTime(""); setEndTime(""); setRecurrenceJson(null);
+      setContext(""); setEnergy(""); setProjectId("");
       onOpenChange(false);
       queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks"] });
       queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks", date] });
@@ -1361,6 +1435,50 @@ function AddTaskDialog({ open, onOpenChange, areas, defaultDate, defaultAreaId }
                 {hours ? `${parseFloat(hours).toFixed(1)}h` : "Auto"}
               </div>
             </div>
+          </div>
+
+          {/* Context & Energy */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium mb-1 block text-muted-foreground">Context</label>
+              <Select value={context} onValueChange={setContext}>
+                <SelectTrigger className="text-sm"><SelectValue placeholder="Any context" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Any context</SelectItem>
+                  <SelectItem value="@home">@home</SelectItem>
+                  <SelectItem value="@work">@work</SelectItem>
+                  <SelectItem value="@phone">@phone</SelectItem>
+                  <SelectItem value="@computer">@computer</SelectItem>
+                  <SelectItem value="@errands">@errands</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block text-muted-foreground">Energy</label>
+              <Select value={energy} onValueChange={setEnergy}>
+                <SelectTrigger className="text-sm"><SelectValue placeholder="Any energy" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Any energy</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Project */}
+          <div>
+            <label className="text-xs font-medium mb-1 block text-muted-foreground">Project (optional)</label>
+            <Select value={projectId} onValueChange={setProjectId}>
+              <SelectTrigger className="text-sm"><SelectValue placeholder="No project" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No project</SelectItem>
+                {projectsList.filter(p => !p.archived).map(p => (
+                  <SelectItem key={p.id} value={String(p.id)}>{p.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Recurrence builder */}
@@ -1428,13 +1546,11 @@ function AreaDetailView({ areaId, areas, onBack }: { areaId: number; areas: Area
         </Button>
         <div className="flex-1">
           <h1 className="text-lg font-semibold tracking-tight">{area?.name || "Area"}</h1>
-          {area?.description && (
-            <p className="text-xs text-muted-foreground mt-0.5">{area.description}</p>
-          )}
+
         </div>
-        {area?.category && (
-          <Badge className={`text-[10px] ${CATEGORY_COLORS[area.category] || ""}`}>
-            {area.category}
+        {area?.puzzlePiece && (
+          <Badge className={`text-[10px] ${CATEGORY_COLORS[area.puzzlePiece] || ""}`}>
+            {area.puzzlePiece}
           </Badge>
         )}
       </div>
@@ -1496,7 +1612,7 @@ function AreaDetailView({ areaId, areas, onBack }: { areaId: number; areas: Area
                           {isDone && <CheckCircle2 className="w-3 h-3 text-primary-foreground" />}
                         </button>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm ${isDone ? "line-through" : ""}`}>{task.goal}</p>
+                          <p className={`text-sm ${isDone ? "line-through" : ""}`}>{task.task}</p>
                           <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                             {task.startTime && (
                               <span>{formatTime(task.startTime, tf)}{task.endTime ? ` – ${formatTime(task.endTime, tf)}` : ""}</span>
@@ -1561,7 +1677,7 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
 }) {
   const { data: prefs } = usePreferences();
   const todCategories = getTimeOfDayRanges((prefs?.timeFormat ?? "12h") as "12h" | "24h");
-  const [action, setAction] = useState(task.goal);
+  const [action, setAction] = useState(task.task);
   const [timeOfDay, setTimeOfDay] = useState(timeToCategory(task.startTime));
   const [recurrenceJson, setRecurrenceJson] = useState<string | null>(
     task.recurrence || JSON.stringify({ type: "daily", interval: 1 })
@@ -1571,7 +1687,7 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
   const [reward, setReward] = useState("");
 
   const resetForm = () => {
-    setAction(task.goal);
+    setAction(task.task);
     setTimeOfDay(timeToCategory(task.startTime));
     setRecurrenceJson(task.recurrence || JSON.stringify({ type: "daily", interval: 1 }));
     setCue("");
@@ -1583,14 +1699,14 @@ function ConvertToHabitDialog({ task, area, open, onOpenChange }: {
     mutationFn: () => apiRequest("POST", "/api/identities", {
       statement: action,
       areaId: task.areaId || null,
-      visionId: null,
       timeOfDay: timeOfDay || null,
       craving: because || null,
       reward: reward || null,
       response: action,
       cue: cue || null,
       frequency: recurrenceJson || JSON.stringify({ type: "daily", interval: 1 }),
-      targetCount: 1,
+      puzzlePiece: "",
+      location: "",
       active: 1,
       createdAt: new Date().toISOString(),
     }),

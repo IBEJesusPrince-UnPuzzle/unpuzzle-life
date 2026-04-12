@@ -28,7 +28,7 @@ interface PrincipleCard {
 const CATEGORY_ORDER = ["UnPuzzle", "Chores", "Routines", "Roles", "Getting Things Done", "Other"];
 
 const PHASES = [
-  { num: 1, title: "Purpose & Principles", subtitle: "The corner pieces and edge frame \u2014 the immutable laws everything else clicks into" },
+  { num: 1, title: "Purpose & Mission", subtitle: "The corner pieces and edge frame \u2014 the immutable laws everything else clicks into" },
   { num: 2, title: "Responsibilities & Areas", subtitle: "The major sections and sub-assemblies \u2014 decide which parts of your life structure matter" },
   { num: 3, title: "Identity", subtitle: "The detailed, interlocking pieces \u2014 where the science meets the art" },
 ];
@@ -43,7 +43,7 @@ export default function WizardPage() {
 
   // Phase 1 state
   const [purposeStatement, setPurposeStatement] = useState("");
-  const [principles, setPrinciples] = useState<PrincipleCard[]>([{
+  const [missionCards, setMissionCards] = useState<PrincipleCard[]>([{
     statement: "", alwaysNever: "", testScenarios: ["", "", ""], violationSignal: "", courseCorrect: "",
   }]);
 
@@ -61,7 +61,7 @@ export default function WizardPage() {
   const savePurpose = useMutation({
     mutationFn: () => apiRequest("POST", "/api/purposes", {
       statement: purposeStatement,
-      principles: JSON.stringify(principles.filter(p => p.statement.trim())),
+      mission: JSON.stringify(missionCards.filter(p => p.statement.trim())),
       createdAt: new Date().toISOString(),
     }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/purposes"] }),
@@ -111,7 +111,7 @@ export default function WizardPage() {
   const groupedAreas = useMemo(() => {
     const groups: Record<string, Area[]> = {};
     areas.forEach(a => {
-      const cat = a.category || "Other";
+      const cat = a.puzzlePiece || "other";
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(a);
     });
@@ -176,8 +176,8 @@ export default function WizardPage() {
           <Phase1Purpose
             purposeStatement={purposeStatement}
             setPurposeStatement={setPurposeStatement}
-            principles={principles}
-            setPrinciples={setPrinciples}
+            missionCards={missionCards}
+            setMissionCards={setMissionCards}
           />
         )}
         {phase === 2 && (
@@ -265,31 +265,31 @@ export default function WizardPage() {
 
 function Phase1Purpose({
   purposeStatement, setPurposeStatement,
-  principles, setPrinciples,
+  missionCards, setMissionCards,
 }: {
   purposeStatement: string; setPurposeStatement: (v: string) => void;
-  principles: PrincipleCard[]; setPrinciples: (v: PrincipleCard[]) => void;
+  missionCards: PrincipleCard[]; setMissionCards: (v: PrincipleCard[]) => void;
 }) {
-  const addPrinciple = () => {
-    setPrinciples([...principles, {
+  const addMissionCard = () => {
+    setMissionCards([...missionCards, {
       statement: "", alwaysNever: "", testScenarios: ["", "", ""], violationSignal: "", courseCorrect: "",
     }]);
   };
 
-  const removePrinciple = (idx: number) => {
-    setPrinciples(principles.filter((_, i) => i !== idx));
+  const removeMissionCard = (idx: number) => {
+    setMissionCards(missionCards.filter((_, i) => i !== idx));
   };
 
-  const updatePrinciple = (idx: number, field: keyof PrincipleCard, value: string | string[]) => {
-    const next = [...principles];
+  const updateMissionCard = (idx: number, field: keyof PrincipleCard, value: string | string[]) => {
+    const next = [...missionCards];
     (next[idx] as any)[field] = value;
-    setPrinciples(next);
+    setMissionCards(next);
   };
 
   const updateScenario = (pIdx: number, sIdx: number, value: string) => {
-    const next = [...principles];
+    const next = [...missionCards];
     next[pIdx].testScenarios[sIdx] = value;
-    setPrinciples(next);
+    setMissionCards(next);
   };
 
   return (
@@ -309,32 +309,32 @@ function Phase1Purpose({
 
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Principles</h3>
-          <Button variant="outline" size="sm" onClick={addPrinciple} className="h-7 text-xs gap-1">
-            <Plus className="w-3 h-3" /> Add Principle
+          <h3 className="text-sm font-semibold">Mission</h3>
+          <Button variant="outline" size="sm" onClick={addMissionCard} className="h-7 text-xs gap-1">
+            <Plus className="w-3 h-3" /> Add Mission Card
           </Button>
         </div>
 
-        {principles.map((p, idx) => (
+        {missionCards.map((p, idx) => (
           <Card key={idx} className="border-amber-500/20">
             <CardContent className="p-4 space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <span className="text-xs font-bold text-amber-600 dark:text-amber-400 mt-1">
                   #{idx + 1}
                 </span>
-                {principles.length > 1 && (
+                {missionCards.length > 1 && (
                   <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive"
-                    onClick={() => removePrinciple(idx)}>
+                    onClick={() => removeMissionCard(idx)}>
                     <Trash2 className="w-3 h-3" />
                   </Button>
                 )}
               </div>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Principle</label>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Mission Statement</label>
                 <Input
                   value={p.statement}
-                  onChange={e => updatePrinciple(idx, "statement", e.target.value)}
+                  onChange={e => updateMissionCard(idx, "statement", e.target.value)}
                   placeholder="e.g. Integrity above convenience"
                   className="text-sm"
                 />
@@ -346,7 +346,7 @@ function Phase1Purpose({
                 </label>
                 <Input
                   value={p.alwaysNever}
-                  onChange={e => updatePrinciple(idx, "alwaysNever", e.target.value)}
+                  onChange={e => updateMissionCard(idx, "alwaysNever", e.target.value)}
                   placeholder="e.g. I always tell the truth, even when it's uncomfortable"
                   className="text-sm"
                 />
@@ -371,7 +371,7 @@ function Phase1Purpose({
                 </label>
                 <Input
                   value={p.violationSignal}
-                  onChange={e => updatePrinciple(idx, "violationSignal", e.target.value)}
+                  onChange={e => updateMissionCard(idx, "violationSignal", e.target.value)}
                   placeholder="How will you know you're breaking this?"
                   className="text-sm"
                 />
@@ -383,7 +383,7 @@ function Phase1Purpose({
                 </label>
                 <Input
                   value={p.courseCorrect}
-                  onChange={e => updatePrinciple(idx, "courseCorrect", e.target.value)}
+                  onChange={e => updateMissionCard(idx, "courseCorrect", e.target.value)}
                   placeholder="How do you get back on track that same day?"
                   className="text-sm"
                 />

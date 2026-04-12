@@ -1,15 +1,44 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FolderOpen, ArrowLeft, Fingerprint, Repeat2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { FolderOpen, ArrowLeft, Fingerprint, Repeat2, Search } from "lucide-react";
 import { Link } from "wouter";
+import { useState, useMemo } from "react";
 import type { Identity, Area } from "@shared/schema";
 import { getPieceColor } from "@/lib/piece-colors";
 
 export default function ProjectsPage() {
   const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
   const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
-  const projectIdentities = identities.filter(i => i.active && i.areaId != null);
+
+  const [searchText, setSearchText] = useState("");
+  const [filterPiece, setFilterPiece] = useState("");
+  const [filterAreaId, setFilterAreaId] = useState("");
+
+  const projectIdentities = useMemo(() => {
+    let filtered = identities.filter(i => i.active && i.areaId != null);
+
+    if (searchText.trim()) {
+      const q = searchText.toLowerCase();
+      filtered = filtered.filter(i => i.statement.toLowerCase().includes(q));
+    }
+
+    if (filterPiece && filterPiece !== "all") {
+      filtered = filtered.filter(i => i.puzzlePiece === filterPiece);
+    }
+
+    if (filterAreaId && filterAreaId !== "all") {
+      filtered = filtered.filter(i => i.areaId === Number(filterAreaId));
+    }
+
+    return filtered;
+  }, [identities, searchText, filterPiece, filterAreaId]);
+
+  const activeAreas = useMemo(() => areas.filter(a => !a.archived), [areas]);
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -29,33 +58,70 @@ export default function ProjectsPage() {
         </p>
       </div>
 
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1">
+          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search projects..."
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            className="text-sm pl-8 h-9"
+          />
+        </div>
+        <Select value={filterPiece} onValueChange={setFilterPiece}>
+          <SelectTrigger className="text-sm w-40 h-9">
+            <SelectValue placeholder="All pieces" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All pieces</SelectItem>
+            <SelectItem value="reason">Reason</SelectItem>
+            <SelectItem value="finance">Finance</SelectItem>
+            <SelectItem value="fitness">Fitness</SelectItem>
+            <SelectItem value="talent">Talent</SelectItem>
+            <SelectItem value="pleasure">Pleasure</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterAreaId} onValueChange={setFilterAreaId}>
+          <SelectTrigger className="text-sm w-40 h-9">
+            <SelectValue placeholder="All areas" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All areas</SelectItem>
+            {activeAreas.map(a => (
+              <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {projectIdentities.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
             <FolderOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p className="text-sm font-medium">No projects yet</p>
-            <p className="text-xs mt-1">Projects are derived from active identities linked to an area. Add identities in Clarity.</p>
+            <p className="text-sm font-medium">No projects found</p>
+            <p className="text-xs mt-1">
+              {identities.length === 0
+                ? "Projects are derived from active identities linked to an area. Add identities in Clarity."
+                : "Try adjusting your filters."}
+            </p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
           {projectIdentities.map((identity) => {
             const area = areas.find(a => a.id === identity.areaId);
-            const category = area?.category || "";
-            const areaName = area?.name || "";
-            const areaLabel = category === "UnPuzzle"
-              ? `${category} ${areaName}`
-              : `${areaName} ${category}`;
-            const pieceColor = getPieceColor((identity as any).puzzlePiece);
+            const areaLabel = area?.name || "";
+            const pieceColor = getPieceColor(identity.puzzlePiece);
 
             return (
               <Link key={identity.id} href={`/projects/${identity.id}`}>
                 <Card
                   className="cursor-pointer hover:shadow-md transition-shadow"
-                  style={(identity as any).puzzlePiece ? { borderLeftColor: pieceColor.accent, borderLeftWidth: "4px" } : {}}
+                  style={identity.puzzlePiece ? { borderLeftColor: pieceColor.accent, borderLeftWidth: "4px" } : {}}
                 >
                   <CardContent className="p-4 space-y-1.5">
-                    {(identity as any).puzzlePiece && (
+                    {identity.puzzlePiece && (
                       <div className="flex items-center gap-1.5 mb-1">
                         <Link href="/unpuzzle" onClick={(e) => e.stopPropagation()}>
                           <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded cursor-pointer ${pieceColor.bg} ${pieceColor.text}`}>

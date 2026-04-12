@@ -16,11 +16,11 @@ import type { WeeklyReview, InboxItem, Project, Identity } from "@shared/schema"
 import { getPieceColor } from "@/lib/piece-colors";
 
 const PIECES = [
-  { key: "reason",   label: "Reason",   descriptor: "Purpose & beliefs" },
-  { key: "finance",  label: "Finance",  descriptor: "Money & abundance" },
-  { key: "fitness",  label: "Fitness",  descriptor: "Health & energy" },
-  { key: "talent",   label: "Talent",   descriptor: "Work & contribution" },
-  { key: "pleasure", label: "Pleasure", descriptor: "Joy & relationships" },
+  { key: "reason",   label: "Reason",   descriptor: "Emotions, beliefs & behavior" },
+  { key: "finance",  label: "Finance",  descriptor: "Income, expenses & planning" },
+  { key: "fitness",  label: "Fitness",  descriptor: "Bodily systems & physical environment" },
+  { key: "talent",   label: "Talent",   descriptor: "Abilities, skills, vocation & career" },
+  { key: "pleasure", label: "Pleasure", descriptor: "Desires, satisfactions & enjoyments" },
 ] as const;
 
 function PieceRatingRow({ piece, value, onChange }: {
@@ -74,7 +74,7 @@ export default function ReviewPage() {
 
   const currentReview = reviews.find(r => r.weekOf === monday);
   const unprocessedInbox = inboxItems.filter(i => !i.processed).length;
-  const activeProjects = projects.filter(p => p.status === "active");
+  const activeProjects = projects.filter(p => !p.archived);
 
   const [wins, setWins] = useState("");
   const [lessons, setLessons] = useState("");
@@ -262,6 +262,24 @@ export default function ReviewPage() {
             className="text-sm"
             data-testid="input-focus"
           />
+        </CardContent>
+      </Card>
+
+      {/* Someday/Maybe link */}
+      <Card>
+        <CardContent className="p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Puzzle className="w-4 h-4 text-purple-500" />
+            <div>
+              <p className="text-sm font-medium">Someday / Maybe</p>
+              <p className="text-xs text-muted-foreground">Review your incubating ideas and possibilities</p>
+            </div>
+          </div>
+          <Link href="/someday">
+            <Badge variant="outline" className="text-xs cursor-pointer hover:bg-purple-500/10 transition-colors text-purple-600 dark:text-purple-400 border-purple-500/30">
+              Review
+            </Badge>
+          </Link>
         </CardContent>
       </Card>
 

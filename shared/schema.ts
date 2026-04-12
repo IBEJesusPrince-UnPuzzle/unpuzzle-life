@@ -32,36 +32,12 @@ export const invitations = sqliteTable("invitations", {
 // CLARITY OF LIFE (Top-down clarity)
 // ============================================================
 
-// C5: Purpose & Principles
+// C5: Purpose & Mission
 export const purposes = sqliteTable("purposes", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().default(1),
   statement: text("statement").notNull(),
-  principles: text("principles"), // JSON array of strings
-  createdAt: text("created_at").notNull(),
-});
-
-// C4: Vision (3-5 year picture)
-export const visions = sqliteTable("visions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: integer("user_id").notNull().default(1),
-  title: text("title").notNull(),
-  description: text("description"),
-  timeframe: text("timeframe"), // e.g. "2027", "3 years"
-  status: text("status").notNull().default("active"), // active, achieved, deferred
-  createdAt: text("created_at").notNull(),
-  anchorMoments: text("anchor_moments"), // JSON array of {lifePiece, scene}
-});
-
-// C3: Responsibility
-export const goals = sqliteTable("goals", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: integer("user_id").notNull().default(1),
-  title: text("title").notNull(),
-  description: text("description"),
-  visionId: integer("vision_id").references(() => visions.id),
-  targetDate: text("target_date"),
-  status: text("status").notNull().default("active"), // active, achieved, deferred
+  mission: text("mission"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -70,8 +46,6 @@ export const areas = sqliteTable("areas", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().default(1),
   name: text("name").notNull(),
-  description: text("description"),
-  category: text("category"), // responsibility: UnPuzzle, Chores, Routines, Roles, Getting Things Done
   puzzlePiece: text("puzzle_piece"), // reason | finance | fitness | talent | pleasure
   visionText: text("vision_text"), // the user's immersive area vision text
   icon: text("icon"), // lucide icon name
@@ -97,30 +71,8 @@ export const projects = sqliteTable("projects", {
   title: text("title").notNull(),
   description: text("description"),
   areaId: integer("area_id").references(() => areas.id),
-  goalId: integer("goal_id").references(() => goals.id),
   puzzlePiece: text("puzzle_piece"), // inherited from identity on creation
-  identityId: integer("identity_id").references(() => identities.id), // link back to source identity
-  status: text("status").notNull().default("active"), // active, completed, someday, deferred
-  dueDate: text("due_date"),
-  createdAt: text("created_at").notNull(),
-  archived: integer("archived").notNull().default(0),
-  archivedAt: text("archived_at"),
-});
-
-// Ground: Next Actions
-export const actions = sqliteTable("actions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: integer("user_id").notNull().default(1),
-  title: text("title").notNull(),
-  notes: text("notes"),
-  projectId: integer("project_id").references(() => projects.id),
-  areaId: integer("area_id").references(() => areas.id),
-  context: text("context"), // @home, @work, @phone, @computer, @errands
-  energy: text("energy"), // low, medium, high
-  timeEstimate: integer("time_estimate"), // minutes
-  dueDate: text("due_date"),
-  completed: integer("completed").notNull().default(0),
-  completedAt: text("completed_at"),
+  identityId: integer("identity_id").notNull().references(() => identities.id),
   createdAt: text("created_at").notNull(),
   archived: integer("archived").notNull().default(0),
   archivedAt: text("archived_at"),
@@ -135,71 +87,19 @@ export const identities = sqliteTable("identities", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().default(1),
   statement: text("statement").notNull(), // "I am a healthy person"
-  areaId: integer("area_id").references(() => areas.id),
-  visionId: integer("vision_id").references(() => visions.id),
-  cue: text("cue"),
-  craving: text("craving"),
-  response: text("response"),
-  reward: text("reward"),
+  areaId: integer("area_id").notNull().references(() => areas.id),
+  cue: text("cue").notNull(),
+  craving: text("craving").notNull(),
+  response: text("response").notNull(),
+  reward: text("reward").notNull(),
   frequency: text("frequency").notNull().default("daily"),
-  targetCount: integer("target_count").notNull().default(1),
   active: integer("active").notNull().default(1),
-  timeOfDay: text("time_of_day"),
-  puzzlePiece: text("puzzle_piece"),          // reason | finance | fitness | talent | pleasure
-  location: text("location"),                  // "where will this take place?"
-  environmentType: text("environment_type"),   // "person" | "place" | "thing"
-
-  // Person sub-fields
-  envPersonName: text("env_person_name"),
-  envPersonContactMethod: text("env_person_contact_method"), // call | text | email | in-person | video
-  envPersonContactInfo: text("env_person_contact_info"),
-  envPersonWhy: text("env_person_why"),
-
-  // Place sub-fields
-  envPlaceName: text("env_place_name"),
-  envPlaceAddress: text("env_place_address"),
-  envPlaceTravelMethod: text("env_place_travel_method"), // drive | walk | transit | remote
-  envPlaceWhy: text("env_place_why"),
-
-  // Thing sub-fields
-  envThingName: text("env_thing_name"),
-  envThingUsage: text("env_thing_usage"),   // "how you'll use it"
-  envThingWhy: text("env_thing_why"),
-
+  timeOfDay: text("time_of_day").notNull(),
+  puzzlePiece: text("puzzle_piece").notNull(),          // reason | finance | fitness | talent | pleasure
+  location: text("location").notNull(),                  // "where will this take place?"
   createdAt: text("created_at").notNull(),
   archived: integer("archived").notNull().default(0),
   archivedAt: text("archived_at"),
-});
-
-// Habits linked to identities
-export const habits = sqliteTable("habits", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: integer("user_id").notNull().default(1),
-  name: text("name").notNull(),
-  description: text("description"),
-  identityId: integer("identity_id").references(() => identities.id),
-  cue: text("cue"), // Implementation intention: "When I [cue]..."
-  craving: text("craving"), // "I will want to..."
-  response: text("response"), // "I will [response]..."
-  reward: text("reward"), // "Which will give me..."
-  frequency: text("frequency").notNull().default("daily"), // daily, weekdays, weekly
-  targetCount: integer("target_count").notNull().default(1),
-  active: integer("active").notNull().default(1),
-  createdAt: text("created_at").notNull(),
-  areaId: integer("area_id").references(() => areas.id),
-  timeOfDay: text("time_of_day"), // time-of-day category string
-  archived: integer("archived").notNull().default(0),
-  archivedAt: text("archived_at"),
-});
-
-// Daily habit completions
-export const habitLogs = sqliteTable("habit_logs", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: integer("user_id").notNull().default(1),
-  habitId: integer("habit_id").notNull().references(() => habits.id),
-  date: text("date").notNull(), // YYYY-MM-DD
-  count: integer("count").notNull().default(1),
-  note: text("note"),
 });
 
 // ============================================================
@@ -212,17 +112,18 @@ export const routineItems = sqliteTable("routine_items", {
   sortOrder: integer("sort_order").notNull().default(0),
   time: text("time").notNull(), // HH:MM format
   durationMinutes: integer("duration_minutes").notNull().default(10),
-  location: text("location"),
-  cue: text("cue"), // "I'll..." (Make it Obvious)
-  craving: text("craving"), // "and because..." (Make it Attractive)
-  response: text("response").notNull(), // "I will..." (Make it Easy)
-  reward: text("reward"), // "and I'll be rewarded by..." (Make it Satisfying)
-  areaId: integer("area_id").references(() => areas.id),
-  habitId: integer("habit_id").references(() => habits.id),
-  dayVariant: text("day_variant"), // JSON: day-specific overrides e.g. {"Mon": "Dark", "Tue": "Colors"}
+  location: text("location").notNull().default(""),
+  cue: text("cue").notNull().default(""),
+  craving: text("craving").notNull().default(""),
+  response: text("response").notNull(),
+  reward: text("reward").notNull().default(""),
+  areaId: integer("area_id").notNull().references(() => areas.id),
+  identityId: integer("identity_id").notNull().references(() => identities.id),
+  puzzlePiece: text("puzzle_piece").notNull().default(""),
+  dayVariant: text("day_variant").notNull().default(""),
   active: integer("active").notNull().default(1),
-  isDraft: integer("is_draft").notNull().default(0), // 1 = draft (needs time), 0 = published
-  timeOfDay: text("time_of_day"), // time-of-day category from habit creation
+  isDraft: integer("is_draft").notNull().default(0),
+  timeOfDay: text("time_of_day").notNull().default(""),
 });
 
 // Daily routine completion logs
@@ -244,16 +145,18 @@ export const plannerTasks = sqliteTable("planner_tasks", {
   userId: integer("user_id").notNull().default(1),
   date: text("date").notNull(), // YYYY-MM-DD
   areaId: integer("area_id").references(() => areas.id),
-  goal: text("goal").notNull(), // task description (what to do)
+  task: text("task").notNull(), // task description (what to do)
   startTime: text("start_time"), // HH:MM format
   endTime: text("end_time"), // HH:MM format
   hours: text("hours"), // decimal hours as string
   result: text("result"), // outcome notes
   status: text("status").notNull().default("planned"), // planned, done, skipped
   recurrence: text("recurrence"), // null=one-time, "daily", "weekdays", "weekend", "weekly:monday", "monthly"
-  habitId: integer("habit_id").references(() => habits.id),
+  identityId: integer("identity_id").references(() => identities.id),
+  projectId: integer("project_id").references(() => projects.id),
+  context: text("context"), // @home, @work, @phone, @computer, @errands
+  energy: text("energy"), // low, medium, high
   isDraft: integer("is_draft").notNull().default(0), // 1 = draft, 0 = published
-  sourceType: text("source_type"), // "habit" | "manual" | null
 });
 
 // ============================================================
@@ -268,8 +171,8 @@ export const inboxItems = sqliteTable("inbox_items", {
   processed: integer("processed").notNull().default(0),
   processedAs: text("processed_as"), // task, project, reference, someday, trash
   deletedAt: text("deleted_at"),
-  referenceAreaId: integer("reference_area_id").references(() => areas.id),
   referenceProjectId: integer("reference_project_id").references(() => projects.id),
+  linkedPlannerTaskId: integer("linked_planner_task_id").references(() => plannerTasks.id),
   areaId: integer("area_id").references(() => areas.id),
   createdAt: text("created_at").notNull(),
 });
@@ -311,7 +214,7 @@ export const wizardState = sqliteTable("wizard_state", {
 export const environmentEntities = sqliteTable("environment_entities", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().default(1),
-  identityId: integer("identity_id").references(() => identities.id),
+  identityId: integer("identity_id").notNull().references(() => identities.id),
   areaId: integer("area_id").references(() => areas.id),
   puzzlePiece: text("puzzle_piece"),
   type: text("type").notNull(), // "person" | "place" | "thing"
@@ -442,15 +345,10 @@ export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertInvitationSchema = createInsertSchema(invitations).omit({ id: true });
 
 export const insertPurposeSchema = createInsertSchema(purposes).omit({ id: true });
-export const insertVisionSchema = createInsertSchema(visions).omit({ id: true });
-export const insertGoalSchema = createInsertSchema(goals).omit({ id: true });
 export const insertAreaSchema = createInsertSchema(areas).omit({ id: true });
 export const insertAreaVisionSnapshotSchema = createInsertSchema(areaVisionSnapshots).omit({ id: true });
 export const insertProjectSchema = createInsertSchema(projects).omit({ id: true });
-export const insertActionSchema = createInsertSchema(actions).omit({ id: true });
 export const insertIdentitySchema = createInsertSchema(identities).omit({ id: true });
-export const insertHabitSchema = createInsertSchema(habits).omit({ id: true });
-export const insertHabitLogSchema = createInsertSchema(habitLogs).omit({ id: true });
 export const insertInboxItemSchema = createInsertSchema(inboxItems).omit({ id: true });
 export const insertWeeklyReviewSchema = createInsertSchema(weeklyReviews).omit({ id: true });
 export const insertRoutineItemSchema = createInsertSchema(routineItems).omit({ id: true });
@@ -466,24 +364,14 @@ export type InsertInvitation = z.infer<typeof insertInvitationSchema>;
 
 export type Purpose = typeof purposes.$inferSelect;
 export type InsertPurpose = z.infer<typeof insertPurposeSchema>;
-export type Vision = typeof visions.$inferSelect;
-export type InsertVision = z.infer<typeof insertVisionSchema>;
-export type Goal = typeof goals.$inferSelect;
-export type InsertGoal = z.infer<typeof insertGoalSchema>;
 export type Area = typeof areas.$inferSelect;
 export type InsertArea = z.infer<typeof insertAreaSchema>;
 export type AreaVisionSnapshot = typeof areaVisionSnapshots.$inferSelect;
 export type InsertAreaVisionSnapshot = z.infer<typeof insertAreaVisionSnapshotSchema>;
 export type Project = typeof projects.$inferSelect;
 export type InsertProject = z.infer<typeof insertProjectSchema>;
-export type Action = typeof actions.$inferSelect;
-export type InsertAction = z.infer<typeof insertActionSchema>;
 export type Identity = typeof identities.$inferSelect;
 export type InsertIdentity = z.infer<typeof insertIdentitySchema>;
-export type Habit = typeof habits.$inferSelect;
-export type InsertHabit = z.infer<typeof insertHabitSchema>;
-export type HabitLog = typeof habitLogs.$inferSelect;
-export type InsertHabitLog = z.infer<typeof insertHabitLogSchema>;
 export type InboxItem = typeof inboxItems.$inferSelect;
 export type InsertInboxItem = z.infer<typeof insertInboxItemSchema>;
 export type WeeklyReview = typeof weeklyReviews.$inferSelect;

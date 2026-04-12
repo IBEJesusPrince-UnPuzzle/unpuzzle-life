@@ -111,15 +111,15 @@ export default function RoutinePage({ filterIdentityId }: { filterIdentityId?: n
 
   const progressPct = nonDraftItems.length > 0 ? Math.round((completedCount / nonDraftItems.length) * 100) : 0;
 
-  // Group routines by identity (habitId stores identityId)
+  // Group routines by identity
   const routinesByIdentity = useMemo(() => {
     const grouped = new Map<number, RoutineItem[]>();
     const ungrouped: RoutineItem[] = [];
     for (const item of items) {
-      if (item.habitId) {
-        const list = grouped.get(item.habitId) || [];
+      if (item.identityId) {
+        const list = grouped.get(item.identityId) || [];
         list.push(item);
-        grouped.set(item.habitId, list);
+        grouped.set(item.identityId, list);
       } else {
         ungrouped.push(item);
       }
@@ -462,14 +462,14 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
                   )}
                 </div>
               )}
-              {item.habitId && (
+              {item.identityId && (
                 <div className="flex items-center gap-1.5 mt-1" onClick={(e) => e.stopPropagation()}>
                   <Link href="/unpuzzle">
                     <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30">
                       <Fingerprint className="w-3 h-3" /> Identity
                     </Badge>
                   </Link>
-                  <Link href={`/projects/${item.habitId}`}>
+                  <Link href={`/projects/${item.identityId}`}>
                     <Badge variant="outline" className="text-[10px] h-5 px-1.5 gap-1 cursor-pointer hover:bg-chart-5/10 transition-colors text-chart-5 border-chart-5/30">
                       <FolderOpen className="w-3 h-3" /> Project
                     </Badge>
@@ -501,7 +501,7 @@ function RoutineRow({ item, isDone, log, isCurrent, isPast, today, prevReward, a
                         <div>
                           <span className="font-medium text-primary/70">In the area of</span>
                           <p className="text-muted-foreground mt-0.5 leading-relaxed">
-                            <span className="font-medium text-foreground">{area.category === "UnPuzzle" ? `${area.category} ${area.name}` : `${area.name} ${area.category || ""}`}</span>
+                            <span className="font-medium text-foreground">{area.name}</span>
                           </p>
                         </div>
                       </div>

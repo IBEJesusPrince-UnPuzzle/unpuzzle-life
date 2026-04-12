@@ -3,23 +3,18 @@ import Database from "better-sqlite3";
 import { eq, and, or, desc, asc, isNull, gte } from "drizzle-orm";
 import {
   users, invitations,
-  purposes, visions, goals, areas, projects, actions,
-  identities, habits, habitLogs, inboxItems, weeklyReviews,
+  purposes, areas, projects,
+  identities, inboxItems, weeklyReviews,
   routineItems, routineLogs, plannerTasks, wizardState,
   environmentEntities, beliefs, antiHabits, immutableLaws, immutableLawLogs,
   preferences, areaVisionSnapshots,
   type User, type InsertUser,
   type Invitation, type InsertInvitation,
   type Purpose, type InsertPurpose,
-  type Vision, type InsertVision,
-  type Goal, type InsertGoal,
   type Area, type InsertArea,
   type AreaVisionSnapshot, type InsertAreaVisionSnapshot,
   type Project, type InsertProject,
-  type Action, type InsertAction,
   type Identity, type InsertIdentity,
-  type Habit, type InsertHabit,
-  type HabitLog, type InsertHabitLog,
   type InboxItem, type InsertInboxItem,
   type WeeklyReview, type InsertWeeklyReview,
   type RoutineItem, type InsertRoutineItem,
@@ -95,38 +90,19 @@ sqlite.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     statement TEXT NOT NULL,
-    principles TEXT,
-    created_at TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS visions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL DEFAULT 1,
-    title TEXT NOT NULL,
-    description TEXT,
-    timeframe TEXT,
-    status TEXT NOT NULL DEFAULT 'active',
-    created_at TEXT NOT NULL,
-    anchor_moments TEXT
-  );
-  CREATE TABLE IF NOT EXISTS goals (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL DEFAULT 1,
-    title TEXT NOT NULL,
-    description TEXT,
-    vision_id INTEGER REFERENCES visions(id),
-    target_date TEXT,
-    status TEXT NOT NULL DEFAULT 'active',
+    mission TEXT,
     created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS areas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
-    description TEXT,
-    category TEXT,
+    puzzle_piece TEXT,
+    vision_text TEXT,
     icon TEXT,
     sort_order INTEGER NOT NULL DEFAULT 0,
-    archived INTEGER NOT NULL DEFAULT 0
+    archived INTEGER NOT NULL DEFAULT 0,
+    archived_at TEXT
   );
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,66 +110,24 @@ sqlite.exec(`
     title TEXT NOT NULL,
     description TEXT,
     area_id INTEGER REFERENCES areas(id),
-    goal_id INTEGER REFERENCES goals(id),
-    status TEXT NOT NULL DEFAULT 'active',
-    due_date TEXT,
-    created_at TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS actions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL DEFAULT 1,
-    title TEXT NOT NULL,
-    notes TEXT,
-    project_id INTEGER REFERENCES projects(id),
-    area_id INTEGER REFERENCES areas(id),
-    context TEXT,
-    energy TEXT,
-    time_estimate INTEGER,
-    due_date TEXT,
-    completed INTEGER NOT NULL DEFAULT 0,
-    completed_at TEXT,
+    identity_id INTEGER NOT NULL REFERENCES identities(id),
     created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS identities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     statement TEXT NOT NULL,
-    area_id INTEGER REFERENCES areas(id),
-    vision_id INTEGER REFERENCES visions(id),
-    cue TEXT,
-    craving TEXT,
-    response TEXT,
-    reward TEXT,
+    area_id INTEGER NOT NULL REFERENCES areas(id),
+    cue TEXT NOT NULL DEFAULT '',
+    craving TEXT NOT NULL DEFAULT '',
+    response TEXT NOT NULL DEFAULT '',
+    reward TEXT NOT NULL DEFAULT '',
     frequency TEXT NOT NULL DEFAULT 'daily',
-    target_count INTEGER NOT NULL DEFAULT 1,
     active INTEGER NOT NULL DEFAULT 1,
-    time_of_day TEXT,
+    time_of_day TEXT NOT NULL DEFAULT '',
+    puzzle_piece TEXT NOT NULL DEFAULT '',
+    location TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS habits (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL DEFAULT 1,
-    name TEXT NOT NULL,
-    description TEXT,
-    identity_id INTEGER REFERENCES identities(id),
-    cue TEXT,
-    craving TEXT,
-    response TEXT,
-    reward TEXT,
-    frequency TEXT NOT NULL DEFAULT 'daily',
-    target_count INTEGER NOT NULL DEFAULT 1,
-    active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL,
-    area_id INTEGER REFERENCES areas(id),
-    time_of_day TEXT
-  );
-  CREATE TABLE IF NOT EXISTS habit_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL DEFAULT 1,
-    habit_id INTEGER NOT NULL REFERENCES habits(id),
-    date TEXT NOT NULL,
-    count INTEGER NOT NULL DEFAULT 1,
-    note TEXT
   );
   CREATE TABLE IF NOT EXISTS routine_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -201,17 +135,18 @@ sqlite.exec(`
     sort_order INTEGER NOT NULL DEFAULT 0,
     time TEXT NOT NULL,
     duration_minutes INTEGER NOT NULL DEFAULT 10,
-    location TEXT,
-    cue TEXT,
-    craving TEXT,
+    location TEXT NOT NULL DEFAULT '',
+    cue TEXT NOT NULL DEFAULT '',
+    craving TEXT NOT NULL DEFAULT '',
     response TEXT NOT NULL,
-    reward TEXT,
-    area_id INTEGER REFERENCES areas(id),
-    habit_id INTEGER REFERENCES habits(id),
-    day_variant TEXT,
+    reward TEXT NOT NULL DEFAULT '',
+    area_id INTEGER NOT NULL REFERENCES areas(id),
+    identity_id INTEGER NOT NULL REFERENCES identities(id),
+    puzzle_piece TEXT NOT NULL DEFAULT '',
+    day_variant TEXT NOT NULL DEFAULT '',
     active INTEGER NOT NULL DEFAULT 1,
     is_draft INTEGER NOT NULL DEFAULT 0,
-    time_of_day TEXT
+    time_of_day TEXT NOT NULL DEFAULT ''
   );
   CREATE TABLE IF NOT EXISTS routine_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -226,16 +161,18 @@ sqlite.exec(`
     user_id INTEGER NOT NULL DEFAULT 1,
     date TEXT NOT NULL,
     area_id INTEGER REFERENCES areas(id),
-    goal TEXT NOT NULL,
+    task TEXT NOT NULL,
     start_time TEXT,
     end_time TEXT,
     hours TEXT,
     result TEXT,
     status TEXT NOT NULL DEFAULT 'planned',
     recurrence TEXT,
-    habit_id INTEGER REFERENCES habits(id),
-    is_draft INTEGER NOT NULL DEFAULT 0,
-    source_type TEXT
+    identity_id INTEGER REFERENCES identities(id),
+    project_id INTEGER REFERENCES projects(id),
+    context TEXT,
+    energy TEXT,
+    is_draft INTEGER NOT NULL DEFAULT 0
   );
   CREATE TABLE IF NOT EXISTS inbox_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -245,8 +182,8 @@ sqlite.exec(`
     processed INTEGER NOT NULL DEFAULT 0,
     processed_as TEXT,
     deleted_at TEXT,
-    reference_area_id INTEGER REFERENCES areas(id),
     reference_project_id INTEGER REFERENCES projects(id),
+    linked_planner_task_id INTEGER REFERENCES planner_tasks(id),
     area_id INTEGER REFERENCES areas(id),
     created_at TEXT NOT NULL
   );
@@ -272,7 +209,7 @@ sqlite.exec(`
   CREATE TABLE IF NOT EXISTS environment_entities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
-    identity_id INTEGER REFERENCES identities(id),
+    identity_id INTEGER NOT NULL REFERENCES identities(id),
     area_id INTEGER REFERENCES areas(id),
     puzzle_piece TEXT,
     type TEXT NOT NULL,
@@ -372,6 +309,13 @@ sqlite.exec(`
   );
 `);
 
+// Drop dead tables from previous schema
+sqlite.exec("DROP TABLE IF EXISTS habit_logs");
+sqlite.exec("DROP TABLE IF EXISTS habits");
+sqlite.exec("DROP TABLE IF EXISTS actions");
+sqlite.exec("DROP TABLE IF EXISTS goals");
+sqlite.exec("DROP TABLE IF EXISTS visions");
+
 // Insert default preferences row if none exists
 try {
   const prefRow = sqlite.prepare("SELECT id FROM preferences LIMIT 1").get();
@@ -391,25 +335,10 @@ addColumnIfMissing("inbox_items", "content", "TEXT NOT NULL DEFAULT ''");
 addColumnIfMissing("inbox_items", "area_id", "INTEGER");
 addColumnIfMissing("inbox_items", "created_at", "TEXT NOT NULL DEFAULT ''");
 addColumnIfMissing("projects", "title", "TEXT NOT NULL DEFAULT ''");
-addColumnIfMissing("projects", "status", "TEXT NOT NULL DEFAULT 'active'");
+// projects.status removed in Phase 1D
 addColumnIfMissing("projects", "created_at", "TEXT NOT NULL DEFAULT ''");
-addColumnIfMissing("projects", "goal_id", "INTEGER");
-addColumnIfMissing("actions", "area_id", "INTEGER");
-addColumnIfMissing("actions", "title", "TEXT NOT NULL DEFAULT ''");
-addColumnIfMissing("actions", "created_at", "TEXT NOT NULL DEFAULT ''");
 addColumnIfMissing("areas", "archived", "INTEGER NOT NULL DEFAULT 0");
-addColumnIfMissing("visions", "anchor_moments", "TEXT");
-addColumnIfMissing("projects", "due_date", "TEXT");
-addColumnIfMissing("actions", "notes", "TEXT");
-addColumnIfMissing("actions", "due_date", "TEXT");
-addColumnIfMissing("actions", "completed", "INTEGER NOT NULL DEFAULT 0");
-addColumnIfMissing("actions", "completed_at", "TEXT");
-addColumnIfMissing("habits", "identity_id", "INTEGER");
-addColumnIfMissing("habits", "cue", "TEXT");
-addColumnIfMissing("habits", "craving", "TEXT");
-addColumnIfMissing("habits", "response", "TEXT");
-addColumnIfMissing("habits", "reward", "TEXT");
-addColumnIfMissing("habits", "time_of_day", "TEXT");
+// projects.due_date removed in Phase 1D
 addColumnIfMissing("routine_items", "time", "TEXT DEFAULT '08:00'");
 addColumnIfMissing("routine_items", "duration_minutes", "INTEGER NOT NULL DEFAULT 10");
 addColumnIfMissing("routine_items", "location", "TEXT");
@@ -418,7 +347,7 @@ addColumnIfMissing("routine_items", "craving", "TEXT");
 addColumnIfMissing("routine_items", "response", "TEXT DEFAULT ''");
 addColumnIfMissing("routine_items", "reward", "TEXT");
 addColumnIfMissing("routine_items", "area_id", "INTEGER");
-addColumnIfMissing("routine_items", "habit_id", "INTEGER");
+// routine_items.habit_id renamed to identity_id in Phase 1G
 addColumnIfMissing("routine_items", "day_variant", "TEXT");
 addColumnIfMissing("routine_items", "active", "INTEGER NOT NULL DEFAULT 1");
 addColumnIfMissing("routine_items", "is_draft", "INTEGER NOT NULL DEFAULT 0");
@@ -428,7 +357,7 @@ addColumnIfMissing("routine_logs", "note", "TEXT");
 addColumnIfMissing("inbox_items", "notes", "TEXT");
 addColumnIfMissing("inbox_items", "processed_as", "TEXT");
 addColumnIfMissing("inbox_items", "deleted_at", "TEXT");
-addColumnIfMissing("inbox_items", "reference_area_id", "INTEGER");
+// inbox_items.reference_area_id removed in Phase 1I
 addColumnIfMissing("inbox_items", "reference_project_id", "INTEGER");
 addColumnIfMissing("weekly_reviews", "inbox_cleared", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("weekly_reviews", "projects_reviewed", "INTEGER NOT NULL DEFAULT 0");
@@ -446,18 +375,7 @@ addColumnIfMissing("areas", "puzzle_piece", "TEXT");
 addColumnIfMissing("areas", "vision_text", "TEXT");
 addColumnIfMissing("identities", "puzzle_piece", "TEXT");
 addColumnIfMissing("identities", "location", "TEXT");
-addColumnIfMissing("identities", "environment_type", "TEXT");
-addColumnIfMissing("identities", "env_person_name", "TEXT");
-addColumnIfMissing("identities", "env_person_contact_method", "TEXT");
-addColumnIfMissing("identities", "env_person_contact_info", "TEXT");
-addColumnIfMissing("identities", "env_person_why", "TEXT");
-addColumnIfMissing("identities", "env_place_name", "TEXT");
-addColumnIfMissing("identities", "env_place_address", "TEXT");
-addColumnIfMissing("identities", "env_place_travel_method", "TEXT");
-addColumnIfMissing("identities", "env_place_why", "TEXT");
-addColumnIfMissing("identities", "env_thing_name", "TEXT");
-addColumnIfMissing("identities", "env_thing_usage", "TEXT");
-addColumnIfMissing("identities", "env_thing_why", "TEXT");
+// identities env columns removed in Phase 1E (now in environment_entities table)
 addColumnIfMissing("projects", "puzzle_piece", "TEXT");
 addColumnIfMissing("projects", "identity_id", "INTEGER");
 addColumnIfMissing("weekly_reviews", "puzzle_piece_ratings", "TEXT");
@@ -467,21 +385,34 @@ addColumnIfMissing("wizard_state", "current_phase", "INTEGER NOT NULL DEFAULT 1"
 addColumnIfMissing("wizard_state", "completed", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("wizard_state", "completed_at", "TEXT");
 
+// Phase 1B: Rename purposes.principles → mission
+renameColumnIfExists("purposes", "principles", "mission");
+
+// Phase 1G: Rename routine_items.habit_id → identity_id, add puzzle_piece
+renameColumnIfExists("routine_items", "habit_id", "identity_id");
+addColumnIfMissing("routine_items", "puzzle_piece", "TEXT NOT NULL DEFAULT ''");
+
+// Phase 1H: Rename planner_tasks.goal → task, habit_id → identity_id, add new columns
+renameColumnIfExists("planner_tasks", "goal", "task");
+renameColumnIfExists("planner_tasks", "habit_id", "identity_id");
+addColumnIfMissing("planner_tasks", "project_id", "INTEGER REFERENCES projects(id)");
+addColumnIfMissing("planner_tasks", "context", "TEXT");
+addColumnIfMissing("planner_tasks", "energy", "TEXT");
+
+// Phase 1I: Add linked_planner_task_id to inbox_items
+addColumnIfMissing("inbox_items", "linked_planner_task_id", "INTEGER REFERENCES planner_tasks(id)");
+
 // Area edit & archive: archived/archived_at columns on all linked tables
 addColumnIfMissing("areas", "archived_at", "TEXT");
 addColumnIfMissing("identities", "archived", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("identities", "archived_at", "TEXT");
-addColumnIfMissing("habits", "archived", "INTEGER NOT NULL DEFAULT 0");
-addColumnIfMissing("habits", "archived_at", "TEXT");
 addColumnIfMissing("projects", "archived", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("projects", "archived_at", "TEXT");
-addColumnIfMissing("actions", "archived", "INTEGER NOT NULL DEFAULT 0");
-addColumnIfMissing("actions", "archived_at", "TEXT");
 
 // Multi-tenancy: add user_id to ALL existing tables
 const allDataTables = [
-  "purposes", "visions", "goals", "areas", "projects", "actions",
-  "identities", "habits", "habit_logs", "routine_items", "routine_logs",
+  "purposes", "areas", "projects",
+  "identities", "routine_items", "routine_logs",
   "planner_tasks", "inbox_items", "weekly_reviews", "wizard_state",
   "environment_entities", "beliefs", "anti_habits", "immutable_laws",
   "immutable_law_logs", "preferences", "area_vision_snapshots",
@@ -514,18 +445,6 @@ export interface IStorage {
   updatePurpose(userId: number, id: number, data: Partial<InsertPurpose>): Purpose | undefined;
   deletePurpose(userId: number, id: number): void;
 
-  // Visions
-  getVisions(userId: number): Vision[];
-  createVision(userId: number, data: InsertVision): Vision;
-  updateVision(userId: number, id: number, data: Partial<InsertVision>): Vision | undefined;
-  deleteVision(userId: number, id: number): void;
-
-  // Goals
-  getGoals(userId: number): Goal[];
-  createGoal(userId: number, data: InsertGoal): Goal;
-  updateGoal(userId: number, id: number, data: Partial<InsertGoal>): Goal | undefined;
-  deleteGoal(userId: number, id: number): void;
-
   // Areas
   getAreas(userId: number): Area[];
   getAllAreasIncludingArchived(userId: number): Area[];
@@ -543,30 +462,11 @@ export interface IStorage {
   updateProject(userId: number, id: number, data: Partial<InsertProject>): Project | undefined;
   deleteProject(userId: number, id: number): void;
 
-  // Actions
-  getActions(userId: number): Action[];
-  getActionsByProject(userId: number, projectId: number): Action[];
-  createAction(userId: number, data: InsertAction): Action;
-  updateAction(userId: number, id: number, data: Partial<InsertAction>): Action | undefined;
-  deleteAction(userId: number, id: number): void;
-
   // Identities
   getIdentities(userId: number): Identity[];
   createIdentity(userId: number, data: InsertIdentity): Identity;
   updateIdentity(userId: number, id: number, data: Partial<InsertIdentity>): Identity | undefined;
   deleteIdentity(userId: number, id: number): void;
-
-  // Habits
-  getHabits(userId: number): Habit[];
-  createHabit(userId: number, data: InsertHabit): Habit;
-  updateHabit(userId: number, id: number, data: Partial<InsertHabit>): Habit | undefined;
-  deleteHabit(userId: number, id: number): void;
-
-  // Habit Logs
-  getHabitLogs(userId: number, habitId: number): HabitLog[];
-  getHabitLogsByDate(userId: number, date: string): HabitLog[];
-  createHabitLog(userId: number, data: InsertHabitLog): HabitLog;
-  deleteHabitLog(userId: number, id: number): void;
 
   // Inbox
   getInboxItems(userId: number): InboxItem[];
@@ -576,7 +476,6 @@ export interface IStorage {
   softDeleteInboxItem(userId: number, id: number): InboxItem | undefined;
   restoreInboxItem(userId: number, id: number): InboxItem | undefined;
   deleteInboxItem(userId: number, id: number): void;
-  getOrCreateSomedayProject(userId: number): Project;
 
   // Weekly Reviews
   getWeeklyReviews(userId: number): WeeklyReview[];
@@ -700,34 +599,6 @@ export class DatabaseStorage implements IStorage {
     db.delete(purposes).where(and(eq(purposes.id, id), eq(purposes.userId, userId))).run();
   }
 
-  // Visions
-  getVisions(userId: number): Vision[] {
-    return db.select().from(visions).where(eq(visions.userId, userId)).orderBy(desc(visions.createdAt)).all();
-  }
-  createVision(userId: number, data: InsertVision): Vision {
-    return db.insert(visions).values({ ...data, userId }).returning().get();
-  }
-  updateVision(userId: number, id: number, data: Partial<InsertVision>): Vision | undefined {
-    return db.update(visions).set(data).where(and(eq(visions.id, id), eq(visions.userId, userId))).returning().get();
-  }
-  deleteVision(userId: number, id: number): void {
-    db.delete(visions).where(and(eq(visions.id, id), eq(visions.userId, userId))).run();
-  }
-
-  // Goals
-  getGoals(userId: number): Goal[] {
-    return db.select().from(goals).where(eq(goals.userId, userId)).orderBy(desc(goals.createdAt)).all();
-  }
-  createGoal(userId: number, data: InsertGoal): Goal {
-    return db.insert(goals).values({ ...data, userId }).returning().get();
-  }
-  updateGoal(userId: number, id: number, data: Partial<InsertGoal>): Goal | undefined {
-    return db.update(goals).set(data).where(and(eq(goals.id, id), eq(goals.userId, userId))).returning().get();
-  }
-  deleteGoal(userId: number, id: number): void {
-    db.delete(goals).where(and(eq(goals.id, id), eq(goals.userId, userId))).run();
-  }
-
   // Areas
   getAreas(userId: number): Area[] {
     return db.select().from(areas).where(and(eq(areas.userId, userId), or(eq(areas.archived, 0), isNull(areas.archived)))).orderBy(asc(areas.sortOrder)).all();
@@ -767,23 +638,6 @@ export class DatabaseStorage implements IStorage {
     db.delete(projects).where(and(eq(projects.id, id), eq(projects.userId, userId))).run();
   }
 
-  // Actions
-  getActions(userId: number): Action[] {
-    return db.select().from(actions).where(and(eq(actions.userId, userId), or(eq(actions.archived, 0), isNull(actions.archived)))).orderBy(desc(actions.createdAt)).all();
-  }
-  getActionsByProject(userId: number, projectId: number): Action[] {
-    return db.select().from(actions).where(and(eq(actions.projectId, projectId), eq(actions.userId, userId))).all();
-  }
-  createAction(userId: number, data: InsertAction): Action {
-    return db.insert(actions).values({ ...data, userId }).returning().get();
-  }
-  updateAction(userId: number, id: number, data: Partial<InsertAction>): Action | undefined {
-    return db.update(actions).set(data).where(and(eq(actions.id, id), eq(actions.userId, userId))).returning().get();
-  }
-  deleteAction(userId: number, id: number): void {
-    db.delete(actions).where(and(eq(actions.id, id), eq(actions.userId, userId))).run();
-  }
-
   // Identities
   getIdentities(userId: number): Identity[] {
     return db.select().from(identities).where(and(eq(identities.userId, userId), or(eq(identities.archived, 0), isNull(identities.archived)))).all();
@@ -796,34 +650,6 @@ export class DatabaseStorage implements IStorage {
   }
   deleteIdentity(userId: number, id: number): void {
     db.delete(identities).where(and(eq(identities.id, id), eq(identities.userId, userId))).run();
-  }
-
-  // Habits
-  getHabits(userId: number): Habit[] {
-    return db.select().from(habits).where(and(eq(habits.userId, userId), or(eq(habits.archived, 0), isNull(habits.archived)))).all();
-  }
-  createHabit(userId: number, data: InsertHabit): Habit {
-    return db.insert(habits).values({ ...data, userId }).returning().get();
-  }
-  updateHabit(userId: number, id: number, data: Partial<InsertHabit>): Habit | undefined {
-    return db.update(habits).set(data).where(and(eq(habits.id, id), eq(habits.userId, userId))).returning().get();
-  }
-  deleteHabit(userId: number, id: number): void {
-    db.delete(habits).where(and(eq(habits.id, id), eq(habits.userId, userId))).run();
-  }
-
-  // Habit Logs
-  getHabitLogs(userId: number, habitId: number): HabitLog[] {
-    return db.select().from(habitLogs).where(and(eq(habitLogs.habitId, habitId), eq(habitLogs.userId, userId))).orderBy(desc(habitLogs.date)).all();
-  }
-  getHabitLogsByDate(userId: number, date: string): HabitLog[] {
-    return db.select().from(habitLogs).where(and(eq(habitLogs.date, date), eq(habitLogs.userId, userId))).all();
-  }
-  createHabitLog(userId: number, data: InsertHabitLog): HabitLog {
-    return db.insert(habitLogs).values({ ...data, userId }).returning().get();
-  }
-  deleteHabitLog(userId: number, id: number): void {
-    db.delete(habitLogs).where(and(eq(habitLogs.id, id), eq(habitLogs.userId, userId))).run();
   }
 
   // Inbox
@@ -862,19 +688,6 @@ export class DatabaseStorage implements IStorage {
   deleteInboxItem(userId: number, id: number): void {
     db.delete(inboxItems).where(and(eq(inboxItems.id, id), eq(inboxItems.userId, userId))).run();
   }
-  getOrCreateSomedayProject(userId: number): Project {
-    const existing = db.select().from(projects)
-      .where(and(eq(projects.title, "Someday/Maybe"), eq(projects.userId, userId))).get();
-    if (existing) return existing;
-    return db.insert(projects).values({
-      userId,
-      title: "Someday/Maybe",
-      description: "Items to revisit when the time is right",
-      status: "someday",
-      createdAt: new Date().toISOString(),
-    }).returning().get();
-  }
-
   // Weekly Reviews
   getWeeklyReviews(userId: number): WeeklyReview[] {
     return db.select().from(weeklyReviews).where(eq(weeklyReviews.userId, userId)).orderBy(desc(weeklyReviews.weekOf)).all();
@@ -1071,8 +884,8 @@ export class DatabaseStorage implements IStorage {
   // Reset
   resetDatabase(userId: number): void {
     const tables = [
-      "purposes", "visions", "goals", "areas", "projects", "actions",
-      "identities", "habits", "habit_logs", "routine_items", "routine_logs",
+      "purposes", "areas", "projects",
+      "identities", "routine_items", "routine_logs",
       "planner_tasks", "inbox_items", "weekly_reviews", "wizard_state",
       "environment_entities", "beliefs", "anti_habits", "immutable_laws", "immutable_law_logs",
       "area_vision_snapshots",

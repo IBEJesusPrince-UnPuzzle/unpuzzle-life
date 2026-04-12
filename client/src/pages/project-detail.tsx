@@ -14,16 +14,16 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
-import type { Identity, Area, RoutineItem, PlannerTask } from "@shared/schema";
+import type { Identity, Area, RoutineItem, PlannerTask, EnvironmentEntity, InboxItem } from "@shared/schema";
 import { formatRecurrence } from "./planner";
 import { getPieceColor } from "@/lib/piece-colors";
 
 const PIECE_DESCRIPTORS: Record<string, string> = {
-  reason:   "Purpose, beliefs & principles",
-  finance:  "Money, assets & abundance",
-  fitness:  "Health, energy & longevity",
-  talent:   "Skills, work & contribution",
-  pleasure: "Joy, relationships & play",
+  reason:   "Emotions, beliefs & behavior",
+  finance:  "Income, expenses & planning",
+  fitness:  "Bodily systems & physical environment",
+  talent:   "Abilities, skills, vocation & career",
+  pleasure: "Desires, satisfactions & enjoyments",
 };
 
 interface IdentityProjectDetails {
@@ -303,6 +303,12 @@ export default function ProjectDetailPage({ id }: { id: number }) {
       {/* Things Section */}
       <ThingsSection habitId={id} />
 
+      {/* Environment Entities Section */}
+      <EnvironmentEntitiesSection identityId={identity.id} />
+
+      {/* References Section — inbox items filed as reference to this project */}
+      <ReferencesSection projectId={id} />
+
       {/* Related Planner Tasks */}
       {plannerTasks.length > 0 && (
         <div className="space-y-2">
@@ -318,7 +324,7 @@ export default function ProjectDetailPage({ id }: { id: number }) {
                   <Clock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm ${t.status === "done" ? "line-through" : ""}`}>{t.goal}</p>
+                  <p className={`text-sm ${t.status === "done" ? "line-through" : ""}`}>{t.task}</p>
                   <p className="text-[10px] text-muted-foreground">{t.date}</p>
                 </div>
               </CardContent>
@@ -397,8 +403,8 @@ function PeopleSection({ habitId }: { habitId: number }) {
 
   const convertToTask = useMutation({
     mutationFn: (person: PlannerTask) => {
-      const p = parsePerson(person.goal);
-      const taskGoal = p ? person.goal : person.goal; // keep JSON for agenda rendering
+      const p = parsePerson(person.task);
+      const taskGoal = p ? person.task : person.task; // keep JSON for agenda rendering
       return apiRequest("POST", "/api/planner-tasks", {
         date: new Date().toISOString().split("T")[0],
         goal: taskGoal,
@@ -488,8 +494,8 @@ function PeopleSection({ habitId }: { habitId: number }) {
 
       {/* Pending people */}
       {pending.map(t => {
-        const person = parsePerson(t.goal);
-        const display = person ? formatPersonDisplay(person) : t.goal;
+        const person = parsePerson(t.task);
+        const display = person ? formatPersonDisplay(person) : t.task;
         return (
           <div key={t.id} className="flex items-start gap-2 px-2 py-2 rounded hover:bg-accent transition-colors group">
             <button
@@ -519,8 +525,8 @@ function PeopleSection({ habitId }: { habitId: number }) {
 
       {/* Done people */}
       {done.map(t => {
-        const person = parsePerson(t.goal);
-        const display = person ? formatPersonDisplay(person) : t.goal;
+        const person = parsePerson(t.task);
+        const display = person ? formatPersonDisplay(person) : t.task;
         return (
           <div key={t.id} className="flex items-center gap-2 px-2 py-1.5 rounded opacity-50">
             <button
@@ -609,7 +615,7 @@ function PlacesSection({ habitId }: { habitId: number }) {
     mutationFn: (task: PlannerTask) => {
       return apiRequest("POST", "/api/planner-tasks", {
         date: new Date().toISOString().split("T")[0],
-        goal: task.goal, // keep JSON for agenda rendering
+        goal: task.task, // keep JSON for agenda rendering
         habitId,
         sourceType: "project_places",
         status: "planned",
@@ -698,8 +704,8 @@ function PlacesSection({ habitId }: { habitId: number }) {
 
       {/* Pending places */}
       {pending.map(t => {
-        const place = parsePlace(t.goal);
-        const display = place ? formatPlaceDisplay(place) : t.goal;
+        const place = parsePlace(t.task);
+        const display = place ? formatPlaceDisplay(place) : t.task;
         return (
           <div key={t.id} className="flex items-start gap-2 px-2 py-2 rounded hover:bg-accent transition-colors group">
             <button
@@ -729,8 +735,8 @@ function PlacesSection({ habitId }: { habitId: number }) {
 
       {/* Done places */}
       {done.map(t => {
-        const place = parsePlace(t.goal);
-        const display = place ? formatPlaceDisplay(place) : t.goal;
+        const place = parsePlace(t.task);
+        const display = place ? formatPlaceDisplay(place) : t.task;
         return (
           <div key={t.id} className="flex items-center gap-2 px-2 py-1.5 rounded opacity-50">
             <button
@@ -819,7 +825,7 @@ function ThingsSection({ habitId }: { habitId: number }) {
     mutationFn: (task: PlannerTask) => {
       return apiRequest("POST", "/api/planner-tasks", {
         date: new Date().toISOString().split("T")[0],
-        goal: task.goal, // keep JSON for agenda rendering
+        goal: task.task, // keep JSON for agenda rendering
         habitId,
         sourceType: "project_things",
         status: "planned",
@@ -907,8 +913,8 @@ function ThingsSection({ habitId }: { habitId: number }) {
 
       {/* Pending things */}
       {pending.map(t => {
-        const thing = parseThing(t.goal);
-        const display = thing ? formatThingDisplay(thing) : t.goal;
+        const thing = parseThing(t.task);
+        const display = thing ? formatThingDisplay(thing) : t.task;
         return (
           <div key={t.id} className="flex items-start gap-2 px-2 py-2 rounded hover:bg-accent transition-colors group">
             <button
@@ -938,8 +944,8 @@ function ThingsSection({ habitId }: { habitId: number }) {
 
       {/* Done things */}
       {done.map(t => {
-        const thing = parseThing(t.goal);
-        const display = thing ? formatThingDisplay(thing) : t.goal;
+        const thing = parseThing(t.task);
+        const display = thing ? formatThingDisplay(thing) : t.task;
         return (
           <div key={t.id} className="flex items-center gap-2 px-2 py-1.5 rounded opacity-50">
             <button
@@ -956,6 +962,218 @@ function ThingsSection({ habitId }: { habitId: number }) {
       {tasks.length === 0 && (
         <p className="text-[11px] text-muted-foreground px-2">No things added yet</p>
       )}
+    </div>
+  );
+}
+
+// ============================================================
+// ENVIRONMENT ENTITIES SECTION
+// ============================================================
+
+function EnvironmentEntitiesSection({ identityId }: { identityId: number }) {
+  const { data: entities = [] } = useQuery<EnvironmentEntity[]>({
+    queryKey: ["/api/environment-entities", identityId],
+    queryFn: () => apiRequest("GET", `/api/environment-entities?identityId=${identityId}`).then(r => r.json()),
+  });
+
+  const [showForm, setShowForm] = useState(false);
+  const [type, setType] = useState<"person" | "place" | "thing">("person");
+  const [personName, setPersonName] = useState("");
+  const [personContactMethod, setPersonContactMethod] = useState("");
+  const [personContactInfo, setPersonContactInfo] = useState("");
+  const [personWhy, setPersonWhy] = useState("");
+  const [placeName, setPlaceName] = useState("");
+  const [placeAddress, setPlaceAddress] = useState("");
+  const [placeTravelMethod, setPlaceTravelMethod] = useState("");
+  const [placeWhy, setPlaceWhy] = useState("");
+  const [thingName, setThingName] = useState("");
+  const [thingUsage, setThingUsage] = useState("");
+  const [thingWhy, setThingWhy] = useState("");
+
+  const addEntity = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/environment-entities", {
+      identityId,
+      type,
+      personName: type === "person" ? personName || null : null,
+      personContactMethod: type === "person" ? personContactMethod || null : null,
+      personContactInfo: type === "person" ? personContactInfo || null : null,
+      personWhy: type === "person" ? personWhy || null : null,
+      placeName: type === "place" ? placeName || null : null,
+      placeAddress: type === "place" ? placeAddress || null : null,
+      placeTravelMethod: type === "place" ? placeTravelMethod || null : null,
+      placeWhy: type === "place" ? placeWhy || null : null,
+      thingName: type === "thing" ? thingName || null : null,
+      thingUsage: type === "thing" ? thingUsage || null : null,
+      thingWhy: type === "thing" ? thingWhy || null : null,
+      createdAt: new Date().toISOString(),
+    }),
+    onSuccess: () => {
+      setPersonName(""); setPersonContactMethod(""); setPersonContactInfo(""); setPersonWhy("");
+      setPlaceName(""); setPlaceAddress(""); setPlaceTravelMethod(""); setPlaceWhy("");
+      setThingName(""); setThingUsage(""); setThingWhy("");
+      setShowForm(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/environment-entities", identityId] });
+    },
+  });
+
+  const deleteEntity = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/environment-entities/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/environment-entities", identityId] }),
+  });
+
+  const people = entities.filter(e => e.type === "person");
+  const places = entities.filter(e => e.type === "place");
+  const things = entities.filter(e => e.type === "thing");
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-primary" />
+          <h2 className="text-sm font-medium">Environment Entities</h2>
+          <Badge variant="secondary" className="text-[10px] h-4">{entities.length}</Badge>
+        </div>
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowForm(!showForm)}>
+          <Plus className="w-3 h-3 mr-1" /> Add
+        </Button>
+      </div>
+
+      {showForm && (
+        <Card className="border-dashed">
+          <CardContent className="p-3 space-y-2">
+            <div className="flex gap-1.5">
+              {(["person", "place", "thing"] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setType(t)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
+                    type === t ? "bg-primary text-primary-foreground border-primary" : "bg-background text-foreground border-border hover:bg-accent"
+                  }`}
+                >
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            {type === "person" && (
+              <div className="space-y-2">
+                <Input value={personName} onChange={e => setPersonName(e.target.value)} placeholder="Person's name" className="text-sm h-8" />
+                <Input value={personContactMethod} onChange={e => setPersonContactMethod(e.target.value)} placeholder="Contact method (call, text, email...)" className="text-sm h-8" />
+                <Input value={personContactInfo} onChange={e => setPersonContactInfo(e.target.value)} placeholder="Phone, email, handle..." className="text-sm h-8" />
+                <Input value={personWhy} onChange={e => setPersonWhy(e.target.value)} placeholder="Why this person?" className="text-sm h-8" />
+              </div>
+            )}
+            {type === "place" && (
+              <div className="space-y-2">
+                <Input value={placeName} onChange={e => setPlaceName(e.target.value)} placeholder="Place name" className="text-sm h-8" />
+                <Input value={placeAddress} onChange={e => setPlaceAddress(e.target.value)} placeholder="Address" className="text-sm h-8" />
+                <Input value={placeTravelMethod} onChange={e => setPlaceTravelMethod(e.target.value)} placeholder="Travel method (drive, walk, transit...)" className="text-sm h-8" />
+                <Input value={placeWhy} onChange={e => setPlaceWhy(e.target.value)} placeholder="Why this place?" className="text-sm h-8" />
+              </div>
+            )}
+            {type === "thing" && (
+              <div className="space-y-2">
+                <Input value={thingName} onChange={e => setThingName(e.target.value)} placeholder="Thing name" className="text-sm h-8" />
+                <Input value={thingUsage} onChange={e => setThingUsage(e.target.value)} placeholder="How will you use it?" className="text-sm h-8" />
+                <Input value={thingWhy} onChange={e => setThingWhy(e.target.value)} placeholder="Why does it matter?" className="text-sm h-8" />
+              </div>
+            )}
+            <Button size="sm" className="w-full h-8" onClick={() => addEntity.mutate()}
+              disabled={
+                (type === "person" && !personName.trim()) ||
+                (type === "place" && !placeName.trim()) ||
+                (type === "thing" && !thingName.trim())
+              }>
+              <Plus className="w-3 h-3 mr-1" /> Add {type.charAt(0).toUpperCase() + type.slice(1)}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* People entities */}
+      {people.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider ml-1">People ({people.length})</p>
+          {people.map(e => (
+            <div key={e.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent transition-colors group">
+              <Users className="w-3 h-3 text-muted-foreground shrink-0" />
+              <span className="text-sm flex-1">{e.personName}{e.personContactMethod ? ` — ${e.personContactMethod}` : ""}</span>
+              <button onClick={() => deleteEntity.mutate(e.id)} className="text-destructive/60 hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity p-0.5">
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Places entities */}
+      {places.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider ml-1">Places ({places.length})</p>
+          {places.map(e => (
+            <div key={e.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent transition-colors group">
+              <MapPin className="w-3 h-3 text-muted-foreground shrink-0" />
+              <span className="text-sm flex-1">{e.placeName}{e.placeAddress ? ` — ${e.placeAddress}` : ""}</span>
+              <button onClick={() => deleteEntity.mutate(e.id)} className="text-destructive/60 hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity p-0.5">
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Things entities */}
+      {things.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider ml-1">Things ({things.length})</p>
+          {things.map(e => (
+            <div key={e.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent transition-colors group">
+              <Package className="w-3 h-3 text-muted-foreground shrink-0" />
+              <span className="text-sm flex-1">{e.thingName}{e.thingUsage ? ` — ${e.thingUsage}` : ""}</span>
+              <button onClick={() => deleteEntity.mutate(e.id)} className="text-destructive/60 hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity p-0.5">
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {entities.length === 0 && !showForm && (
+        <p className="text-[11px] text-muted-foreground px-2">No environment entities added yet</p>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// REFERENCES SECTION — inbox items filed as reference to this project
+// ============================================================
+
+function ReferencesSection({ projectId }: { projectId: number }) {
+  const { data: items = [] } = useQuery<InboxItem[]>({ queryKey: ["/api/inbox"] });
+
+  const references = items.filter(i => i.processed && i.processedAs === "reference" && i.referenceProjectId === projectId);
+
+  if (references.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Archive className="w-4 h-4 text-primary" />
+        <h2 className="text-sm font-medium">References</h2>
+        <Badge variant="secondary" className="text-[10px] h-4">{references.length}</Badge>
+      </div>
+      <div className="space-y-1">
+        {references.map(ref => (
+          <div key={ref.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent transition-colors">
+            <Archive className="w-3 h-3 text-muted-foreground shrink-0" />
+            <span className="text-sm flex-1">{ref.content}</span>
+            <span className="text-[10px] text-muted-foreground">
+              {new Date(ref.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

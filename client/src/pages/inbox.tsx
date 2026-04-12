@@ -12,14 +12,14 @@ import {
 } from "@/components/ui/select";
 import {
   Inbox as InboxIcon, Plus, ArrowRight, Trash2, Zap, Pencil, Check, X,
-  FolderOpen, Archive, Sparkles, ArrowLeft, Undo2,
+  FolderOpen, Archive, Sparkles, ArrowLeft, Undo2, Clock, CalendarDays,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
 import type { InboxItem, Project, Area } from "@shared/schema";
 import { usePreferences } from "@/hooks/use-preferences";
 
-type ProcessStep = "choose" | "doIt" | "addToProject" | "fileIt" | "wonderIt" | "trashIt";
+type ProcessStep = "choose" | "doItNow" | "doItLater" | "addToProject" | "fileIt" | "wonderIt" | "trashIt";
 
 export default function InboxPage() {
   const { data: prefs } = usePreferences();
@@ -75,10 +75,10 @@ export default function InboxPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
-      <div className="flex justify-center mb-3">
-        <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5">
-          <ArrowLeft className="w-4 h-4" /> Back to Dashboard
-        </Link>
+      <div className="flex items-center gap-2 mb-4">
+        <button onClick={() => window.history.back()} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Back
+        </button>
       </div>
       <div className="flex items-center justify-between">
         <div>
@@ -87,9 +87,16 @@ export default function InboxPage() {
             Capture everything. Process into the right place.
           </p>
         </div>
-        <Badge variant="secondary" className="text-sm">
-          {unprocessed.length} unprocessed
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Link href="/someday">
+            <Badge variant="outline" className="text-xs cursor-pointer hover:bg-purple-500/10 transition-colors text-purple-600 dark:text-purple-400 border-purple-500/30">
+              <Sparkles className="w-3 h-3 mr-1" /> Someday
+            </Badge>
+          </Link>
+          <Badge variant="secondary" className="text-sm">
+            {unprocessed.length} unprocessed
+          </Badge>
+        </div>
       </div>
 
       {/* Capture */}
@@ -235,18 +242,36 @@ export default function InboxPage() {
             Recently processed
           </p>
           <div className="space-y-1">
-            {processed.slice(0, 5).map((item) => {
+            {processed.slice(0, 10).map((item) => {
               const itemArea = areasList.find(a => a.id === item.areaId);
+              const isQuickTask = item.processedAs === "quick_task";
+              const isSomeday = item.processedAs === "someday";
+              const hasLinkedTask = !!item.linkedPlannerTaskId;
+
               return (
                 <div key={item.id} className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
                   <Archive className="w-3 h-3" />
-                  <span className="truncate flex-1 line-through">{item.content}</span>
+                  <span className={`truncate flex-1 ${isQuickTask ? "line-through" : ""}`}>{item.content}</span>
                   {itemArea && (
                     <span className="text-[10px] text-muted-foreground shrink-0">
-                      In the area of <span className="font-medium">{itemArea.name}</span>
+                      {itemArea.name}
                     </span>
                   )}
-                  <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0">{item.processedAs}</Badge>
+                  {hasLinkedTask ? (
+                    <Link href="/planner">
+                      <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0 cursor-pointer hover:bg-primary/10 transition-colors">
+                        {item.processedAs}
+                      </Badge>
+                    </Link>
+                  ) : isSomeday ? (
+                    <Link href="/someday">
+                      <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0 cursor-pointer hover:bg-purple-500/10 transition-colors text-purple-600 dark:text-purple-400 border-purple-500/30">
+                        someday
+                      </Badge>
+                    </Link>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0">{item.processedAs}</Badge>
+                  )}
                 </div>
               );
             })}
@@ -309,14 +334,17 @@ function ProcessWizard({ item, projects, areas, onDone }: {
         {step === "choose" && (
           <ChooseStep onSelect={setStep} />
         )}
-        {step === "doIt" && (
-          <DoItStep item={item} areas={areas} onBack={() => setStep("choose")} onDone={onDone} />
+        {step === "doItNow" && (
+          <DoItNowStep item={item} onBack={() => setStep("choose")} onDone={onDone} />
+        )}
+        {step === "doItLater" && (
+          <DoItLaterStep item={item} areas={areas} onBack={() => setStep("choose")} onDone={onDone} />
         )}
         {step === "addToProject" && (
           <AddToProjectStep item={item} projects={projects} onBack={() => setStep("choose")} onDone={onDone} />
         )}
         {step === "fileIt" && (
-          <FileItStep item={item} areas={areas} projects={projects} onBack={() => setStep("choose")} onDone={onDone} />
+          <FileItStep item={item} projects={projects} onBack={() => setStep("choose")} onDone={onDone} />
         )}
         {step === "wonderIt" && (
           <WonderItStep item={item} onBack={() => setStep("choose")} onDone={onDone} />
@@ -330,20 +358,27 @@ function ProcessWizard({ item, projects, areas, onDone }: {
 }
 
 // ============================================================
-// STEP 1: CHOOSE
+// STEP 1: CHOOSE — 6 options
 // ============================================================
 function ChooseStep({ onSelect }: { onSelect: (step: ProcessStep) => void }) {
   const options: { step: ProcessStep; label: string; desc: string; icon: React.ReactNode; color: string }[] = [
     {
-      step: "doIt",
-      label: "Do It",
-      desc: "Task takes less than 5 minutes",
+      step: "doItNow",
+      label: "Do It Now",
+      desc: "Takes less than 5 minutes — done immediately",
       icon: <Zap className="w-5 h-5" />,
       color: "hover:border-amber-500/50 hover:bg-amber-500/5",
     },
     {
+      step: "doItLater",
+      label: "Do It Later",
+      desc: "Schedule a task for a specific date",
+      icon: <CalendarDays className="w-5 h-5" />,
+      color: "hover:border-sky-500/50 hover:bg-sky-500/5",
+    },
+    {
       step: "addToProject",
-      label: "Add To Projects",
+      label: "Add To Project",
       desc: "Multi-step outcome",
       icon: <FolderOpen className="w-5 h-5" />,
       color: "hover:border-blue-500/50 hover:bg-blue-500/5",
@@ -393,30 +428,102 @@ function ChooseStep({ onSelect }: { onSelect: (step: ProcessStep) => void }) {
 }
 
 // ============================================================
-// DO IT — Create a planner task
+// DO IT NOW — Create done planner task immediately
 // ============================================================
-function DoItStep({ item, areas, onBack, onDone }: {
+function DoItNowStep({ item, onBack, onDone }: {
+  item: InboxItem; onBack: () => void; onDone: () => void;
+}) {
+  const [done, setDone] = useState(false);
+
+  const doIt = useMutation({
+    mutationFn: async () => {
+      const today = new Date().toISOString().split("T")[0];
+      const res = await apiRequest("POST", "/api/planner-tasks", {
+        date: today,
+        task: item.content,
+        status: "done",
+        areaId: item.areaId || null,
+      });
+      const newTask = await res.json();
+      await apiRequest("PATCH", `/api/inbox/${item.id}`, {
+        processed: 1,
+        processedAs: "quick_task",
+        linkedPlannerTaskId: newTask.id,
+      });
+    },
+    onSuccess: () => {
+      setDone(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      setTimeout(onDone, 1000);
+    },
+  });
+
+  if (done) {
+    return (
+      <div className="py-8 text-center space-y-2">
+        <Zap className="w-8 h-8 mx-auto text-amber-500" />
+        <p className="text-sm font-medium">Done!</p>
+        <p className="text-xs text-muted-foreground">Task completed and item processed.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <button onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+        <ArrowLeft className="w-3 h-3" /> Back to choices
+      </button>
+
+      <div className="py-4 text-center space-y-3">
+        <Zap className="w-8 h-8 mx-auto text-amber-500/50" />
+        <p className="text-sm">
+          Mark <strong>"{item.content}"</strong> as done right now?
+        </p>
+        <p className="text-xs text-muted-foreground">Creates a completed task for today.</p>
+        <Button className="w-full" onClick={() => doIt.mutate()} data-testid="button-doit-now">
+          <Zap className="w-4 h-4 mr-1" /> Do It Now
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// DO IT LATER — Schedule a planner task
+// ============================================================
+function DoItLaterStep({ item, areas, onBack, onDone }: {
   item: InboxItem; areas: Area[]; onBack: () => void; onDone: () => void;
 }) {
-  const [goal, setGoal] = useState(item.content);
+  const [task, setTask] = useState(item.content);
   const [areaId, setAreaId] = useState<string>(item.areaId ? String(item.areaId) : "");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
+  const [context, setContext] = useState("");
+  const [energy, setEnergy] = useState("");
 
   const create = useMutation({
     mutationFn: async () => {
-      await apiRequest("POST", "/api/planner-tasks", {
+      const res = await apiRequest("POST", "/api/planner-tasks", {
         date,
         areaId: areaId && areaId !== "none" ? Number(areaId) : null,
-        goal,
+        task,
         startTime: startTime || null,
         endTime: endTime || null,
         hours: null,
         status: "planned",
         recurrence: null,
+        context: context && context !== "none" ? context : null,
+        energy: energy && energy !== "none" ? energy : null,
       });
-      await apiRequest("PATCH", `/api/inbox/${item.id}`, { processed: 1, processedAs: "task" });
+      const newTask = await res.json();
+      await apiRequest("PATCH", `/api/inbox/${item.id}`, {
+        processed: 1,
+        processedAs: "task",
+        linkedPlannerTaskId: newTask.id,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
@@ -435,7 +542,7 @@ function DoItStep({ item, areas, onBack, onDone }: {
       <div className="space-y-3">
         <div>
           <label className="text-xs font-medium mb-1 block text-muted-foreground">What</label>
-          <Input value={goal} onChange={e => setGoal(e.target.value)} placeholder="What needs to be done?" className="text-sm" data-testid="input-doit-goal" />
+          <Input value={task} onChange={e => setTask(e.target.value)} placeholder="What needs to be done?" className="text-sm" data-testid="input-doit-task" />
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
@@ -456,6 +563,34 @@ function DoItStep({ item, areas, onBack, onDone }: {
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
+            <label className="text-xs font-medium mb-1 block text-muted-foreground">Context</label>
+            <Select value={context} onValueChange={setContext}>
+              <SelectTrigger className="text-sm"><SelectValue placeholder="Any context" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Any context</SelectItem>
+                <SelectItem value="@home">@home</SelectItem>
+                <SelectItem value="@work">@work</SelectItem>
+                <SelectItem value="@phone">@phone</SelectItem>
+                <SelectItem value="@computer">@computer</SelectItem>
+                <SelectItem value="@errands">@errands</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs font-medium mb-1 block text-muted-foreground">Energy</label>
+            <Select value={energy} onValueChange={setEnergy}>
+              <SelectTrigger className="text-sm"><SelectValue placeholder="Any energy" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Any energy</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
             <label className="text-xs font-medium mb-1 block text-muted-foreground">Start Time</label>
             <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
               className="w-full h-9 px-3 text-sm border rounded-md bg-card text-foreground" />
@@ -467,8 +602,8 @@ function DoItStep({ item, areas, onBack, onDone }: {
           </div>
         </div>
 
-        <Button className="w-full" disabled={!goal.trim()} onClick={() => create.mutate()} data-testid="button-doit-save">
-          <Zap className="w-4 h-4 mr-1" /> Create Task & Process
+        <Button className="w-full" disabled={!task.trim()} onClick={() => create.mutate()} data-testid="button-doit-save">
+          <CalendarDays className="w-4 h-4 mr-1" /> Schedule Task & Process
         </Button>
       </div>
     </div>
@@ -481,41 +616,27 @@ function DoItStep({ item, areas, onBack, onDone }: {
 function AddToProjectStep({ item, projects, onBack, onDone }: {
   item: InboxItem; projects: Project[]; onBack: () => void; onDone: () => void;
 }) {
-  const [subStep, setSubStep] = useState<"list" | "createNew">("list");
-  const [newProjectTitle, setNewProjectTitle] = useState(item.content);
-  const activeProjects = projects.filter(p => p.status === "active");
+  const activeProjects = projects.filter(p => !p.archived);
 
   const addToExisting = useMutation({
     mutationFn: async (projectId: number) => {
-      await apiRequest("POST", "/api/actions", {
-        title: item.content,
+      const res = await apiRequest("POST", "/api/planner-tasks", {
+        date: new Date().toISOString().split("T")[0],
+        task: item.content,
         projectId,
         areaId: item.areaId || null,
-        createdAt: new Date().toISOString(),
+        status: "planned",
       });
-      await apiRequest("PATCH", `/api/inbox/${item.id}`, { processed: 1, processedAs: "project" });
+      const newTask = await res.json();
+      await apiRequest("PATCH", `/api/inbox/${item.id}`, {
+        processed: 1,
+        processedAs: "project",
+        linkedPlannerTaskId: newTask.id,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/actions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      onDone();
-    },
-  });
-
-  const createNew = useMutation({
-    mutationFn: async () => {
-      await apiRequest("POST", "/api/projects", {
-        title: newProjectTitle,
-        areaId: item.areaId || null,
-        status: "active",
-        createdAt: new Date().toISOString(),
-      });
-      await apiRequest("PATCH", `/api/inbox/${item.id}`, { processed: 1, processedAs: "project" });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       onDone();
     },
@@ -527,10 +648,12 @@ function AddToProjectStep({ item, projects, onBack, onDone }: {
         <ArrowLeft className="w-3 h-3" /> Back to choices
       </button>
 
-      {subStep === "list" && (
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">Add to an existing project or create a new one:</p>
-          {activeProjects.map((p) => (
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">Add to an existing project:</p>
+        {activeProjects.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">No active projects. Create identities in UnPuzzle to generate projects.</p>
+        ) : (
+          activeProjects.map((p) => (
             <button
               key={p.id}
               onClick={() => addToExisting.mutate(p.id)}
@@ -540,27 +663,9 @@ function AddToProjectStep({ item, projects, onBack, onDone }: {
               <FolderOpen className="w-4 h-4 text-muted-foreground shrink-0" />
               <span className="text-sm">{p.title}</span>
             </button>
-          ))}
-          <Button variant="outline" className="w-full border-dashed" onClick={() => setSubStep("createNew")}>
-            <Plus className="w-4 h-4 mr-1" /> Create New Project
-          </Button>
-        </div>
-      )}
-
-      {subStep === "createNew" && (
-        <div className="space-y-3">
-          <button onClick={() => setSubStep("list")} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-            <ArrowLeft className="w-3 h-3" /> Back to project list
-          </button>
-          <div>
-            <label className="text-xs font-medium mb-1 block text-muted-foreground">Project title</label>
-            <Input value={newProjectTitle} onChange={e => setNewProjectTitle(e.target.value)} data-testid="input-new-project" />
-          </div>
-          <Button className="w-full" disabled={!newProjectTitle.trim()} onClick={() => createNew.mutate()} data-testid="button-create-project">
-            <FolderOpen className="w-4 h-4 mr-1" /> Create Project & Process
-          </Button>
-        </div>
-      )}
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -568,17 +673,15 @@ function AddToProjectStep({ item, projects, onBack, onDone }: {
 // ============================================================
 // FILE IT
 // ============================================================
-function FileItStep({ item, areas, projects, onBack, onDone }: {
-  item: InboxItem; areas: Area[]; projects: Project[]; onBack: () => void; onDone: () => void;
+function FileItStep({ item, projects, onBack, onDone }: {
+  item: InboxItem; projects: Project[]; onBack: () => void; onDone: () => void;
 }) {
-  const [areaId, setAreaId] = useState<string>(item.areaId ? String(item.areaId) : "");
   const [projectId, setProjectId] = useState<string>("");
 
   const file = useMutation({
     mutationFn: () => apiRequest("PATCH", `/api/inbox/${item.id}`, {
       processed: 1,
       processedAs: "reference",
-      referenceAreaId: areaId && areaId !== "none" ? Number(areaId) : null,
       referenceProjectId: projectId && projectId !== "none" ? Number(projectId) : null,
     }),
     onSuccess: () => {
@@ -597,22 +700,12 @@ function FileItStep({ item, areas, projects, onBack, onDone }: {
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">File this item for future reference:</p>
         <div>
-          <label className="text-xs font-medium mb-1 block text-muted-foreground">Area</label>
-          <Select value={areaId} onValueChange={setAreaId}>
-            <SelectTrigger className="text-sm"><SelectValue placeholder="Select area" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No area</SelectItem>
-              {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
           <label className="text-xs font-medium mb-1 block text-muted-foreground">Project (optional)</label>
           <Select value={projectId} onValueChange={setProjectId}>
             <SelectTrigger className="text-sm"><SelectValue placeholder="No project" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="none">No project</SelectItem>
-              {projects.filter(p => p.status === "active").map(p =>
+              {projects.filter(p => !p.archived).map(p =>
                 <SelectItem key={p.id} value={String(p.id)}>{p.title}</SelectItem>
               )}
             </SelectContent>
@@ -635,25 +728,13 @@ function WonderItStep({ item, onBack, onDone }: {
   const [done, setDone] = useState(false);
 
   const wonder = useMutation({
-    mutationFn: async () => {
-      // Get or create the Someday/Maybe project
-      const res = await apiRequest("GET", "/api/someday-project");
-      const project = await res.json();
-      // Add as action under that project
-      await apiRequest("POST", "/api/actions", {
-        title: item.content,
-        projectId: project.id,
-        areaId: item.areaId || null,
-        createdAt: new Date().toISOString(),
-      });
-      // Mark inbox item processed
-      await apiRequest("PATCH", `/api/inbox/${item.id}`, { processed: 1, processedAs: "someday" });
-    },
+    mutationFn: () => apiRequest("PATCH", `/api/inbox/${item.id}`, {
+      processed: 1,
+      processedAs: "someday",
+    }),
     onSuccess: () => {
       setDone(true);
       queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/actions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       setTimeout(onDone, 1200);
     },
@@ -664,7 +745,10 @@ function WonderItStep({ item, onBack, onDone }: {
       <div className="py-8 text-center space-y-2">
         <Sparkles className="w-8 h-8 mx-auto text-purple-500" />
         <p className="text-sm font-medium">Filed to Someday/Maybe</p>
-        <p className="text-xs text-muted-foreground">You can revisit this anytime from your projects.</p>
+        <p className="text-xs text-muted-foreground">
+          You can revisit this anytime from the{" "}
+          <Link href="/someday" className="text-purple-500 underline">Someday page</Link>.
+        </p>
       </div>
     );
   }
@@ -678,7 +762,7 @@ function WonderItStep({ item, onBack, onDone }: {
       <div className="py-4 text-center space-y-3">
         <Sparkles className="w-8 h-8 mx-auto text-purple-500/50" />
         <p className="text-sm">
-          This will file <strong>"{item.content}"</strong> to your <strong>Someday/Maybe</strong> project.
+          This will file <strong>"{item.content}"</strong> to your <strong>Someday/Maybe</strong> list.
         </p>
         <p className="text-xs text-muted-foreground">You can revisit and re-process it anytime.</p>
         <Button className="w-full" onClick={() => wonder.mutate()} data-testid="button-wonder-confirm">

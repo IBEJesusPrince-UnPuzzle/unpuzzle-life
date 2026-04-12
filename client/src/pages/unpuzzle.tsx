@@ -22,12 +22,12 @@ import type { Area, Identity, Belief, AntiHabit, ImmutableLaw } from "@shared/sc
 
 type PuzzlePiece = "reason" | "finance" | "fitness" | "talent" | "pleasure";
 
-const PUZZLE_PIECES: { name: PuzzlePiece; label: string; color: string; descriptor: string }[] = [
-  { name: "reason", label: "Reason", color: "#7C3AED", descriptor: "Purpose, beliefs & principles" },
-  { name: "finance", label: "Finance", color: "#16A34A", descriptor: "Money, assets & abundance" },
-  { name: "fitness", label: "Fitness", color: "#2563EB", descriptor: "Health, energy & longevity" },
-  { name: "talent", label: "Talent", color: "#CA8A04", descriptor: "Skills, work & contribution" },
-  { name: "pleasure", label: "Pleasure", color: "#DC2626", descriptor: "Joy, relationships & play" },
+const PUZZLE_PIECES: { name: PuzzlePiece; label: string; color: string; descriptor: string; outcome: string }[] = [
+  { name: "reason", label: "Reason", color: "#7C3AED", descriptor: "Emotions, beliefs & behavior", outcome: "Feel, think & react your best" },
+  { name: "finance", label: "Finance", color: "#16A34A", descriptor: "Income, expenses & planning", outcome: "Afford your best life" },
+  { name: "fitness", label: "Fitness", color: "#2563EB", descriptor: "Bodily systems & physical environment", outcome: "Function at your best" },
+  { name: "talent", label: "Talent", color: "#CA8A04", descriptor: "Abilities, skills, vocation & career", outcome: "Impact at your best" },
+  { name: "pleasure", label: "Pleasure", color: "#DC2626", descriptor: "Desires, satisfactions & enjoyments", outcome: "Reward you for being you" },
 ];
 
 const TIME_OF_DAY_OPTIONS = [
@@ -146,18 +146,6 @@ interface IdentityFormValues {
   location?: string | null;
   craving?: string | null;
   reward?: string | null;
-  environmentType?: string | null;
-  envPersonName?: string | null;
-  envPersonContactMethod?: string | null;
-  envPersonContactInfo?: string | null;
-  envPersonWhy?: string | null;
-  envPlaceName?: string | null;
-  envPlaceAddress?: string | null;
-  envPlaceTravelMethod?: string | null;
-  envPlaceWhy?: string | null;
-  envThingName?: string | null;
-  envThingUsage?: string | null;
-  envThingWhy?: string | null;
 }
 
 export function IdentityForm({
@@ -178,26 +166,6 @@ export function IdentityForm({
   const [piece, setPiece] = useState<PuzzlePiece | "">(puzzlePiece || "");
   const [areaId, setAreaId] = useState<string>(initialValues?.areaId ? String(initialValues.areaId) : "");
   const [response, setResponse] = useState(initialValues?.statement || "");
-  const [environmentType, setEnvironmentType] = useState<"person" | "place" | "thing" | "">(
-    (initialValues?.environmentType as "person" | "place" | "thing" | "") || ""
-  );
-
-  // Person fields
-  const [envPersonName, setEnvPersonName] = useState(initialValues?.envPersonName || "");
-  const [envPersonContactMethod, setEnvPersonContactMethod] = useState(initialValues?.envPersonContactMethod || "");
-  const [envPersonContactInfo, setEnvPersonContactInfo] = useState(initialValues?.envPersonContactInfo || "");
-  const [envPersonWhy, setEnvPersonWhy] = useState(initialValues?.envPersonWhy || "");
-
-  // Place fields
-  const [envPlaceName, setEnvPlaceName] = useState(initialValues?.envPlaceName || "");
-  const [envPlaceAddress, setEnvPlaceAddress] = useState(initialValues?.envPlaceAddress || "");
-  const [envPlaceTravelMethod, setEnvPlaceTravelMethod] = useState(initialValues?.envPlaceTravelMethod || "");
-  const [envPlaceWhy, setEnvPlaceWhy] = useState(initialValues?.envPlaceWhy || "");
-
-  // Thing fields
-  const [envThingName, setEnvThingName] = useState(initialValues?.envThingName || "");
-  const [envThingUsage, setEnvThingUsage] = useState(initialValues?.envThingUsage || "");
-  const [envThingWhy, setEnvThingWhy] = useState(initialValues?.envThingWhy || "");
 
   const [cue, setCue] = useState(initialValues?.cue || "");
   const [timeOfDay, setTimeOfDay] = useState(initialValues?.timeOfDay || "");
@@ -223,10 +191,6 @@ export function IdentityForm({
       if (!identityId) {
         // Reset form only for create mode
         setResponse("");
-        setEnvironmentType("");
-        setEnvPersonName(""); setEnvPersonContactMethod(""); setEnvPersonContactInfo(""); setEnvPersonWhy("");
-        setEnvPlaceName(""); setEnvPlaceAddress(""); setEnvPlaceTravelMethod(""); setEnvPlaceWhy("");
-        setEnvThingName(""); setEnvThingUsage(""); setEnvThingWhy("");
         setCue(""); setTimeOfDay(""); setLocation(""); setCraving(""); setReward("");
         if (!puzzlePiece) setPiece("");
         setAreaId("");
@@ -247,20 +211,7 @@ export function IdentityForm({
       location: location || null,
       craving: craving || null,
       reward: reward || null,
-      environmentType: environmentType || null,
-      envPersonName: envPersonName || null,
-      envPersonContactMethod: envPersonContactMethod || null,
-      envPersonContactInfo: envPersonContactInfo || null,
-      envPersonWhy: envPersonWhy || null,
-      envPlaceName: envPlaceName || null,
-      envPlaceAddress: envPlaceAddress || null,
-      envPlaceTravelMethod: envPlaceTravelMethod || null,
-      envPlaceWhy: envPlaceWhy || null,
-      envThingName: envThingName || null,
-      envThingUsage: envThingUsage || null,
-      envThingWhy: envThingWhy || null,
       frequency: JSON.stringify({ type: "daily", interval: 1 }),
-      targetCount: 1,
       active: 1,
       createdAt: new Date().toISOString(),
     };
@@ -330,69 +281,7 @@ export function IdentityForm({
         />
       </div>
 
-      {/* 4. Environment */}
-      <div>
-        <label className="text-xs font-medium text-muted-foreground mb-2 block">
-          My environment for this identity...
-        </label>
-        <div className="flex gap-1.5">
-          {(["person", "place", "thing"] as const).map(t => (
-            <button
-              key={t}
-              onClick={() => setEnvironmentType(environmentType === t ? "" : t)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
-                environmentType === t
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background text-foreground border-border hover:bg-accent"
-              }`}
-            >
-              {t.charAt(0).toUpperCase() + t.slice(1)}
-            </button>
-          ))}
-        </div>
-
-        {environmentType === "person" && (
-          <div className="mt-3 space-y-2">
-            <Input value={envPersonName} onChange={e => setEnvPersonName(e.target.value)} placeholder="Who is this person?" className="text-sm" />
-            <Select value={envPersonContactMethod} onValueChange={setEnvPersonContactMethod}>
-              <SelectTrigger className="text-sm"><SelectValue placeholder="Contact method" /></SelectTrigger>
-              <SelectContent>
-                {["Call", "Text", "Email", "In-person", "Video"].map(m => (
-                  <SelectItem key={m} value={m.toLowerCase()}>{m}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input value={envPersonContactInfo} onChange={e => setEnvPersonContactInfo(e.target.value)} placeholder="Phone / email / etc." className="text-sm" />
-            <Input value={envPersonWhy} onChange={e => setEnvPersonWhy(e.target.value)} placeholder="Why does this person matter to this identity?" className="text-sm" />
-          </div>
-        )}
-
-        {environmentType === "place" && (
-          <div className="mt-3 space-y-2">
-            <Input value={envPlaceName} onChange={e => setEnvPlaceName(e.target.value)} placeholder="What is this place called?" className="text-sm" />
-            <Input value={envPlaceAddress} onChange={e => setEnvPlaceAddress(e.target.value)} placeholder="Address (optional)" className="text-sm" />
-            <Select value={envPlaceTravelMethod} onValueChange={setEnvPlaceTravelMethod}>
-              <SelectTrigger className="text-sm"><SelectValue placeholder="Travel method" /></SelectTrigger>
-              <SelectContent>
-                {["Drive", "Walk", "Transit", "Remote"].map(m => (
-                  <SelectItem key={m} value={m.toLowerCase()}>{m}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input value={envPlaceWhy} onChange={e => setEnvPlaceWhy(e.target.value)} placeholder="Why does this place matter?" className="text-sm" />
-          </div>
-        )}
-
-        {environmentType === "thing" && (
-          <div className="mt-3 space-y-2">
-            <Input value={envThingName} onChange={e => setEnvThingName(e.target.value)} placeholder="What is this thing?" className="text-sm" />
-            <Input value={envThingUsage} onChange={e => setEnvThingUsage(e.target.value)} placeholder="How will you use it?" className="text-sm" />
-            <Input value={envThingWhy} onChange={e => setEnvThingWhy(e.target.value)} placeholder="Why does it matter?" className="text-sm" />
-          </div>
-        )}
-      </div>
-
-      {/* 5. Cue */}
+      {/* 4. Cue */}
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">...triggered...</label>
         <Input
@@ -614,18 +503,6 @@ function PieceDetailView({
                       location: id.location,
                       craving: id.craving,
                       reward: id.reward,
-                      environmentType: (id as any).environmentType,
-                      envPersonName: (id as any).envPersonName,
-                      envPersonContactMethod: (id as any).envPersonContactMethod,
-                      envPersonContactInfo: (id as any).envPersonContactInfo,
-                      envPersonWhy: (id as any).envPersonWhy,
-                      envPlaceName: (id as any).envPlaceName,
-                      envPlaceAddress: (id as any).envPlaceAddress,
-                      envPlaceTravelMethod: (id as any).envPlaceTravelMethod,
-                      envPlaceWhy: (id as any).envPlaceWhy,
-                      envThingName: (id as any).envThingName,
-                      envThingUsage: (id as any).envThingUsage,
-                      envThingWhy: (id as any).envThingWhy,
                     }}
                     identityId={id.id}
                   />

@@ -22,6 +22,7 @@ import ProjectDetailPage from "@/pages/project-detail";
 import ProjectsPage from "@/pages/projects";
 import AuthPage, { RegisterPage } from "@/pages/auth-page";
 import AdminPage from "@/pages/admin";
+import SomedayPage from "@/pages/someday";
 import NotFound from "@/pages/not-found";
 
 function ProjectDetailRoute({ params }: { params: { id?: string } }) {
@@ -37,7 +38,7 @@ function AppRouter() {
       <Route path="/inbox" component={InboxPage} />
       <Route path="/horizons" component={HorizonsPage} />
       <Route path="/unpuzzle" component={UnPuzzlePage} />
-      <Route path="/routine" component={RoutinePage} />
+      <Route path="/routine">{() => <RoutinePage />}</Route>
       <Route path="/routine/:id">{(params) => <RoutinePage filterIdentityId={Number(params.id)} />}</Route>
       <Route path="/planner" component={PlannerPage} />
       <Route path="/review" component={ReviewPage} />
@@ -45,6 +46,7 @@ function AppRouter() {
       <Route path="/data" component={DataPage} />
       <Route path="/projects" component={ProjectsPage} />
       <Route path="/projects/:id" component={ProjectDetailRoute} />
+      <Route path="/someday" component={SomedayPage} />
       <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />
     </Switch>

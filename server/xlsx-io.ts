@@ -20,15 +20,10 @@ const __dirname_local = path.dirname(__filename_local);
 /** Sheet names in dependency order (parents before children) */
 const IMPORT_ORDER = [
   "Purposes",
-  "Visions",
-  "Goals",
   "Areas",
   "Area Vision Snapshots",
   "Projects",
-  "Actions",
   "Identities",
-  "Habits",
-  "Habit Logs",
   "Routine Items",
   "Routine Logs",
   "Planner Tasks",
@@ -45,15 +40,10 @@ const IMPORT_ORDER = [
 /** Map of sheet name → SQL table name */
 const SHEET_TO_TABLE: Record<string, string> = {
   "Purposes": "purposes",
-  "Visions": "visions",
-  "Goals": "goals",
   "Areas": "areas",
   "Area Vision Snapshots": "area_vision_snapshots",
   "Projects": "projects",
-  "Actions": "actions",
   "Identities": "identities",
-  "Habits": "habits",
-  "Habit Logs": "habit_logs",
   "Routine Items": "routine_items",
   "Routine Logs": "routine_logs",
   "Planner Tasks": "planner_tasks",
@@ -69,7 +59,7 @@ const SHEET_TO_TABLE: Record<string, string> = {
 
 /** Leaf tables that can be safely replaced individually (no children depend on them) */
 const LEAF_TABLES = new Set([
-  "Purposes", "Area Vision Snapshots", "Actions", "Habit Logs",
+  "Purposes", "Area Vision Snapshots",
   "Routine Logs", "Planner Tasks", "Inbox Items", "Weekly Reviews",
   "Environment Entities", "Beliefs", "Immutable Law Logs", "Wizard State",
 ]);
@@ -247,11 +237,8 @@ function cellOrNull(v: any): string | null {
 
 interface LookupMaps {
   areasByName: Map<string, number>;
-  visionsByTitle: Map<string, number>;
-  goalsByTitle: Map<string, number>;
   projectsByTitle: Map<string, number>;
   identitiesByStatement: Map<string, number>;
-  habitsByName: Map<string, number>;
   routineItemsByResponse: Map<string, number>;
   immutableLawsByTitle: Map<string, number>;
   antiHabitsByTitle: Map<string, number>;
@@ -260,11 +247,8 @@ interface LookupMaps {
 function buildLookupMaps(userId: number): LookupMaps {
   const maps: LookupMaps = {
     areasByName: new Map(),
-    visionsByTitle: new Map(),
-    goalsByTitle: new Map(),
     projectsByTitle: new Map(),
     identitiesByStatement: new Map(),
-    habitsByName: new Map(),
     routineItemsByResponse: new Map(),
     immutableLawsByTitle: new Map(),
     antiHabitsByTitle: new Map(),
@@ -275,11 +259,8 @@ function buildLookupMaps(userId: number): LookupMaps {
   };
 
   for (const r of q("SELECT id, name FROM areas WHERE user_id = ?")) maps.areasByName.set(r.name?.toLowerCase(), r.id);
-  for (const r of q("SELECT id, title FROM visions WHERE user_id = ?")) maps.visionsByTitle.set(r.title?.toLowerCase(), r.id);
-  for (const r of q("SELECT id, title FROM goals WHERE user_id = ?")) maps.goalsByTitle.set(r.title?.toLowerCase(), r.id);
   for (const r of q("SELECT id, title FROM projects WHERE user_id = ?")) maps.projectsByTitle.set(r.title?.toLowerCase(), r.id);
   for (const r of q("SELECT id, statement FROM identities WHERE user_id = ?")) maps.identitiesByStatement.set(r.statement?.toLowerCase(), r.id);
-  for (const r of q("SELECT id, name FROM habits WHERE user_id = ?")) maps.habitsByName.set(r.name?.toLowerCase(), r.id);
   for (const r of q("SELECT id, response FROM routine_items WHERE user_id = ?")) maps.routineItemsByResponse.set(r.response?.toLowerCase(), r.id);
   for (const r of q("SELECT id, title FROM immutable_laws WHERE user_id = ?")) maps.immutableLawsByTitle.set(r.title?.toLowerCase(), r.id);
   for (const r of q("SELECT id, title FROM anti_habits WHERE user_id = ?")) maps.antiHabitsByTitle.set(r.title?.toLowerCase(), r.id);
@@ -290,11 +271,8 @@ function buildLookupMaps(userId: number): LookupMaps {
 /** Reverse lookup: build maps from ID → name for export */
 interface ReverseMaps {
   areasById: Map<number, string>;
-  visionsById: Map<number, string>;
-  goalsById: Map<number, string>;
   projectsById: Map<number, string>;
   identitiesById: Map<number, string>;
-  habitsById: Map<number, string>;
   routineItemsById: Map<number, string>;
   immutableLawsById: Map<number, string>;
   antiHabitsById: Map<number, string>;
@@ -303,11 +281,8 @@ interface ReverseMaps {
 function buildReverseMaps(userId: number): ReverseMaps {
   const maps: ReverseMaps = {
     areasById: new Map(),
-    visionsById: new Map(),
-    goalsById: new Map(),
     projectsById: new Map(),
     identitiesById: new Map(),
-    habitsById: new Map(),
     routineItemsById: new Map(),
     immutableLawsById: new Map(),
     antiHabitsById: new Map(),
@@ -318,11 +293,8 @@ function buildReverseMaps(userId: number): ReverseMaps {
   };
 
   for (const r of q("SELECT id, name FROM areas WHERE user_id = ?")) maps.areasById.set(r.id, r.name);
-  for (const r of q("SELECT id, title FROM visions WHERE user_id = ?")) maps.visionsById.set(r.id, r.title);
-  for (const r of q("SELECT id, title FROM goals WHERE user_id = ?")) maps.goalsById.set(r.id, r.title);
   for (const r of q("SELECT id, title FROM projects WHERE user_id = ?")) maps.projectsById.set(r.id, r.title);
   for (const r of q("SELECT id, statement FROM identities WHERE user_id = ?")) maps.identitiesById.set(r.id, r.statement);
-  for (const r of q("SELECT id, name FROM habits WHERE user_id = ?")) maps.habitsById.set(r.id, r.name);
   for (const r of q("SELECT id, response FROM routine_items WHERE user_id = ?")) maps.routineItemsById.set(r.id, r.response);
   for (const r of q("SELECT id, title FROM immutable_laws WHERE user_id = ?")) maps.immutableLawsById.set(r.id, r.title);
   for (const r of q("SELECT id, title FROM anti_habits WHERE user_id = ?")) maps.antiHabitsById.set(r.id, r.title);
@@ -347,32 +319,12 @@ function getExportRows(userId: number): Record<string, string[][]> {
   // Purposes
   result["Purposes"] = q("purposes").map(r => [
     cellVal(r.statement),
-    jsonArrayToSemicolons(r.principles),
-  ]);
-
-  // Visions
-  result["Visions"] = q("visions").map(r => [
-    cellVal(r.title),
-    cellVal(r.description),
-    cellVal(r.timeframe),
-    cellVal(r.status),
-    anchorMomentsToSemicolons(r.anchor_moments),
-  ]);
-
-  // Goals
-  result["Goals"] = q("goals").map(r => [
-    cellVal(r.title),
-    cellVal(r.description),
-    cellVal(rm.visionsById.get(r.vision_id) || ""),
-    cellVal(r.target_date),
-    cellVal(r.status),
+    cellVal(r.mission),
   ]);
 
   // Areas
   result["Areas"] = q("areas").map(r => [
     cellVal(r.name),
-    cellVal(r.description),
-    cellVal(r.category),
     cellVal(r.puzzle_piece),
     cellVal(r.vision_text),
     cellVal(r.icon),
@@ -394,27 +346,8 @@ function getExportRows(userId: number): Record<string, string[][]> {
     cellVal(r.title),
     cellVal(r.description),
     cellVal(rm.areasById.get(r.area_id) || ""),
-    cellVal(rm.goalsById.get(r.goal_id) || ""),
     cellVal(r.puzzle_piece),
     cellVal(rm.identitiesById.get(r.identity_id) || ""),
-    cellVal(r.status),
-    cellVal(r.due_date),
-    cellVal(r.archived),
-    cellVal(r.archived_at),
-  ]);
-
-  // Actions
-  result["Actions"] = q("actions").map(r => [
-    cellVal(r.title),
-    cellVal(r.notes),
-    cellVal(rm.projectsById.get(r.project_id) || ""),
-    cellVal(rm.areasById.get(r.area_id) || ""),
-    cellVal(r.context),
-    cellVal(r.energy),
-    cellVal(r.time_estimate),
-    cellVal(r.due_date),
-    cellVal(r.completed),
-    cellVal(r.completed_at),
     cellVal(r.archived),
     cellVal(r.archived_at),
   ]);
@@ -423,57 +356,17 @@ function getExportRows(userId: number): Record<string, string[][]> {
   result["Identities"] = q("identities").map(r => [
     cellVal(r.statement),
     cellVal(rm.areasById.get(r.area_id) || ""),
-    cellVal(rm.visionsById.get(r.vision_id) || ""),
     cellVal(r.cue),
     cellVal(r.craving),
     cellVal(r.response),
     cellVal(r.reward),
     frequencyToString(r.frequency),
-    cellVal(r.target_count),
     cellVal(r.active),
     cellVal(r.time_of_day),
     cellVal(r.puzzle_piece),
     cellVal(r.location),
-    cellVal(r.environment_type),
-    cellVal(r.env_person_name),
-    cellVal(r.env_person_contact_method),
-    cellVal(r.env_person_contact_info),
-    cellVal(r.env_person_why),
-    cellVal(r.env_place_name),
-    cellVal(r.env_place_address),
-    cellVal(r.env_place_travel_method),
-    cellVal(r.env_place_why),
-    cellVal(r.env_thing_name),
-    cellVal(r.env_thing_usage),
-    cellVal(r.env_thing_why),
     cellVal(r.archived),
     cellVal(r.archived_at),
-  ]);
-
-  // Habits
-  result["Habits"] = q("habits").map(r => [
-    cellVal(r.name),
-    cellVal(r.description),
-    cellVal(rm.identitiesById.get(r.identity_id) || ""),
-    cellVal(r.cue),
-    cellVal(r.craving),
-    cellVal(r.response),
-    cellVal(r.reward),
-    frequencyToString(r.frequency),
-    cellVal(r.target_count),
-    cellVal(r.active),
-    cellVal(rm.areasById.get(r.area_id) || ""),
-    cellVal(r.time_of_day),
-    cellVal(r.archived),
-    cellVal(r.archived_at),
-  ]);
-
-  // Habit Logs
-  result["Habit Logs"] = q("habit_logs").map(r => [
-    cellVal(rm.habitsById.get(r.habit_id) || ""),
-    cellVal(r.date),
-    cellVal(r.count),
-    cellVal(r.note),
   ]);
 
   // Routine Items
@@ -487,7 +380,8 @@ function getExportRows(userId: number): Record<string, string[][]> {
     cellVal(r.response),
     cellVal(r.reward),
     cellVal(rm.areasById.get(r.area_id) || ""),
-    cellVal(rm.habitsById.get(r.habit_id) || ""),
+    cellVal(rm.identitiesById.get(r.identity_id) || ""),
+    cellVal(r.puzzle_piece),
     dayVariantToSemicolons(r.day_variant),
     cellVal(r.active),
     cellVal(r.is_draft),
@@ -506,16 +400,18 @@ function getExportRows(userId: number): Record<string, string[][]> {
   result["Planner Tasks"] = q("planner_tasks").map(r => [
     cellVal(r.date),
     cellVal(rm.areasById.get(r.area_id) || ""),
-    cellVal(r.goal),
+    cellVal(r.task),
     cellVal(r.start_time),
     cellVal(r.end_time),
     cellVal(r.hours),
     cellVal(r.result),
     cellVal(r.status),
     cellVal(r.recurrence),
-    cellVal(rm.habitsById.get(r.habit_id) || ""),
+    cellVal(rm.identitiesById.get(r.identity_id) || ""),
+    cellVal(rm.projectsById.get(r.project_id) || ""),
+    cellVal(r.context),
+    cellVal(r.energy),
     cellVal(r.is_draft),
-    cellVal(r.source_type),
   ]);
 
   // Inbox Items
@@ -525,8 +421,8 @@ function getExportRows(userId: number): Record<string, string[][]> {
     cellVal(r.processed),
     cellVal(r.processed_as),
     cellVal(r.deleted_at),
-    cellVal(rm.areasById.get(r.reference_area_id) || ""),
     cellVal(rm.projectsById.get(r.reference_project_id) || ""),
+    cellVal(r.linked_planner_task_id),
     cellVal(rm.areasById.get(r.area_id) || ""),
   ]);
 
@@ -828,27 +724,14 @@ function insertRow(
   switch (sheetName) {
     case "Purposes": {
       if (!row.statement) throw new Error("missing statement");
-      sqlite.prepare(`INSERT INTO purposes (user_id, statement, principles, created_at) VALUES (?, ?, ?, ?)`)
-        .run(userId, row.statement, semicolonsToJsonArray(row.principles), now);
-      break;
-    }
-    case "Visions": {
-      if (!row.title) throw new Error("missing title");
-      sqlite.prepare(`INSERT INTO visions (user_id, title, description, timeframe, status, anchor_moments, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-        .run(userId, row.title, cellOrNull(row.description), cellOrNull(row.timeframe), cellOrNull(row.status) || "active", semicolonsToAnchorMoments(row.anchor_moments), now);
-      break;
-    }
-    case "Goals": {
-      if (!row.title) throw new Error("missing title");
-      const visionId = row.vision_title ? (maps.visionsByTitle.get(row.vision_title.toLowerCase()) ?? null) : null;
-      sqlite.prepare(`INSERT INTO goals (user_id, title, description, vision_id, target_date, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-        .run(userId, row.title, cellOrNull(row.description), visionId, cellOrNull(row.target_date), cellOrNull(row.status) || "active", now);
+      sqlite.prepare(`INSERT INTO purposes (user_id, statement, mission, created_at) VALUES (?, ?, ?, ?)`)
+        .run(userId, row.statement, cellOrNull(row.mission), now);
       break;
     }
     case "Areas": {
       if (!row.name) throw new Error("missing name");
-      sqlite.prepare(`INSERT INTO areas (user_id, name, description, category, puzzle_piece, vision_text, icon, sort_order, archived, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(userId, row.name, cellOrNull(row.description), cellOrNull(row.category), cellOrNull(row.puzzle_piece), cellOrNull(row.vision_text), cellOrNull(row.icon), cellInt(row.sort_order), cellInt(row.archived), cellOrNull(row.archived_at));
+      sqlite.prepare(`INSERT INTO areas (user_id, name, puzzle_piece, vision_text, icon, sort_order, archived, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(userId, row.name, cellOrNull(row.puzzle_piece), cellOrNull(row.vision_text), cellOrNull(row.icon), cellInt(row.sort_order), cellInt(row.archived), cellOrNull(row.archived_at));
       break;
     }
     case "Area Vision Snapshots": {
@@ -862,52 +745,29 @@ function insertRow(
     case "Projects": {
       if (!row.title) throw new Error("missing title");
       const areaId = row.area_name ? (maps.areasByName.get(row.area_name.toLowerCase()) ?? null) : null;
-      const goalId = row.goal_title ? (maps.goalsByTitle.get(row.goal_title.toLowerCase()) ?? null) : null;
       const identityId = row.identity_statement ? (maps.identitiesByStatement.get(row.identity_statement.toLowerCase()) ?? null) : null;
-      sqlite.prepare(`INSERT INTO projects (user_id, title, description, area_id, goal_id, puzzle_piece, identity_id, status, due_date, created_at, archived, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(userId, row.title, cellOrNull(row.description), areaId, goalId, cellOrNull(row.puzzle_piece), identityId, cellOrNull(row.status) || "active", cellOrNull(row.due_date), now, cellInt(row.archived), cellOrNull(row.archived_at));
-      break;
-    }
-    case "Actions": {
-      if (!row.title) throw new Error("missing title");
-      const projectId = row.project_title ? (maps.projectsByTitle.get(row.project_title.toLowerCase()) ?? null) : null;
-      const areaId = row.area_name ? (maps.areasByName.get(row.area_name.toLowerCase()) ?? null) : null;
-      sqlite.prepare(`INSERT INTO actions (user_id, title, notes, project_id, area_id, context, energy, time_estimate, due_date, completed, completed_at, created_at, archived, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(userId, row.title, cellOrNull(row.notes), projectId, areaId, cellOrNull(row.context), cellOrNull(row.energy), cellIntOrNull(row.time_estimate), cellOrNull(row.due_date), cellInt(row.completed), cellOrNull(row.completed_at), now, cellInt(row.archived), cellOrNull(row.archived_at));
+      if (!identityId) throw new Error("missing or unresolved identity_statement (required)");
+      sqlite.prepare(`INSERT INTO projects (user_id, title, description, area_id, puzzle_piece, identity_id, created_at, archived, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(userId, row.title, cellOrNull(row.description), areaId, cellOrNull(row.puzzle_piece), identityId, now, cellInt(row.archived), cellOrNull(row.archived_at));
       break;
     }
     case "Identities": {
       if (!row.statement) throw new Error("missing statement");
       const areaId = row.area_name ? (maps.areasByName.get(row.area_name.toLowerCase()) ?? null) : null;
-      const visionId = row.vision_title ? (maps.visionsByTitle.get(row.vision_title.toLowerCase()) ?? null) : null;
+      if (!areaId) throw new Error("missing or unresolved area_name (required)");
       const freq = row.frequency ? stringToFrequency(row.frequency) : JSON.stringify({ type: "daily", interval: 1 });
-      sqlite.prepare(`INSERT INTO identities (user_id, statement, area_id, vision_id, cue, craving, response, reward, frequency, target_count, active, time_of_day, puzzle_piece, location, environment_type, env_person_name, env_person_contact_method, env_person_contact_info, env_person_why, env_place_name, env_place_address, env_place_travel_method, env_place_why, env_thing_name, env_thing_usage, env_thing_why, created_at, archived, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(userId, row.statement, areaId, visionId, cellOrNull(row.cue), cellOrNull(row.craving), cellOrNull(row.response), cellOrNull(row.reward), freq, cellInt(row.target_count) || 1, row.active !== undefined && row.active !== "" ? cellInt(row.active) : 1, cellOrNull(row.time_of_day), cellOrNull(row.puzzle_piece), cellOrNull(row.location), cellOrNull(row.environment_type), cellOrNull(row.env_person_name), cellOrNull(row.env_person_contact_method), cellOrNull(row.env_person_contact_info), cellOrNull(row.env_person_why), cellOrNull(row.env_place_name), cellOrNull(row.env_place_address), cellOrNull(row.env_place_travel_method), cellOrNull(row.env_place_why), cellOrNull(row.env_thing_name), cellOrNull(row.env_thing_usage), cellOrNull(row.env_thing_why), now, cellInt(row.archived), cellOrNull(row.archived_at));
-      break;
-    }
-    case "Habits": {
-      if (!row.name) throw new Error("missing name");
-      const identityId = row.identity_statement ? (maps.identitiesByStatement.get(row.identity_statement.toLowerCase()) ?? null) : null;
-      const areaId = row.area_name ? (maps.areasByName.get(row.area_name.toLowerCase()) ?? null) : null;
-      const freq = row.frequency ? stringToFrequency(row.frequency) : JSON.stringify({ type: "daily", interval: 1 });
-      sqlite.prepare(`INSERT INTO habits (user_id, name, description, identity_id, cue, craving, response, reward, frequency, target_count, active, created_at, area_id, time_of_day, archived, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(userId, row.name, cellOrNull(row.description), identityId, cellOrNull(row.cue), cellOrNull(row.craving), cellOrNull(row.response), cellOrNull(row.reward), freq, cellInt(row.target_count) || 1, row.active !== undefined && row.active !== "" ? cellInt(row.active) : 1, now, areaId, cellOrNull(row.time_of_day), cellInt(row.archived), cellOrNull(row.archived_at));
-      break;
-    }
-    case "Habit Logs": {
-      if (!row.habit_name || !row.date) throw new Error("missing habit_name or date");
-      const habitId = maps.habitsByName.get(row.habit_name.toLowerCase());
-      if (!habitId) throw new Error(`habit "${row.habit_name}" not found`);
-      sqlite.prepare(`INSERT INTO habit_logs (user_id, habit_id, date, count, note) VALUES (?, ?, ?, ?, ?)`)
-        .run(userId, habitId, row.date, cellInt(row.count) || 1, cellOrNull(row.note));
+      sqlite.prepare(`INSERT INTO identities (user_id, statement, area_id, cue, craving, response, reward, frequency, active, time_of_day, puzzle_piece, location, created_at, archived, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(userId, row.statement, areaId, row.cue || "", row.craving || "", row.response || "", row.reward || "", freq, row.active !== undefined && row.active !== "" ? cellInt(row.active) : 1, row.time_of_day || "", row.puzzle_piece || "", row.location || "", now, cellInt(row.archived), cellOrNull(row.archived_at));
       break;
     }
     case "Routine Items": {
       if (!row.time || !row.response) throw new Error("missing time or response");
       const areaId = row.area_name ? (maps.areasByName.get(row.area_name.toLowerCase()) ?? null) : null;
-      const habitId = row.habit_name ? (maps.habitsByName.get(row.habit_name.toLowerCase()) ?? null) : null;
-      sqlite.prepare(`INSERT INTO routine_items (user_id, sort_order, time, duration_minutes, location, cue, craving, response, reward, area_id, habit_id, day_variant, active, is_draft, time_of_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(userId, cellInt(row.sort_order), row.time, cellInt(row.duration_minutes) || 10, cellOrNull(row.location), cellOrNull(row.cue), cellOrNull(row.craving), row.response, cellOrNull(row.reward), areaId, habitId, semicolonsToDayVariant(row.day_variant), row.active !== undefined && row.active !== "" ? cellInt(row.active) : 1, cellInt(row.is_draft), cellOrNull(row.time_of_day));
+      if (!areaId) throw new Error("missing or unresolved area_name (required)");
+      const identityId = row.identity_name ? (maps.identitiesByStatement.get(row.identity_name.toLowerCase()) ?? null) : null;
+      if (!identityId) throw new Error("missing or unresolved identity_name (required)");
+      sqlite.prepare(`INSERT INTO routine_items (user_id, sort_order, time, duration_minutes, location, cue, craving, response, reward, area_id, identity_id, puzzle_piece, day_variant, active, is_draft, time_of_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(userId, cellInt(row.sort_order), row.time, cellInt(row.duration_minutes) || 10, row.location || "", row.cue || "", row.craving || "", row.response, row.reward || "", areaId, identityId, row.puzzle_piece || "", semicolonsToDayVariant(row.day_variant) || "", row.active !== undefined && row.active !== "" ? cellInt(row.active) : 1, cellInt(row.is_draft), row.time_of_day || "");
       break;
     }
     case "Routine Logs": {
@@ -919,20 +779,20 @@ function insertRow(
       break;
     }
     case "Planner Tasks": {
-      if (!row.date || !row.goal) throw new Error("missing date or goal");
+      if (!row.date || !row.task) throw new Error("missing date or task");
       const areaId = row.area_name ? (maps.areasByName.get(row.area_name.toLowerCase()) ?? null) : null;
-      const habitId = row.habit_name ? (maps.habitsByName.get(row.habit_name.toLowerCase()) ?? null) : null;
-      sqlite.prepare(`INSERT INTO planner_tasks (user_id, date, area_id, goal, start_time, end_time, hours, result, status, recurrence, habit_id, is_draft, source_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(userId, row.date, areaId, row.goal, cellOrNull(row.start_time), cellOrNull(row.end_time), cellOrNull(row.hours), cellOrNull(row.result), cellOrNull(row.status) || "planned", cellOrNull(row.recurrence), habitId, cellInt(row.is_draft), cellOrNull(row.source_type));
+      const identityId = row.identity_name ? (maps.identitiesByStatement.get(row.identity_name.toLowerCase()) ?? null) : null;
+      const projectId = row.project_title ? (maps.projectsByTitle.get(row.project_title.toLowerCase()) ?? null) : null;
+      sqlite.prepare(`INSERT INTO planner_tasks (user_id, date, area_id, task, start_time, end_time, hours, result, status, recurrence, identity_id, project_id, context, energy, is_draft) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(userId, row.date, areaId, row.task, cellOrNull(row.start_time), cellOrNull(row.end_time), cellOrNull(row.hours), cellOrNull(row.result), cellOrNull(row.status) || "planned", cellOrNull(row.recurrence), identityId, projectId, cellOrNull(row.context), cellOrNull(row.energy), cellInt(row.is_draft));
       break;
     }
     case "Inbox Items": {
       if (!row.content) throw new Error("missing content");
-      const refAreaId = row.reference_area_name ? (maps.areasByName.get(row.reference_area_name.toLowerCase()) ?? null) : null;
       const refProjectId = row.reference_project_title ? (maps.projectsByTitle.get(row.reference_project_title.toLowerCase()) ?? null) : null;
       const areaId = row.area_name ? (maps.areasByName.get(row.area_name.toLowerCase()) ?? null) : null;
-      sqlite.prepare(`INSERT INTO inbox_items (user_id, content, notes, processed, processed_as, deleted_at, reference_area_id, reference_project_id, area_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(userId, row.content, cellOrNull(row.notes), cellInt(row.processed), cellOrNull(row.processed_as), cellOrNull(row.deleted_at), refAreaId, refProjectId, areaId, now);
+      sqlite.prepare(`INSERT INTO inbox_items (user_id, content, notes, processed, processed_as, deleted_at, reference_project_id, linked_planner_task_id, area_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(userId, row.content, cellOrNull(row.notes), cellInt(row.processed), cellOrNull(row.processed_as), cellOrNull(row.deleted_at), refProjectId, cellIntOrNull(row.linked_planner_task_id), areaId, now);
       break;
     }
     case "Weekly Reviews": {
@@ -1004,26 +864,10 @@ function insertRow(
 const SHEET_COLUMNS: Record<string, { header: string; desc: string; required: boolean }[]> = {
   "Purposes": [
     { header: "statement", desc: "Your purpose statement", required: true },
-    { header: "principles", desc: "Guiding principles separated by semicolons", required: false },
-  ],
-  "Visions": [
-    { header: "title", desc: "Vision title", required: true },
-    { header: "description", desc: "Description", required: false },
-    { header: "timeframe", desc: "Target timeframe", required: false },
-    { header: "status", desc: "active | achieved | deferred", required: false },
-    { header: "anchor_moments", desc: "piece:scene pairs separated by semicolons", required: false },
-  ],
-  "Goals": [
-    { header: "title", desc: "Goal title", required: true },
-    { header: "description", desc: "Description", required: false },
-    { header: "vision_title", desc: "Linked vision title", required: false },
-    { header: "target_date", desc: "YYYY-MM-DD", required: false },
-    { header: "status", desc: "active | achieved | deferred", required: false },
+    { header: "mission", desc: "Mission statement", required: false },
   ],
   "Areas": [
     { header: "name", desc: "Area name", required: true },
-    { header: "description", desc: "Description", required: false },
-    { header: "category", desc: "Category", required: false },
     { header: "puzzle_piece", desc: "reason|finance|fitness|talent|pleasure", required: false },
     { header: "vision_text", desc: "Vision text", required: false },
     { header: "icon", desc: "Lucide icon", required: false },
@@ -1041,94 +885,42 @@ const SHEET_COLUMNS: Record<string, { header: string; desc: string; required: bo
     { header: "title", desc: "Project title", required: true },
     { header: "description", desc: "Description", required: false },
     { header: "area_name", desc: "Linked area", required: false },
-    { header: "goal_title", desc: "Linked goal", required: false },
     { header: "puzzle_piece", desc: "Puzzle piece", required: false },
-    { header: "identity_statement", desc: "Linked identity", required: false },
-    { header: "status", desc: "active|completed|someday|deferred", required: false },
-    { header: "due_date", desc: "YYYY-MM-DD", required: false },
-    { header: "archived", desc: "0 or 1", required: false },
-    { header: "archived_at", desc: "ISO 8601", required: false },
-  ],
-  "Actions": [
-    { header: "title", desc: "Action title", required: true },
-    { header: "notes", desc: "Notes", required: false },
-    { header: "project_title", desc: "Linked project", required: false },
-    { header: "area_name", desc: "Linked area", required: false },
-    { header: "context", desc: "@home|@work|@phone|@computer|@errands", required: false },
-    { header: "energy", desc: "low|medium|high", required: false },
-    { header: "time_estimate", desc: "Minutes", required: false },
-    { header: "due_date", desc: "YYYY-MM-DD", required: false },
-    { header: "completed", desc: "0 or 1", required: false },
-    { header: "completed_at", desc: "ISO 8601", required: false },
+    { header: "identity_statement", desc: "Linked identity", required: true },
     { header: "archived", desc: "0 or 1", required: false },
     { header: "archived_at", desc: "ISO 8601", required: false },
   ],
   "Identities": [
     { header: "statement", desc: "Identity statement", required: true },
-    { header: "area_name", desc: "Linked area", required: false },
-    { header: "vision_title", desc: "Linked vision", required: false },
-    { header: "cue", desc: "Habit cue", required: false },
-    { header: "craving", desc: "Craving", required: false },
-    { header: "response", desc: "Response", required: false },
-    { header: "reward", desc: "Reward", required: false },
+    { header: "area_name", desc: "Linked area", required: true },
+    { header: "cue", desc: "Habit cue", required: true },
+    { header: "craving", desc: "Craving", required: true },
+    { header: "response", desc: "Response", required: true },
+    { header: "reward", desc: "Reward", required: true },
     { header: "frequency", desc: "daily|weekly|monthly|quarterly|yearly", required: false },
-    { header: "target_count", desc: "Number", required: false },
     { header: "active", desc: "0 or 1", required: false },
-    { header: "time_of_day", desc: "Time of day", required: false },
-    { header: "puzzle_piece", desc: "Puzzle piece", required: false },
-    { header: "location", desc: "Location", required: false },
-    { header: "environment_type", desc: "person|place|thing", required: false },
-    { header: "env_person_name", desc: "Person name", required: false },
-    { header: "env_person_contact_method", desc: "Contact method", required: false },
-    { header: "env_person_contact_info", desc: "Contact info", required: false },
-    { header: "env_person_why", desc: "Why", required: false },
-    { header: "env_place_name", desc: "Place name", required: false },
-    { header: "env_place_address", desc: "Address", required: false },
-    { header: "env_place_travel_method", desc: "Travel method", required: false },
-    { header: "env_place_why", desc: "Why", required: false },
-    { header: "env_thing_name", desc: "Thing name", required: false },
-    { header: "env_thing_usage", desc: "Usage", required: false },
-    { header: "env_thing_why", desc: "Why", required: false },
+    { header: "time_of_day", desc: "Time of day", required: true },
+    { header: "puzzle_piece", desc: "Puzzle piece", required: true },
+    { header: "location", desc: "Location", required: true },
     { header: "archived", desc: "0 or 1", required: false },
     { header: "archived_at", desc: "ISO 8601", required: false },
-  ],
-  "Habits": [
-    { header: "name", desc: "Habit name", required: true },
-    { header: "description", desc: "Description", required: false },
-    { header: "identity_statement", desc: "Linked identity", required: false },
-    { header: "cue", desc: "Cue", required: false },
-    { header: "craving", desc: "Craving", required: false },
-    { header: "response", desc: "Response", required: false },
-    { header: "reward", desc: "Reward", required: false },
-    { header: "frequency", desc: "daily|weekdays|weekly", required: false },
-    { header: "target_count", desc: "Number", required: false },
-    { header: "active", desc: "0 or 1", required: false },
-    { header: "area_name", desc: "Linked area", required: false },
-    { header: "time_of_day", desc: "Time of day", required: false },
-    { header: "archived", desc: "0 or 1", required: false },
-    { header: "archived_at", desc: "ISO 8601", required: false },
-  ],
-  "Habit Logs": [
-    { header: "habit_name", desc: "Habit name", required: true },
-    { header: "date", desc: "YYYY-MM-DD", required: true },
-    { header: "count", desc: "Count", required: false },
-    { header: "note", desc: "Note", required: false },
   ],
   "Routine Items": [
     { header: "sort_order", desc: "Number", required: false },
     { header: "time", desc: "HH:MM", required: true },
     { header: "duration_minutes", desc: "Minutes", required: false },
-    { header: "location", desc: "Location", required: false },
-    { header: "cue", desc: "Cue", required: false },
-    { header: "craving", desc: "Craving", required: false },
+    { header: "location", desc: "Location", required: true },
+    { header: "cue", desc: "Cue", required: true },
+    { header: "craving", desc: "Craving", required: true },
     { header: "response", desc: "Action", required: true },
-    { header: "reward", desc: "Reward", required: false },
-    { header: "area_name", desc: "Linked area", required: false },
-    { header: "habit_name", desc: "Linked habit", required: false },
+    { header: "reward", desc: "Reward", required: true },
+    { header: "area_name", desc: "Linked area", required: true },
+    { header: "identity_name", desc: "Linked identity", required: true },
+    { header: "puzzle_piece", desc: "Puzzle piece", required: true },
     { header: "day_variant", desc: "Mon=X;Tue=Y", required: false },
     { header: "active", desc: "0 or 1", required: false },
     { header: "is_draft", desc: "0 or 1", required: false },
-    { header: "time_of_day", desc: "Time of day", required: false },
+    { header: "time_of_day", desc: "Time of day", required: true },
   ],
   "Routine Logs": [
     { header: "routine_response", desc: "Routine item response text", required: true },
@@ -1139,25 +931,27 @@ const SHEET_COLUMNS: Record<string, { header: string; desc: string; required: bo
   "Planner Tasks": [
     { header: "date", desc: "YYYY-MM-DD", required: true },
     { header: "area_name", desc: "Linked area", required: false },
-    { header: "goal", desc: "Task description", required: true },
+    { header: "task", desc: "Task description", required: true },
     { header: "start_time", desc: "HH:MM", required: false },
     { header: "end_time", desc: "HH:MM", required: false },
     { header: "hours", desc: "Decimal hours", required: false },
     { header: "result", desc: "Outcome", required: false },
     { header: "status", desc: "planned|done|skipped", required: false },
     { header: "recurrence", desc: "Recurrence pattern", required: false },
-    { header: "habit_name", desc: "Linked habit", required: false },
+    { header: "identity_name", desc: "Linked identity", required: false },
+    { header: "project_title", desc: "Linked project", required: false },
+    { header: "context", desc: "@home|@work|@phone|@computer|@errands", required: false },
+    { header: "energy", desc: "low|medium|high", required: false },
     { header: "is_draft", desc: "0 or 1", required: false },
-    { header: "source_type", desc: "habit|manual", required: false },
   ],
   "Inbox Items": [
     { header: "content", desc: "Item content", required: true },
     { header: "notes", desc: "Notes", required: false },
     { header: "processed", desc: "0 or 1", required: false },
-    { header: "processed_as", desc: "task|project|reference|someday|trash", required: false },
+    { header: "processed_as", desc: "quick_task|task|project|reference|someday|trash", required: false },
     { header: "deleted_at", desc: "ISO 8601", required: false },
-    { header: "reference_area_name", desc: "Reference area", required: false },
     { header: "reference_project_title", desc: "Reference project", required: false },
+    { header: "linked_planner_task_id", desc: "Linked planner task ID", required: false },
     { header: "area_name", desc: "Linked area", required: false },
   ],
   "Weekly Reviews": [
@@ -1171,7 +965,7 @@ const SHEET_COLUMNS: Record<string, { header: string; desc: string; required: bo
     { header: "puzzle_piece_ratings", desc: "reason=N;finance=N;fitness=N;talent=N;pleasure=N", required: false },
   ],
   "Environment Entities": [
-    { header: "identity_statement", desc: "Linked identity", required: false },
+    { header: "identity_statement", desc: "Linked identity", required: true },
     { header: "area_name", desc: "Linked area", required: false },
     { header: "puzzle_piece", desc: "Puzzle piece", required: false },
     { header: "type", desc: "person|place|thing", required: true },
