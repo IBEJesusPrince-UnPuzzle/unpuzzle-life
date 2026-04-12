@@ -41,7 +41,7 @@ function formatSnapshotDate(iso: string, timeFormat: "12h" | "24h"): string {
 }
 
 // ============================================================
-// PURPOSE BANNER — tap to edit
+// PURPOSE BANNER — tap to edit (matches AreaVisionCard pattern)
 // ============================================================
 function PurposeBanner() {
   const { data: purposes = [] } = useQuery<any[]>({ queryKey: ["/api/purposes"] });
@@ -49,6 +49,7 @@ function PurposeBanner() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (editing && textareaRef.current) {
@@ -62,6 +63,7 @@ function PurposeBanner() {
       apiRequest("PATCH", `/api/purposes/${purpose.id}`, { statement: draft.trim() }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purposes"] });
+      toast({ title: "Purpose updated." });
       setEditing(false);
     },
   });
@@ -74,6 +76,7 @@ function PurposeBanner() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purposes"] });
+      toast({ title: "Purpose saved." });
       setEditing(false);
     },
   });
@@ -89,7 +92,7 @@ function PurposeBanner() {
 
   const handleCancel = () => {
     setEditing(false);
-    setDraft(purpose?.statement || "");
+    setDraft("");
   };
 
   const startEditing = () => {
@@ -97,70 +100,78 @@ function PurposeBanner() {
     setEditing(true);
   };
 
+  // ── Edit mode ──
   if (editing) {
     return (
-      <div className="rounded-lg border border-primary/20 bg-primary/[0.03] p-4 space-y-3">
-        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Purpose</label>
-        <Textarea
-          ref={textareaRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="e.g. To live with integrity, create joy for my family, and leave the world better than I found it..."
-          className="min-h-[80px] text-sm resize-none"
-          onKeyDown={(e) => {
-            if (e.key === "Escape") handleCancel();
-          }}
-        />
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            className="h-7 text-xs gap-1"
-            onClick={handleSave}
-            disabled={!draft.trim() || updatePurpose.isPending || createPurpose.isPending}
-          >
-            <Check className="w-3 h-3" /> Save
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 text-xs gap-1"
-            onClick={handleCancel}
-          >
-            <X className="w-3 h-3" /> Cancel
-          </Button>
-        </div>
-      </div>
+      <Card className="border-primary/20">
+        <CardContent className="p-5 space-y-3">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Purpose</p>
+          <Textarea
+            ref={textareaRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="e.g. To live with integrity, create joy for my family, and leave the world better than I found it..."
+            className="min-h-[100px] text-sm resize-none"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") handleCancel();
+            }}
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={handleSave}
+              disabled={!draft.trim() || updatePurpose.isPending || createPurpose.isPending}
+            >
+              <Check className="w-3 h-3" /> Save
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs gap-1"
+              onClick={handleCancel}
+            >
+              <X className="w-3 h-3" /> Cancel
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     );
   }
 
-  // Display mode
+  // ── Display mode: no purpose yet ──
   if (!purpose) {
     return (
-      <button
+      <Card
+        className="cursor-pointer group hover:shadow-md transition-shadow border-dashed bg-muted/20"
         onClick={startEditing}
-        className="w-full rounded-lg border border-dashed border-primary/20 bg-muted/20 p-4 text-left group hover:bg-primary/[0.03] transition-colors"
       >
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Purpose</p>
-        <p className="text-sm text-muted-foreground italic">
-          Tap to define your life's purpose...
-        </p>
-      </button>
+        <CardContent className="p-5">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Purpose</p>
+          <p className="text-sm text-muted-foreground/60 italic">
+            Tap to define your life's purpose...
+          </p>
+        </CardContent>
+      </Card>
     );
   }
 
+  // ── Display mode: purpose exists ──
   return (
-    <button
+    <Card
+      className="cursor-pointer group hover:shadow-md transition-shadow"
       onClick={startEditing}
-      className="w-full rounded-lg border border-primary/10 bg-primary/[0.02] p-4 text-left group hover:bg-primary/[0.05] transition-colors"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Purpose</p>
-          <p className="text-sm leading-relaxed">{purpose.statement}</p>
+      <CardContent className="p-5">
+        <div className="flex justify-between items-start">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Purpose</p>
+            <p className="text-sm leading-relaxed">{purpose.statement}</p>
+          </div>
+          <Pencil className="w-3.5 h-3.5 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors shrink-0 mt-5" />
         </div>
-        <Pencil className="w-3.5 h-3.5 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors shrink-0 mt-5" />
-      </div>
-    </button>
+      </CardContent>
+    </Card>
   );
 }
 
