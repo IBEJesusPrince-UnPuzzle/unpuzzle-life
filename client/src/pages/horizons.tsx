@@ -225,93 +225,6 @@ function InlineAreaCreate({
 }
 
 // ============================================================
-// VISION EDITOR DIALOG
-// ============================================================
-function VisionEditorDialog({
-  area,
-  open,
-  onOpenChange,
-}: {
-  area: Area;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const [visionText, setVisionText] = useState(area.visionText || "");
-  const [note, setNote] = useState("");
-  const { toast } = useToast();
-
-  useEffect(() => {
-    if (open) {
-      setVisionText(area.visionText || "");
-      setNote("");
-    }
-  }, [open, area.visionText]);
-
-  const saveVision = useMutation({
-    mutationFn: () =>
-      apiRequest("PATCH", `/api/areas/${area.id}/vision`, {
-        vision: visionText,
-        note: note.trim() || undefined,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/areas"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/areas/${area.id}/snapshots`] });
-      toast({ title: "Vision updated. Snapshot saved." });
-      onOpenChange(false);
-    },
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit Vision</DialogTitle>
-          <DialogDescription>
-            Update the vision for <span className="font-medium text-foreground">{area.name}</span>. The area name cannot be changed.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium text-muted-foreground">Area</label>
-            <div className="mt-1">
-              <Badge variant="secondary" className="text-sm">{area.name}</Badge>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">Vision / Description</label>
-            <Textarea
-              value={visionText}
-              onChange={(e) => setVisionText(e.target.value)}
-              placeholder={`My ${area.name} is...`}
-              className="mt-1 min-h-[200px] resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-muted-foreground">Reason for change (optional)</label>
-            <Input
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Why the change? (optional)"
-              className="mt-1"
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => saveVision.mutate()} disabled={saveVision.isPending}>
-            Save vision
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ============================================================
 // ARCHIVE CONFIRMATION MODAL
 // ============================================================
 function ArchiveModal({
@@ -575,21 +488,30 @@ function SnapshotTimeline({
 }
 
 // ============================================================
-// AREA VISION CARD (redesigned)
+// AREA VISION CARD — tap to edit inline
 // ============================================================
 function AreaVisionCard({
   area,
   areas,
-  onClick,
 }: {
   area: Area;
   areas: Area[];
-  onClick: () => void;
 }) {
-  const [editOpen, setEditOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [note, setNote] = useState("");
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (editing && textareaRef.current) {
+      textareaRef.current.focus();
+      textareaRef.current.selectionStart = textareaRef.current.value.length;
+    }
+  }, [editing]);
 
   // Get snapshot count for badge
   const { data: snapshots = [] } = useQuery({
@@ -599,11 +521,120 @@ function AreaVisionCard({
 
   const snapshotCount = snapshots.length;
 
+  const saveVision = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/areas/${area.id}/vision`, {
+        vision: draft,
+        note: note.trim() || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/areas"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/areas/${area.id}/snapshots`] });
+      toast({ title: "Vision updated." });
+      setEditing(false);
+      setNote("");
+    },
+  });
+
+  const startEditing = () => {
+    setDraft(area.visionText || "");
+    setNote("");
+    setEditing(true);
+  };
+
+  const handleCancel = () => {
+    setEditing(false);
+    setDraft("");
+    setNote("");
+  };
+
+  // ── Edit mode ──
+  if (editing) {
+    return (
+      <>
+        <Card className="border-primary/20">
+          <CardContent className="p-5 space-y-3">
+            <div className="flex justify-between items-start">
+              <p className="text-base font-semibold">{area.name}</p>
+              <div className="flex items-center gap-1">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                      <MoreHorizontal className="w-3.5 h-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setDuplicateOpen(true)}>
+                      <Copy className="w-3.5 h-3.5 mr-2" />
+                      Duplicate & Archive
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => setArchiveOpen(true)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Archive className="w-3.5 h-3.5 mr-2" />
+                      Archive
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+
+            <Textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder={`My ${area.name} is...`}
+              className="min-h-[160px] text-sm resize-none"
+              onKeyDown={(e) => {
+                if (e.key === "Escape") handleCancel();
+              }}
+            />
+
+            {/* Change note — only show when editing an existing vision */}
+            {area.visionText && (
+              <Input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Reason for change (optional)"
+                className="text-sm"
+              />
+            )}
+
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={() => saveVision.mutate()}
+                disabled={!draft.trim() || saveVision.isPending}
+              >
+                <Check className="w-3 h-3" /> Save
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs gap-1"
+                onClick={handleCancel}
+              >
+                <X className="w-3 h-3" /> Cancel
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <ArchiveModal area={area} open={archiveOpen} onOpenChange={setArchiveOpen} />
+        <DuplicateArchiveModal area={area} areas={areas} open={duplicateOpen} onOpenChange={setDuplicateOpen} />
+      </>
+    );
+  }
+
+  // ── Display mode ──
   return (
     <>
       <Card
-        className="cursor-pointer hover:shadow-md transition-shadow"
-        onClick={onClick}
+        className={`cursor-pointer group hover:shadow-md transition-shadow ${!area.visionText ? "border-dashed bg-muted/20" : ""}`}
+        onClick={startEditing}
       >
         <CardContent className="p-5">
           <div className="flex justify-between items-start">
@@ -628,16 +659,7 @@ function AreaVisionCard({
               className="flex items-center gap-1"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Pencil icon → vision editor */}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0"
-                onClick={() => setEditOpen(true)}
-                title="Edit vision"
-              >
-                <Pencil className="w-3 h-3" />
-              </Button>
+              <Pencil className="w-3.5 h-3.5 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors" />
 
               {/* Three-dot menu */}
               <DropdownMenu>
@@ -663,13 +685,14 @@ function AreaVisionCard({
               </DropdownMenu>
             </div>
           </div>
-          {area.visionText && (
-            <div className="relative mt-2">
-              <p className="text-sm text-muted-foreground line-clamp-4">
-                {area.visionText}
-              </p>
-              <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-card to-transparent pointer-events-none" />
-            </div>
+          {area.visionText ? (
+            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+              {area.visionText}
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground/60 mt-2 italic">
+              Tap to write your vision...
+            </p>
           )}
 
           {/* Inline snapshot timeline */}
@@ -685,8 +708,6 @@ function AreaVisionCard({
         </CardContent>
       </Card>
 
-      {/* Dialogs */}
-      <VisionEditorDialog area={area} open={editOpen} onOpenChange={setEditOpen} />
       <ArchiveModal area={area} open={archiveOpen} onOpenChange={setArchiveOpen} />
       <DuplicateArchiveModal area={area} areas={areas} open={duplicateOpen} onOpenChange={setDuplicateOpen} />
     </>
@@ -827,7 +848,6 @@ function VisionBoard({
             key={area.id}
             area={area}
             areas={areas}
-            onClick={() => onOpenWriter(area.id)}
           />
         ))}
       </div>
@@ -836,20 +856,11 @@ function VisionBoard({
       {areasWithoutVision.length > 0 && (
         <div className="space-y-3">
           {areasWithoutVision.map((area) => (
-            <Card
+            <AreaVisionCard
               key={area.id}
-              className="border-dashed cursor-pointer hover:shadow-sm transition-shadow bg-muted/20"
-              onClick={() => onOpenWriter(area.id)}
-            >
-              <CardContent className="p-4 flex items-center justify-between">
-                <p className="text-sm font-medium text-muted-foreground">
-                  {area.name}
-                </p>
-                <span className="text-xs text-muted-foreground">
-                  Add your vision &rarr;
-                </span>
-              </CardContent>
-            </Card>
+              area={area}
+              areas={areas}
+            />
           ))}
         </div>
       )}
