@@ -201,6 +201,7 @@ export default function Dashboard() {
     recurringCreated: number;
   }>({ queryKey: ["/api/dashboard-data"] });
 
+  const { data: purposes = [] } = useQuery<any[]>({ queryKey: ["/api/purposes"] });
   const { data: laws = [] } = useQuery<any[]>({ queryKey: ["/api/immutable-laws"] });
   const { data: lawLogs = [] } = useQuery<any[]>({
     queryKey: ["/api/immutable-law-logs/date", today],
@@ -297,8 +298,27 @@ export default function Dashboard() {
         </div>
       </form>
 
+      {/* Onboarding nudge — wizard when no purpose exists */}
+      {purposes.length === 0 && (
+        <Card className="border-dashed bg-muted/30">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Define Your Purpose & Mission</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Start by defining why you exist and what you stand for.
+              </p>
+            </div>
+            <Link href="/wizard">
+              <Button size="sm" variant="outline">
+                Begin <ArrowRight className="w-3 h-3 ml-1" />
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Onboarding nudge — only when no area visions exist */}
-      {areas.filter(a => a.visionText).length === 0 && (
+      {purposes.length > 0 && areas.filter(a => a.visionText).length === 0 && (
         <Card className="border-dashed bg-muted/30">
           <CardContent className="p-4 flex items-center justify-between">
             <div>

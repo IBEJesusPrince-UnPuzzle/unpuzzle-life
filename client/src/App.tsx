@@ -23,6 +23,7 @@ import ProjectsPage from "@/pages/projects";
 import AuthPage, { RegisterPage } from "@/pages/auth-page";
 import AdminPage from "@/pages/admin";
 import SomedayPage from "@/pages/someday";
+import WizardPage from "@/pages/wizard";
 import NotFound from "@/pages/not-found";
 
 function ProjectDetailRoute({ params }: { params: { id?: string } }) {
@@ -47,6 +48,7 @@ function AppRouter() {
       <Route path="/projects" component={ProjectsPage} />
       <Route path="/projects/:id" component={ProjectDetailRoute} />
       <Route path="/someday" component={SomedayPage} />
+      <Route path="/wizard" component={WizardPage} />
       <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />
     </Switch>
