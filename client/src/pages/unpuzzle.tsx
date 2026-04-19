@@ -3,50 +3,43 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  Puzzle, ChevronLeft, Plus, ChevronDown, ChevronUp, Star, Pencil, Trash2,
-  FolderOpen, Repeat2, Clock,
-} from "lucide-react";
-import { useState, useMemo } from "react";
-import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
-import type { Area, Identity, Belief, AntiHabit, ImmutableLaw } from "@shared/schema";
+import { Puzzle, ChevronLeft, ChevronRight, Check } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { useLocation } from "wouter";
+import { PIECE_COLORS, type PieceKey } from "@/lib/piece-colors";
+import type { Area, Identity, NonNegotiable, PlannerTask, Project } from "@shared/schema";
 
-// ============================================================
-// CONSTANTS
-// ============================================================
-
-type PuzzlePiece = "reason" | "finance" | "fitness" | "talent" | "pleasure";
-
-const PUZZLE_PIECES: { name: PuzzlePiece; label: string; color: string; descriptor: string; outcome: string }[] = [
-  { name: "reason", label: "Reason", color: "#7C3AED", descriptor: "Emotions, beliefs & behavior", outcome: "Feel, think & react your best" },
-  { name: "finance", label: "Finance", color: "#16A34A", descriptor: "Income, expenses & planning", outcome: "Afford your best life" },
-  { name: "fitness", label: "Fitness", color: "#2563EB", descriptor: "Bodily systems & physical environment", outcome: "Function at your best" },
-  { name: "talent", label: "Talent", color: "#CA8A04", descriptor: "Abilities, skills, vocation & career", outcome: "Impact at your best" },
-  { name: "pleasure", label: "Pleasure", color: "#DC2626", descriptor: "Desires, satisfactions & enjoyments", outcome: "Reward you for being you" },
+const PUZZLE_PIECES: { name: PieceKey; label: string; color: string; descriptor: string }[] = [
+  { name: "reason", label: "Reason", color: PIECE_COLORS.reason.accent, descriptor: "Emotions, beliefs & behavior" },
+  { name: "finance", label: "Finance", color: PIECE_COLORS.finance.accent, descriptor: "Income, expenses & planning" },
+  { name: "fitness", label: "Fitness", color: PIECE_COLORS.fitness.accent, descriptor: "Bodily systems & physical environment" },
+  { name: "talent", label: "Talent", color: PIECE_COLORS.talent.accent, descriptor: "Abilities, skills & vocation" },
+  { name: "pleasure", label: "Pleasure", color: PIECE_COLORS.pleasure.accent, descriptor: "Desires, satisfactions & enjoyments" },
 ];
 
-const TIME_OF_DAY_OPTIONS = [
-  { value: "morning", label: "Morning" },
-  { value: "midday", label: "Midday" },
-  { value: "afternoon", label: "Afternoon" },
-  { value: "evening", label: "Evening" },
-  { value: "night", label: "Night" },
-  { value: "any_time", label: "Any time" },
-];
+type StatusCounts = { draft: number; project: number; routine: number };
 
-// ============================================================
-// PUZZLE WHEEL SVG
-// ============================================================
+function opacityForStatus(counts: StatusCounts): number {
+  const total = counts.draft + counts.project + counts.routine;
+  if (total === 0) return 0.35;
+  const routineRatio = counts.routine / total;
+  const draftRatio = counts.draft / total;
+  if (routineRatio >= 0.67) return 1.0;
+  if (draftRatio >= 0.67) return 0.45;
+  return 0.75;
+}
 
-function PuzzleWheel({ onSelect }: { onSelect: (piece: PuzzlePiece) => void }) {
+function PuzzleWheel({
+  onSelect,
+  countsByPiece,
+}: {
+  onSelect: (piece: PieceKey) => void;
+  countsByPiece: Record<PieceKey, StatusCounts>;
+}) {
   const cx = 150, cy = 150, r = 110;
   const sliceAngle = (2 * Math.PI) / 5;
-  const startOffset = -Math.PI / 2; // start from top
+  const startOffset = -Math.PI / 2;
 
   const slices = PUZZLE_PIECES.map((piece, i) => {
     const startAngle = startOffset + i * sliceAngle;
@@ -58,16 +51,13 @@ function PuzzleWheel({ onSelect }: { onSelect: (piece: PuzzlePiece) => void }) {
     const x2 = cx + r * Math.cos(endAngle);
     const y2 = cy + r * Math.sin(endAngle);
 
-    // Text position at ~65% radius
     const textR = r * 0.65;
     const tx = cx + textR * Math.cos(midAngle);
     const ty = cy + textR * Math.sin(midAngle);
 
-    // Nub on outer arc (small bump)
-    const nubAngle = midAngle;
     const nubR = r + 8;
-    const nubX = cx + nubR * Math.cos(nubAngle);
-    const nubY = cy + nubR * Math.sin(nubAngle);
+    const nubX = cx + nubR * Math.cos(midAngle);
+    const nubY = cy + nubR * Math.sin(midAngle);
 
     const d = [
       `M ${cx} ${cy}`,
@@ -76,15 +66,14 @@ function PuzzleWheel({ onSelect }: { onSelect: (piece: PuzzlePiece) => void }) {
       `Z`,
     ].join(" ");
 
-    return { ...piece, d, tx, ty, nubX, nubY, startAngle, endAngle };
+    const opacity = opacityForStatus(countsByPiece[piece.name]);
+
+    return { ...piece, d, tx, ty, nubX, nubY, opacity };
   });
 
   return (
     <div className="flex justify-center my-4">
-      <svg
-        viewBox="0 0 300 300"
-        style={{ maxWidth: 280, width: "100%", margin: "0 auto" }}
-      >
+      <svg viewBox="0 0 300 300" style={{ maxWidth: 280, width: "100%", margin: "0 auto" }}>
         {slices.map((s) => (
           <g
             key={s.name}
@@ -96,12 +85,12 @@ function PuzzleWheel({ onSelect }: { onSelect: (piece: PuzzlePiece) => void }) {
             <path
               d={s.d}
               fill={s.color}
+              fillOpacity={s.opacity}
               stroke="white"
               strokeWidth="2"
-              className="transition-opacity hover:opacity-80"
+              className="transition-opacity hover:opacity-90"
             />
-            {/* Nub on outer arc */}
-            <circle cx={s.nubX} cy={s.nubY} r={6} fill={s.color} stroke="white" strokeWidth="1.5" />
+            <circle cx={s.nubX} cy={s.nubY} r={6} fill={s.color} fillOpacity={s.opacity} stroke="white" strokeWidth="1.5" />
             <text
               x={s.tx}
               y={s.ty}
@@ -116,7 +105,6 @@ function PuzzleWheel({ onSelect }: { onSelect: (piece: PuzzlePiece) => void }) {
             </text>
           </g>
         ))}
-        {/* Center circle with logo */}
         <circle cx={cx} cy={cy} r={40} fill="white" stroke="#e5e7eb" strokeWidth="2" />
         <defs>
           <clipPath id="centerClip">
@@ -134,1133 +122,407 @@ function PuzzleWheel({ onSelect }: { onSelect: (piece: PuzzlePiece) => void }) {
   );
 }
 
-// ============================================================
-// IDENTITY FORM (reusable — also used in wizard.tsx)
-// ============================================================
-
-interface IdentityFormValues {
-  areaId?: number | null;
-  statement?: string;
-  cue?: string | null;
-  timeOfDay?: string | null;
-  location?: string | null;
-  craving?: string | null;
-  reward?: string | null;
-}
-
-export function IdentityForm({
-  puzzlePiece,
-  showPieceSelector,
-  areas,
-  onSuccess,
-  initialValues,
-  identityId,
-}: {
-  puzzlePiece?: PuzzlePiece;
-  showPieceSelector?: boolean;
-  areas: Area[];
-  onSuccess?: () => void;
-  initialValues?: Partial<IdentityFormValues>;
-  identityId?: number;
-}) {
-  const [piece, setPiece] = useState<PuzzlePiece | "">(puzzlePiece || "");
-  const [areaId, setAreaId] = useState<string>(initialValues?.areaId ? String(initialValues.areaId) : "");
-  const [response, setResponse] = useState(initialValues?.statement || "");
-
-  const [cue, setCue] = useState(initialValues?.cue || "");
-  const [timeOfDay, setTimeOfDay] = useState(initialValues?.timeOfDay || "");
-  const [location, setLocation] = useState(initialValues?.location || "");
-  const [craving, setCraving] = useState(initialValues?.craving || "");
-  const [reward, setReward] = useState(initialValues?.reward || "");
-
-  const activePiece = puzzlePiece || (piece as PuzzlePiece);
-
-  const filteredAreas = useMemo(() => {
-    if (!activePiece) return areas;
-    const matched = areas.filter(a => a.puzzlePiece === activePiece);
-    return matched.length > 0 ? matched : areas;
-  }, [areas, activePiece]);
-
-  const createIdentity = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      identityId
-        ? apiRequest("PATCH", `/api/identities/${identityId}`, data)
-        : apiRequest("POST", "/api/identities", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
-      if (!identityId) {
-        // Reset form only for create mode
-        setResponse("");
-        setCue(""); setTimeOfDay(""); setLocation(""); setCraving(""); setReward("");
-        if (!puzzlePiece) setPiece("");
-        setAreaId("");
-      }
-      onSuccess?.();
-    },
-  });
-
-  const handleSubmit = () => {
-    if (!response.trim() || !activePiece) return;
-
-    const data: Record<string, unknown> = {
-      statement: response,
-      areaId: areaId ? Number(areaId) : null,
-      puzzlePiece: activePiece,
-      cue: cue || null,
-      timeOfDay: timeOfDay || null,
-      location: location || null,
-      craving: craving || null,
-      reward: reward || null,
-      frequency: JSON.stringify({ type: "daily", interval: 1 }),
-      active: 1,
-      createdAt: new Date().toISOString(),
-    };
-
-    createIdentity.mutate(data);
+function StatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    draft: "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/30",
+    project: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
+    routine: "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/30",
   };
-
-  const pieceInfo = PUZZLE_PIECES.find(p => p.name === activePiece);
-
+  const cls = styles[status] ?? styles.draft;
   return (
-    <div className="space-y-4">
-      {/* 1. Puzzle Piece */}
-      {showPieceSelector ? (
-        <div>
-          <label className="text-xs font-medium text-muted-foreground mb-2 block">Puzzle Piece</label>
-          <div className="flex gap-1.5 flex-wrap">
-            {PUZZLE_PIECES.map(p => (
-              <button
-                key={p.name}
-                onClick={() => setPiece(p.name)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
-                  piece === p.name
-                    ? "text-white border-transparent"
-                    : "bg-background text-foreground border-border hover:border-gray-400"
-                }`}
-                style={piece === p.name ? { backgroundColor: p.color } : {}}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : puzzlePiece && pieceInfo ? (
-        <div className="mb-4">
-          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-            For your {pieceInfo.label} piece
-          </p>
-          <p className="text-[11px] text-muted-foreground">{pieceInfo.descriptor}</p>
-        </div>
-      ) : null}
-
-      {/* 2. Area */}
-      <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">In the area of...</label>
-        <Select value={areaId} onValueChange={setAreaId}>
-          <SelectTrigger className="text-sm">
-            <SelectValue placeholder="Select an area" />
-          </SelectTrigger>
-          <SelectContent>
-            {filteredAreas.map(a => (
-              <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* 3. Response (identity statement) */}
-      <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">
-          I'm the type of person who will...
-        </label>
-        <Input
-          value={response}
-          onChange={e => setResponse(e.target.value)}
-          placeholder="e.g. exercise before breakfast, read daily, track every dollar"
-          className="text-sm"
-        />
-      </div>
-
-      {/* 4. Cue */}
-      <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">...triggered...</label>
-        <Input
-          value={cue}
-          onChange={e => setCue(e.target.value)}
-          placeholder="before/after [event] e.g. before bed, after lunch, while commuting"
-          className="text-sm"
-        />
-      </div>
-
-      {/* 6. Time of Day */}
-      <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">...in the...</label>
-        <Select value={timeOfDay} onValueChange={setTimeOfDay}>
-          <SelectTrigger className="text-sm">
-            <SelectValue placeholder="Select time of day" />
-          </SelectTrigger>
-          <SelectContent>
-            {TIME_OF_DAY_OPTIONS.map(t => (
-              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* 7. Location */}
-      <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">
-          ...in my...
-        </label>
-        <Input
-          value={location}
-          onChange={e => setLocation(e.target.value)}
-          placeholder="kitchen, gym, office, bedroom"
-          className="text-sm"
-        />
-        <p className="text-[10px] text-muted-foreground mt-0.5">
-          The backdrop where this identity plays out day-to-day
-        </p>
-      </div>
-
-      {/* 8. Craving */}
-      <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">...because I...</label>
-        <Input
-          value={craving}
-          onChange={e => setCraving(e.target.value)}
-          placeholder="e.g. want more energy, crave financial peace, need to feel strong"
-          className="text-sm"
-        />
-      </div>
-
-      {/* 9. Reward */}
-      <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">
-          ...so this makes sure I'll have...
-        </label>
-        <Input
-          value={reward}
-          onChange={e => setReward(e.target.value)}
-          placeholder="e.g. clean floors, balanced books, 10% body fat"
-          className="text-sm"
-        />
-      </div>
-
-      <Button
-        className="w-full h-9"
-        disabled={!response.trim() || !activePiece || createIdentity.isPending}
-        onClick={handleSubmit}
-      >
-        {createIdentity.isPending ? "Saving..." : identityId ? "Save Identity" : "Create Identity"}
-      </Button>
-    </div>
+    <Badge variant="outline" className={`text-[10px] h-5 px-1.5 uppercase tracking-wide ${cls}`}>
+      {status === "routine" && <Check className="w-2.5 h-2.5 mr-0.5" />}
+      {status}
+    </Badge>
   );
 }
 
-// ============================================================
-// PIECE DETAIL VIEW
-// ============================================================
+function GlobalNonNegotiableCard({ piece }: { piece: PieceKey }) {
+  const { data: nonNegotiables = [] } = useQuery<NonNegotiable[]>({
+    queryKey: ["/api/non-negotiables"],
+  });
 
-function PieceDetailView({
-  piece,
-  onBack,
+  const existing = useMemo(
+    () => nonNegotiables.find(n => n.areaId == null && n.puzzlePiece === piece),
+    [nonNegotiables, piece]
+  );
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [text, setText] = useState("");
+
+  useEffect(() => {
+    if (isEditing) setText(existing?.statement ?? "");
+  }, [isEditing, existing]);
+
+  const pieceInfo = PUZZLE_PIECES.find(p => p.name === piece)!;
+
+  const updateMutation = useMutation({
+    mutationFn: (statement: string) =>
+      existing
+        ? apiRequest("PATCH", `/api/non-negotiables/${existing.id}`, { statement })
+        : apiRequest("POST", "/api/non-negotiables", {
+            puzzlePiece: piece,
+            statement,
+            areaId: null,
+            createdAt: new Date().toISOString(),
+          }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/non-negotiables"] });
+      setIsEditing(false);
+    },
+  });
+
+  const handleSave = () => {
+    if (!text.trim()) return;
+    updateMutation.mutate(text.trim());
+  };
+
+  return (
+    <Card className="border-l-4" style={{ borderLeftColor: pieceInfo.color }}>
+      <CardContent className="p-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+          {pieceInfo.label} boundary
+        </p>
+        {isEditing ? (
+          <div className="space-y-2">
+            <Input
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder={`Your ${pieceInfo.label.toLowerCase()} non-negotiable...`}
+              className="text-sm"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                disabled={!text.trim() || updateMutation.isPending}
+                onClick={handleSave}
+              >
+                {updateMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setIsEditing(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setIsEditing(true)}
+            className="w-full text-left"
+          >
+            {existing ? (
+              <p className="text-sm font-medium">{existing.statement}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">
+                Tap to add your {pieceInfo.label} boundary...
+              </p>
+            )}
+          </button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function IdentityRow({
+  identity,
+  areaName,
+  pieceColor,
+  tasksForIdentity,
 }: {
-  piece: PuzzlePiece;
-  onBack: () => void;
+  identity: Identity;
+  areaName: string;
+  pieceColor: string;
+  tasksForIdentity: PlannerTask[];
 }) {
+  const [, setLocation] = useLocation();
+  const status = identity.status ?? "draft";
+
+  const handleTap = () => {
+    if (status === "draft") setLocation("/drafts");
+    else if (status === "project") setLocation(`/projects/${identity.id}/build`);
+  };
+
+  const totalTasks = tasksForIdentity.length;
+  const doneTasks = tasksForIdentity.filter(t => t.status === "done").length;
+
+  return (
+    <button
+      onClick={handleTap}
+      className="w-full text-left"
+      disabled={status === "routine"}
+    >
+      <Card className="border-l-4 transition-colors hover:bg-accent/40" style={{ borderLeftColor: pieceColor }}>
+        <CardContent className="p-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">{areaName}</p>
+              <p className="text-sm font-medium">
+                <span className="text-muted-foreground">I am someone who </span>
+                {identity.statement}
+              </p>
+              {status === "project" && totalTasks > 0 && (
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {doneTasks}/{totalTasks} tasks done
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <StatusBadge status={status} />
+              {status !== "routine" && <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </button>
+  );
+}
+
+function PieceDetailView({ piece, onBack }: { piece: PieceKey; onBack: () => void }) {
   const pieceInfo = PUZZLE_PIECES.find(p => p.name === piece)!;
 
   const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
-  const { data: beliefsData = [] } = useQuery<Belief[]>({ queryKey: ["/api/beliefs"] });
-  const { data: antiHabitsData = [] } = useQuery<AntiHabit[]>({ queryKey: ["/api/anti-habits"] });
-  const { data: lawsData = [] } = useQuery<ImmutableLaw[]>({ queryKey: ["/api/immutable-laws"] });
   const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
+  const { data: projects = [] } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
+  const { data: plannerTasks = [] } = useQuery<PlannerTask[]>({ queryKey: ["/api/planner-tasks"] });
 
-  const pieceIdentities = useMemo(() => identities.filter(i => i.puzzlePiece === piece), [identities, piece]);
-  const pieceBeliefs = useMemo(() => beliefsData.filter(b => b.puzzlePiece === piece), [beliefsData, piece]);
-  const pieceAntiHabits = useMemo(() => antiHabitsData.filter(a => a.puzzlePiece === piece), [antiHabitsData, piece]);
-  const pieceLaws = useMemo(() => lawsData.filter(l => l.puzzlePiece === piece), [lawsData, piece]);
+  const pieceIdentities = useMemo(
+    () => identities.filter(i => i.puzzlePiece === piece),
+    [identities, piece]
+  );
 
-  const [showIdentityForm, setShowIdentityForm] = useState(false);
-  const [showBeliefForm, setShowBeliefForm] = useState(false);
-  const [showAntiHabitForm, setShowAntiHabitForm] = useState(false);
-  const [showLawForm, setShowLawForm] = useState(false);
+  const identitiesByArea = useMemo(() => {
+    const map = new Map<number, Identity[]>();
+    for (const id of pieceIdentities) {
+      const list = map.get(id.areaId) ?? [];
+      list.push(id);
+      map.set(id.areaId, list);
+    }
+    return map;
+  }, [pieceIdentities]);
 
-  const [showAllIdentities, setShowAllIdentities] = useState(false);
-  const [showAllBeliefs, setShowAllBeliefs] = useState(false);
-  const [showAllAntiHabits, setShowAllAntiHabits] = useState(false);
-  const [showAllLaws, setShowAllLaws] = useState(false);
+  const tasksByIdentityId = useMemo(() => {
+    const map = new Map<number, PlannerTask[]>();
+    for (const t of plannerTasks) {
+      if (t.identityId == null) continue;
+      const list = map.get(t.identityId) ?? [];
+      list.push(t);
+      map.set(t.identityId, list);
+    }
+    return map;
+  }, [plannerTasks]);
 
-  const [editingIdentityId, setEditingIdentityId] = useState<number | null>(null);
-  const [deletingIdentityId, setDeletingIdentityId] = useState<number | null>(null);
-  const [editingBeliefId, setEditingBeliefId] = useState<number | null>(null);
-  const [deletingBeliefId, setDeletingBeliefId] = useState<number | null>(null);
-  const [editingAntiHabitId, setEditingAntiHabitId] = useState<number | null>(null);
-  const [deletingAntiHabitId, setDeletingAntiHabitId] = useState<number | null>(null);
-  const [editingLawId, setEditingLawId] = useState<number | null>(null);
-  const [deletingLawId, setDeletingLawId] = useState<number | null>(null);
+  // Tasks linked via project → identity (fallback for project tasks tracked by projectId)
+  const tasksByProjectId = useMemo(() => {
+    const map = new Map<number, PlannerTask[]>();
+    for (const t of plannerTasks) {
+      if (t.projectId == null) continue;
+      const list = map.get(t.projectId) ?? [];
+      list.push(t);
+      map.set(t.projectId, list);
+    }
+    return map;
+  }, [plannerTasks]);
 
-  const activeAreas = useMemo(() => areas.filter(a => !a.archived), [areas]);
+  const tasksForIdentity = (identityId: number): PlannerTask[] => {
+    const direct = tasksByIdentityId.get(identityId) ?? [];
+    const relatedProjects = projects.filter(p => p.identityId === identityId);
+    const projectTasks = relatedProjects.flatMap(p => tasksByProjectId.get(p.id) ?? []);
+    const merged = new Map<number, PlannerTask>();
+    for (const t of [...direct, ...projectTasks]) merged.set(t.id, t);
+    return Array.from(merged.values());
+  };
 
-  // ---- Mutations for edit/delete ----
-  const patchIdentity = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
-      apiRequest("PATCH", `/api/identities/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
-      setEditingIdentityId(null);
-    },
-  });
-  const deleteIdentity = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/identities/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/identities"] });
-      setDeletingIdentityId(null);
-    },
-  });
-  const patchBelief = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
-      apiRequest("PATCH", `/api/beliefs/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/beliefs"] });
-      setEditingBeliefId(null);
-    },
-  });
-  const deleteBelief = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/beliefs/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/beliefs"] });
-      setDeletingBeliefId(null);
-    },
-  });
-  const patchAntiHabit = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
-      apiRequest("PATCH", `/api/anti-habits/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/anti-habits"] });
-      setEditingAntiHabitId(null);
-    },
-  });
-  const deleteAntiHabit = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/anti-habits/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/anti-habits"] });
-      setDeletingAntiHabitId(null);
-    },
-  });
-  const patchLaw = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
-      apiRequest("PATCH", `/api/immutable-laws/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/immutable-laws"] });
-      setEditingLawId(null);
-    },
-  });
-  const deleteLaw = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/immutable-laws/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/immutable-laws"] });
-      setDeletingLawId(null);
-    },
+  const orderedAreaIds = Array.from(identitiesByArea.keys()).sort((a, b) => {
+    const idxA = areas.findIndex(ar => ar.id === a);
+    const idxB = areas.findIndex(ar => ar.id === b);
+    return idxA - idxB;
   });
 
   return (
     <div className="bg-background">
-      <div className="max-w-2xl mx-auto px-4 py-6 pb-24 space-y-6">
-        {/* Back + header */}
-        <button onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+      <div className="max-w-2xl mx-auto px-4 py-6 pb-24 space-y-4">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
           <ChevronLeft className="w-4 h-4" /> Back to wheel
         </button>
 
-        <div className="rounded-lg p-1" style={{ backgroundColor: pieceInfo.color }}>
-          <div className="bg-background rounded-md px-4 py-3">
-            <h1 className="text-xl font-bold" style={{ color: pieceInfo.color }}>{pieceInfo.label}</h1>
-            <p className="text-sm text-muted-foreground">{pieceInfo.descriptor}</p>
+        <div className="flex items-center gap-3">
+          <div
+            className="w-4 h-4 rounded-full"
+            style={{ backgroundColor: pieceInfo.color }}
+            aria-hidden
+          />
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: pieceInfo.color }}>
+              {pieceInfo.label}
+            </h1>
+            <p className="text-xs text-muted-foreground">{pieceInfo.descriptor}</p>
           </div>
         </div>
 
-        {/* Identities section */}
-        <Section
-          title="Identities"
-          count={pieceIdentities.length}
-          showAll={showAllIdentities}
-          onToggleShowAll={() => setShowAllIdentities(!showAllIdentities)}
-        >
-          {(showAllIdentities ? pieceIdentities : pieceIdentities.slice(0, 3)).map(id => (
-            <Card key={id.id} className="border-l-4" style={{ borderLeftColor: pieceInfo.color }}>
-              <CardContent className="p-3">
-                {editingIdentityId === id.id ? (
-                  <IdentityForm
-                    puzzlePiece={piece}
-                    areas={activeAreas}
-                    onSuccess={() => setEditingIdentityId(null)}
-                    initialValues={{
-                      areaId: id.areaId,
-                      statement: id.statement,
-                      cue: id.cue,
-                      timeOfDay: id.timeOfDay,
-                      location: id.location,
-                      craving: id.craving,
-                      reward: id.reward,
-                    }}
-                    identityId={id.id}
-                  />
-                ) : deletingIdentityId === id.id ? (
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">Delete this identity?</p>
-                    <div className="flex gap-1.5">
-                      <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => deleteIdentity.mutate(id.id)} disabled={deleteIdentity.isPending}>
-                        {deleteIdentity.isPending ? "..." : "Delete"}
-                      </Button>
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDeletingIdentityId(null)}>Cancel</Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{id.statement}</p>
-                      {id.cue && <p className="text-[11px] text-muted-foreground mt-0.5">triggered {id.cue}</p>}
-                      {id.timeOfDay && <p className="text-[11px] text-muted-foreground">in the {id.timeOfDay}</p>}
-                      {id.location && <p className="text-[11px] text-muted-foreground">at {id.location}</p>}
-                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                        <Link href={`/projects/${id.id}`}>
-                          <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-1 cursor-pointer hover:bg-primary/10 transition-colors text-primary border-primary/20">
-                            <FolderOpen className="w-2.5 h-2.5" /> Project
-                          </Badge>
-                        </Link>
-                        <Link href="/routine">
-                          <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-1 cursor-pointer hover:bg-violet-500/10 transition-colors text-violet-600 dark:text-violet-400 border-violet-500/30">
-                            <Repeat2 className="w-2.5 h-2.5" /> Routine
-                          </Badge>
-                        </Link>
-                        <Link href="/planner">
-                          <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-1 cursor-pointer hover:bg-primary/10 transition-colors text-primary border-primary/20">
-                            <Clock className="w-2.5 h-2.5" /> Daily Agenda
-                          </Badge>
-                        </Link>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => setEditingIdentityId(id.id)} className="p-1 text-muted-foreground hover:text-foreground transition-colors">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => setDeletingIdentityId(id.id)} className="p-1 text-muted-foreground hover:text-red-500 transition-colors">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-          <Button variant="outline" size="sm" className="w-full gap-1" onClick={() => setShowIdentityForm(!showIdentityForm)}>
-            <Plus className="w-3.5 h-3.5" /> Add Identity
-          </Button>
-          {showIdentityForm && (
-            <Card className="border-l-4" style={{ borderLeftColor: pieceInfo.color }}>
-              <CardContent className="p-4">
-                <IdentityForm
-                  puzzlePiece={piece}
-                  areas={activeAreas}
-                  onSuccess={() => setShowIdentityForm(false)}
-                />
-              </CardContent>
-            </Card>
-          )}
-        </Section>
+        <GlobalNonNegotiableCard piece={piece} />
 
-        {/* Beliefs section */}
-        <Section
-          title="Beliefs"
-          count={pieceBeliefs.length}
-          showAll={showAllBeliefs}
-          onToggleShowAll={() => setShowAllBeliefs(!showAllBeliefs)}
-        >
-          {(showAllBeliefs ? pieceBeliefs : pieceBeliefs.slice(0, 3)).map(b => (
-            <Card key={b.id} className="border-l-4" style={{ borderLeftColor: pieceInfo.color }}>
-              <CardContent className="p-3">
-                {editingBeliefId === b.id ? (
-                  <BeliefEditForm
-                    belief={b}
-                    onSave={(data) => patchBelief.mutate({ id: b.id, data })}
-                    onCancel={() => setEditingBeliefId(null)}
-                    isPending={patchBelief.isPending}
-                  />
-                ) : deletingBeliefId === b.id ? (
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">Delete this belief?</p>
-                    <div className="flex gap-1.5">
-                      <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => deleteBelief.mutate(b.id)} disabled={deleteBelief.isPending}>
-                        {deleteBelief.isPending ? "..." : "Delete"}
-                      </Button>
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDeletingBeliefId(null)}>Cancel</Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-muted-foreground line-through">{b.oldBelief}</p>
-                      <p className="text-sm font-medium mt-0.5">{b.newBelief}</p>
-                      {b.whyItMatters && <p className="text-[11px] text-muted-foreground mt-0.5 italic">{b.whyItMatters}</p>}
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => setEditingBeliefId(b.id)} className="p-1 text-muted-foreground hover:text-foreground transition-colors">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => setDeletingBeliefId(b.id)} className="p-1 text-muted-foreground hover:text-red-500 transition-colors">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-          <Button variant="outline" size="sm" className="w-full gap-1" onClick={() => setShowBeliefForm(!showBeliefForm)}>
-            <Plus className="w-3.5 h-3.5" /> Add Belief
-          </Button>
-          {showBeliefForm && (
-            <BeliefForm piece={piece} areas={activeAreas} color={pieceInfo.color} onSuccess={() => setShowBeliefForm(false)} />
-          )}
-        </Section>
-
-        {/* Anti-Habits section */}
-        <Section
-          title="Anti-Habits"
-          count={pieceAntiHabits.length}
-          showAll={showAllAntiHabits}
-          onToggleShowAll={() => setShowAllAntiHabits(!showAllAntiHabits)}
-        >
-          {(showAllAntiHabits ? pieceAntiHabits : pieceAntiHabits.slice(0, 3)).map(a => (
-            <Card key={a.id} className="border-l-4" style={{ borderLeftColor: pieceInfo.color }}>
-              <CardContent className="p-3">
-                {editingAntiHabitId === a.id ? (
-                  <AntiHabitEditForm
-                    antiHabit={a}
-                    onSave={(data) => patchAntiHabit.mutate({ id: a.id, data })}
-                    onCancel={() => setEditingAntiHabitId(null)}
-                    isPending={patchAntiHabit.isPending}
-                  />
-                ) : deletingAntiHabitId === a.id ? (
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">Delete this anti-habit?</p>
-                    <div className="flex gap-1.5">
-                      <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => deleteAntiHabit.mutate(a.id)} disabled={deleteAntiHabit.isPending}>
-                        {deleteAntiHabit.isPending ? "..." : "Delete"}
-                      </Button>
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDeletingAntiHabitId(null)}>Cancel</Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{a.title}</p>
-                      {a.makeInvisible && <p className="text-[11px] text-muted-foreground mt-0.5">Remove cue: {a.makeInvisible}</p>}
-                      {a.makeDifficult && <p className="text-[11px] text-muted-foreground">Add friction: {a.makeDifficult}</p>}
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => setEditingAntiHabitId(a.id)} className="p-1 text-muted-foreground hover:text-foreground transition-colors">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => setDeletingAntiHabitId(a.id)} className="p-1 text-muted-foreground hover:text-red-500 transition-colors">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-          <Button variant="outline" size="sm" className="w-full gap-1" onClick={() => setShowAntiHabitForm(!showAntiHabitForm)}>
-            <Plus className="w-3.5 h-3.5" /> Add Anti-Habit
-          </Button>
-          {showAntiHabitForm && (
-            <AntiHabitForm piece={piece} color={pieceInfo.color} onSuccess={() => setShowAntiHabitForm(false)} />
-          )}
-        </Section>
-
-        {/* Immutable Laws section */}
-        <Section
-          title="Immutable Laws"
-          count={pieceLaws.length}
-          showAll={showAllLaws}
-          onToggleShowAll={() => setShowAllLaws(!showAllLaws)}
-        >
-          {(showAllLaws ? pieceLaws : pieceLaws.slice(0, 3)).map(law => {
-            const LEVEL_BADGE: Record<number, { label: string; className: string }> = {
-              1: { label: "Awareness", className: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
-              2: { label: "Friction",  className: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20" },
-              3: { label: "Block",     className: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20" },
-            };
-            const levelBadge = LEVEL_BADGE[law.enforcementLevel ?? 1] ?? LEVEL_BADGE[1];
-            return (
-              <Card key={law.id} className="border-l-4" style={{ borderLeftColor: pieceInfo.color }}>
-                <CardContent className="p-3">
-                  {editingLawId === law.id ? (
-                    <LawEditForm
-                      law={law}
-                      onSave={(data) => patchLaw.mutate({ id: law.id, data })}
-                      onCancel={() => setEditingLawId(null)}
-                      isPending={patchLaw.isPending}
-                    />
-                  ) : deletingLawId === law.id ? (
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-muted-foreground">Delete this law?</p>
-                      <div className="flex gap-1.5">
-                        <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => deleteLaw.mutate(law.id)} disabled={deleteLaw.isPending}>
-                          {deleteLaw.isPending ? "..." : "Delete"}
-                        </Button>
-                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDeletingLawId(null)}>Cancel</Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className="text-sm font-medium">{law.title}</p>
-                          <Badge variant="outline" className={`text-[9px] h-4 px-1 ${levelBadge.className}`}>
-                            {levelBadge.label}
-                          </Badge>
-                          {law.isRedLine === 1 && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" title="Red line" />
-                          )}
-                          {law.isPrimary === 1 && (
-                            <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-                          )}
-                        </div>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">{law.statement}</p>
-                        {law.whyItMatters && <p className="text-[11px] text-muted-foreground mt-0.5 italic">{law.whyItMatters}</p>}
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button onClick={() => setEditingLawId(law.id)} className="p-1 text-muted-foreground hover:text-foreground transition-colors">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => setDeletingLawId(law.id)} className="p-1 text-muted-foreground hover:text-red-500 transition-colors">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-          <Button variant="outline" size="sm" className="w-full gap-1" onClick={() => setShowLawForm(!showLawForm)}>
-            <Plus className="w-3.5 h-3.5" /> Add Law
-          </Button>
-          {showLawForm && (
-            <LawForm piece={piece} color={pieceInfo.color} onSuccess={() => setShowLawForm(false)} />
-          )}
-        </Section>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// INLINE EDIT FORMS
-// ============================================================
-
-function IdentityEditForm({
-  identity,
-  onSave,
-  onCancel,
-  isPending,
-}: {
-  identity: Identity;
-  onSave: (data: Record<string, unknown>) => void;
-  onCancel: () => void;
-  isPending: boolean;
-}) {
-  const [statement, setStatement] = useState(identity.statement);
-  const [cue, setCue] = useState(identity.cue ?? "");
-  const [timeOfDay, setTimeOfDay] = useState(identity.timeOfDay ?? "");
-  const [location, setLocation] = useState(identity.location ?? "");
-  const [craving, setCraving] = useState(identity.craving ?? "");
-  const [reward, setReward] = useState(identity.reward ?? "");
-
-  return (
-    <div className="space-y-2">
-      <Input value={statement} onChange={e => setStatement(e.target.value)} placeholder="I'm the type of person who will..." className="text-sm" />
-      <Input value={cue} onChange={e => setCue(e.target.value)} placeholder="triggered..." className="text-sm" />
-      <Select value={timeOfDay} onValueChange={setTimeOfDay}>
-        <SelectTrigger className="text-sm"><SelectValue placeholder="Time of day" /></SelectTrigger>
-        <SelectContent>
-          {TIME_OF_DAY_OPTIONS.map(t => (
-            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Input value={location} onChange={e => setLocation(e.target.value)} placeholder="Where will this take place?" className="text-sm" />
-      <Input value={craving} onChange={e => setCraving(e.target.value)} placeholder="because I..." className="text-sm" />
-      <Input value={reward} onChange={e => setReward(e.target.value)} placeholder="so this makes sure I'll have..." className="text-sm" />
-      <div className="flex gap-2">
-        <Button size="sm" className="h-7 text-xs" disabled={!statement.trim() || isPending} onClick={() => onSave({ statement, cue: cue || null, timeOfDay: timeOfDay || null, location: location || null, craving: craving || null, reward: reward || null })}>
-          {isPending ? "Saving..." : "Save"}
-        </Button>
-        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onCancel}>Cancel</Button>
-      </div>
-    </div>
-  );
-}
-
-function BeliefEditForm({
-  belief,
-  onSave,
-  onCancel,
-  isPending,
-}: {
-  belief: Belief;
-  onSave: (data: Record<string, unknown>) => void;
-  onCancel: () => void;
-  isPending: boolean;
-}) {
-  const [oldBelief, setOldBelief] = useState(belief.oldBelief);
-  const [newBelief, setNewBelief] = useState(belief.newBelief);
-  const [whyItMatters, setWhyItMatters] = useState(belief.whyItMatters ?? "");
-
-  return (
-    <div className="space-y-2">
-      <Input value={oldBelief} onChange={e => setOldBelief(e.target.value)} placeholder="A belief I'm replacing..." className="text-sm" />
-      <Input value={newBelief} onChange={e => setNewBelief(e.target.value)} placeholder="I now choose to believe..." className="text-sm" />
-      <Input value={whyItMatters} onChange={e => setWhyItMatters(e.target.value)} placeholder="Why this matters... (optional)" className="text-sm" />
-      <div className="flex gap-2">
-        <Button size="sm" className="h-7 text-xs" disabled={!oldBelief.trim() || !newBelief.trim() || isPending} onClick={() => onSave({ oldBelief, newBelief, whyItMatters: whyItMatters || null })}>
-          {isPending ? "Saving..." : "Save"}
-        </Button>
-        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onCancel}>Cancel</Button>
-      </div>
-    </div>
-  );
-}
-
-function AntiHabitEditForm({
-  antiHabit,
-  onSave,
-  onCancel,
-  isPending,
-}: {
-  antiHabit: AntiHabit;
-  onSave: (data: Record<string, unknown>) => void;
-  onCancel: () => void;
-  isPending: boolean;
-}) {
-  const [name, setName] = useState(antiHabit.title);
-  const [trigger, setTrigger] = useState(antiHabit.makeInvisible ?? "");
-  const [whatToDoInstead, setWhatToDoInstead] = useState(antiHabit.makeDifficult ?? "");
-  const [whyItMatters, setWhyItMatters] = useState(antiHabit.description ?? "");
-
-  return (
-    <div className="space-y-2">
-      <Input value={name} onChange={e => setName(e.target.value)} placeholder="The habit I'm breaking..." className="text-sm" />
-      <Input value={trigger} onChange={e => setTrigger(e.target.value)} placeholder="It usually happens when..." className="text-sm" />
-      <Input value={whatToDoInstead} onChange={e => setWhatToDoInstead(e.target.value)} placeholder="Instead, I will..." className="text-sm" />
-      <Input value={whyItMatters} onChange={e => setWhyItMatters(e.target.value)} placeholder="Because... (optional)" className="text-sm" />
-      <div className="flex gap-2">
-        <Button size="sm" className="h-7 text-xs" disabled={!name.trim() || isPending} onClick={() => onSave({ title: name, makeInvisible: trigger || null, makeDifficult: whatToDoInstead || null, description: whyItMatters || null })}>
-          {isPending ? "Saving..." : "Save"}
-        </Button>
-        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onCancel}>Cancel</Button>
-      </div>
-    </div>
-  );
-}
-
-function LawEditForm({
-  law,
-  onSave,
-  onCancel,
-  isPending,
-}: {
-  law: ImmutableLaw;
-  onSave: (data: Record<string, unknown>) => void;
-  onCancel: () => void;
-  isPending: boolean;
-}) {
-  const [title, setTitle] = useState(law.title);
-  const [statement, setStatement] = useState(law.statement);
-  const [whyItMatters, setWhyItMatters] = useState(law.whyItMatters ?? "");
-  const [enforcementLevel, setEnforcementLevel] = useState<1 | 2 | 3>((law.enforcementLevel ?? 1) as 1 | 2 | 3);
-  const [isRedLine, setIsRedLine] = useState(law.isRedLine === 1);
-  const [isPrimary, setIsPrimary] = useState(law.isPrimary === 1);
-
-  return (
-    <div className="space-y-2">
-      <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Name this law" className="text-sm" />
-      <Textarea value={statement} onChange={e => setStatement(e.target.value)} placeholder="Law statement" className="text-sm min-h-[60px]" />
-      <Input value={whyItMatters} onChange={e => setWhyItMatters(e.target.value)} placeholder="Why this protects you (optional)" className="text-sm" />
-      <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Enforcement level</label>
-        <div className="flex gap-1.5">
-          {([1, 2, 3] as const).map(level => {
-            const labels: Record<number, string> = { 1: "1 · Awareness", 2: "2 · Friction", 3: "3 · Block" };
-            const colors: Record<number, string> = {
-              1: "bg-amber-500 text-white border-amber-500",
-              2: "bg-orange-500 text-white border-orange-500",
-              3: "bg-red-500 text-white border-red-500",
-            };
-            return (
-              <button
-                key={level}
-                onClick={() => setEnforcementLevel(level)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
-                  enforcementLevel === level
-                    ? colors[level]
-                    : "bg-background text-foreground border-border hover:bg-accent"
-                }`}
-              >
-                {labels[level]}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <div className="flex flex-col gap-2">
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={isRedLine} onChange={e => setIsRedLine(e.target.checked)} className="rounded" />
-          Red line (hard boundary)
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={isPrimary} onChange={e => setIsPrimary(e.target.checked)} className="rounded" />
-          Primary law for this piece
-        </label>
-      </div>
-      <div className="flex gap-2">
-        <Button size="sm" className="h-7 text-xs" disabled={!title.trim() || !statement.trim() || isPending} onClick={() => onSave({ title, statement, whyItMatters: whyItMatters || null, enforcementLevel: Number(enforcementLevel), isRedLine: isRedLine ? 1 : 0, isPrimary: isPrimary ? 1 : 0 })}>
-          {isPending ? "Saving..." : "Save"}
-        </Button>
-        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onCancel}>Cancel</Button>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// SECTION WRAPPER
-// ============================================================
-
-function Section({
-  title,
-  count,
-  showAll,
-  onToggleShowAll,
-  children,
-}: {
-  title: string;
-  count: number;
-  showAll: boolean;
-  onToggleShowAll: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">{title}</h2>
-        {count > 3 && (
-          <button onClick={onToggleShowAll} className="text-xs text-primary flex items-center gap-0.5">
-            {showAll ? <>Show less <ChevronUp className="w-3 h-3" /></> : <>Show all ({count}) <ChevronDown className="w-3 h-3" /></>}
-          </button>
-        )}
-      </div>
-      <div className="space-y-2">{children}</div>
-    </div>
-  );
-}
-
-// ============================================================
-// BELIEF FORM (inline)
-// ============================================================
-
-function BeliefForm({
-  piece,
-  areas,
-  color,
-  onSuccess,
-}: {
-  piece: PuzzlePiece;
-  areas: Area[];
-  color: string;
-  onSuccess: () => void;
-}) {
-  const [oldBelief, setOldBelief] = useState("");
-  const [newBelief, setNewBelief] = useState("");
-  const [whyItMatters, setWhyItMatters] = useState("");
-  const [areaId, setAreaId] = useState("");
-
-  const filteredAreas = useMemo(() => {
-    const matched = areas.filter(a => a.puzzlePiece === piece);
-    return matched.length > 0 ? matched : areas;
-  }, [areas, piece]);
-
-  const createBelief = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      apiRequest("POST", "/api/beliefs", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/beliefs"] });
-      setOldBelief(""); setNewBelief(""); setWhyItMatters(""); setAreaId("");
-      onSuccess();
-    },
-  });
-
-  return (
-    <Card className="border-l-4" style={{ borderLeftColor: color }}>
-      <CardContent className="p-4 space-y-3">
-        <Input value={oldBelief} onChange={e => setOldBelief(e.target.value)} placeholder="A belief I'm replacing..." className="text-sm" />
-        <Input value={newBelief} onChange={e => setNewBelief(e.target.value)} placeholder="I now choose to believe..." className="text-sm" />
-        <Textarea value={whyItMatters} onChange={e => setWhyItMatters(e.target.value)} placeholder="Why this matters... (optional)" className="text-sm min-h-[60px]" />
-        <Select value={areaId} onValueChange={setAreaId}>
-          <SelectTrigger className="text-sm"><SelectValue placeholder="Area (optional)" /></SelectTrigger>
-          <SelectContent>
-            {filteredAreas.map(a => (
-              <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button
-          className="w-full h-9"
-          disabled={!oldBelief.trim() || !newBelief.trim() || createBelief.isPending}
-          onClick={() => createBelief.mutate({
-            puzzlePiece: piece,
-            oldBelief,
-            newBelief,
-            whyItMatters: whyItMatters || null,
-            areaId: areaId ? Number(areaId) : null,
-            active: 1,
-            createdAt: new Date().toISOString(),
-          })}
-        >
-          {createBelief.isPending ? "Saving..." : "Save Belief"}
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ============================================================
-// ANTI-HABIT FORM (inline)
-// ============================================================
-
-function AntiHabitForm({
-  piece,
-  color,
-  onSuccess,
-}: {
-  piece: PuzzlePiece;
-  color: string;
-  onSuccess: () => void;
-}) {
-  const [name, setName] = useState("");
-  const [trigger, setTrigger] = useState("");
-  const [whatToDoInstead, setWhatToDoInstead] = useState("");
-  const [whyItMatters, setWhyItMatters] = useState("");
-
-  const createAntiHabit = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      apiRequest("POST", "/api/anti-habits", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/anti-habits"] });
-      setName(""); setTrigger(""); setWhatToDoInstead(""); setWhyItMatters("");
-      onSuccess();
-    },
-  });
-
-  return (
-    <Card className="border-l-4" style={{ borderLeftColor: color }}>
-      <CardContent className="p-4 space-y-3">
-        <Input value={name} onChange={e => setName(e.target.value)} placeholder="The habit I'm breaking..." className="text-sm" />
-        <Input value={trigger} onChange={e => setTrigger(e.target.value)} placeholder="It usually happens when..." className="text-sm" />
-        <Input value={whatToDoInstead} onChange={e => setWhatToDoInstead(e.target.value)} placeholder="Instead, I will..." className="text-sm" />
-        <Input value={whyItMatters} onChange={e => setWhyItMatters(e.target.value)} placeholder="Because... (optional)" className="text-sm" />
-        <Button
-          className="w-full h-9"
-          disabled={!name.trim() || createAntiHabit.isPending}
-          onClick={() => createAntiHabit.mutate({
-            puzzlePiece: piece,
-            title: name,
-            makeInvisible: trigger || null,
-            makeDifficult: whatToDoInstead || null,
-            description: whyItMatters || null,
-            active: 1,
-            createdAt: new Date().toISOString(),
-          })}
-        >
-          {createAntiHabit.isPending ? "Saving..." : "Save Anti-Habit"}
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ============================================================
-// LAW FORM (inline)
-// ============================================================
-
-function LawForm({
-  piece,
-  color,
-  onSuccess,
-}: {
-  piece: PuzzlePiece;
-  color: string;
-  onSuccess: () => void;
-}) {
-  const [title, setTitle] = useState("");
-  const [statement, setStatement] = useState("");
-  const [whyItMatters, setWhyItMatters] = useState("");
-  const [enforcementLevel, setEnforcementLevel] = useState<1 | 2 | 3>(1);
-  const [isRedLine, setIsRedLine] = useState(false);
-  const [isPrimary, setIsPrimary] = useState(false);
-
-  const createLaw = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      apiRequest("POST", "/api/immutable-laws", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/immutable-laws"] });
-      setTitle(""); setStatement(""); setWhyItMatters("");
-      setEnforcementLevel(1); setIsRedLine(false); setIsPrimary(false);
-      onSuccess();
-    },
-  });
-
-  return (
-    <Card className="border-l-4" style={{ borderLeftColor: color }}>
-      <CardContent className="p-4 space-y-3">
-        <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Name this law (short)" className="text-sm" />
-        <Textarea value={statement} onChange={e => setStatement(e.target.value)} placeholder="e.g. I will not sacrifice sleep for productivity" className="text-sm min-h-[60px]" />
-        <Input value={whyItMatters} onChange={e => setWhyItMatters(e.target.value)} placeholder="Why this protects you (optional)" className="text-sm" />
-
-        {/* Enforcement level toggle */}
-        <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Enforcement level</label>
-          <div className="flex gap-1.5">
-            {([1, 2, 3] as const).map(level => {
-              const labels: Record<number, string> = { 1: "1 · Awareness", 2: "2 · Friction", 3: "3 · Block" };
-              const colors: Record<number, string> = {
-                1: "bg-amber-500 text-white border-amber-500",
-                2: "bg-orange-500 text-white border-orange-500",
-                3: "bg-red-500 text-white border-red-500",
-              };
+        {orderedAreaIds.length === 0 ? (
+          <Card>
+            <CardContent className="p-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                No identities yet for {pieceInfo.label}. Create one from the wizard or Clarity page.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {orderedAreaIds.map(areaId => {
+              const area = areas.find(a => a.id === areaId);
+              const list = identitiesByArea.get(areaId) ?? [];
+              if (!area) return null;
               return (
-                <button
-                  key={level}
-                  onClick={() => setEnforcementLevel(level)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
-                    enforcementLevel === level
-                      ? colors[level]
-                      : "bg-background text-foreground border-border hover:bg-accent"
-                  }`}
-                >
-                  {labels[level]}
-                </button>
+                <div key={areaId} className="space-y-2">
+                  <h2 className="text-sm font-semibold text-foreground">{area.name}</h2>
+                  <div className="space-y-2">
+                    {list.map(id => (
+                      <IdentityRow
+                        key={id.id}
+                        identity={id}
+                        areaName={area.name}
+                        pieceColor={pieceInfo.color}
+                        tasksForIdentity={tasksForIdentity(id.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
               );
             })}
           </div>
-        </div>
-
-        {/* Checkboxes */}
-        <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={isRedLine} onChange={e => setIsRedLine(e.target.checked)} className="rounded" />
-            This is a red line (hard boundary)
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={isPrimary} onChange={e => setIsPrimary(e.target.checked)} className="rounded" />
-            Set as primary law for this piece
-          </label>
-        </div>
-
-        <Button
-          className="w-full h-9"
-          disabled={!title.trim() || !statement.trim() || createLaw.isPending}
-          onClick={() => createLaw.mutate({
-            puzzlePiece: piece,
-            title,
-            statement,
-            whyItMatters: whyItMatters || null,
-            enforcementLevel: Number(enforcementLevel),
-            isRedLine: isRedLine ? 1 : 0,
-            isPrimary: isPrimary ? 1 : 0,
-            linkedIdentityIds: null,
-            triggerConditions: null,
-            active: 1,
-            createdAt: new Date().toISOString(),
-          })}
-        >
-          {createLaw.isPending ? "Saving..." : "Save Law"}
-        </Button>
-      </CardContent>
-    </Card>
+        )}
+      </div>
+    </div>
   );
 }
 
-// ============================================================
-// MAIN UNPUZZLE PAGE
-// ============================================================
-
-type ViewState = { type: "hub" } | { type: "piece"; piece: PuzzlePiece };
+function parsePieceFromSearch(): PieceKey | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.hash.includes("?")
+    ? window.location.hash.split("?")[1]
+    : window.location.search
+  );
+  const val = params.get("piece");
+  if (!val) return null;
+  const normalized = val.toLowerCase() as PieceKey;
+  if (PUZZLE_PIECES.some(p => p.name === normalized)) return normalized;
+  return null;
+}
 
 export default function UnPuzzlePage() {
-  const [view, setView] = useState<ViewState>({ type: "hub" });
+  const [, setLocation] = useLocation();
+  const [piece, setPiece] = useState<PieceKey | null>(() => parsePieceFromSearch());
+
+  useEffect(() => {
+    const onHashChange = () => setPiece(parsePieceFromSearch());
+    window.addEventListener("hashchange", onHashChange);
+    window.addEventListener("popstate", onHashChange);
+    return () => {
+      window.removeEventListener("hashchange", onHashChange);
+      window.removeEventListener("popstate", onHashChange);
+    };
+  }, []);
 
   const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
-  const { data: beliefs = [] } = useQuery<Belief[]>({ queryKey: ["/api/beliefs"] });
-  const { data: antiHabits = [] } = useQuery<AntiHabit[]>({ queryKey: ["/api/anti-habits"] });
-  const { data: laws = [] } = useQuery<ImmutableLaw[]>({ queryKey: ["/api/immutable-laws"] });
 
-  if (view.type === "piece") {
-    return <PieceDetailView piece={view.piece} onBack={() => setView({ type: "hub" })} />;
+  const countsByPiece = useMemo<Record<PieceKey, StatusCounts>>(() => {
+    const init = (): StatusCounts => ({ draft: 0, project: 0, routine: 0 });
+    const counts: Record<PieceKey, StatusCounts> = {
+      reason: init(), finance: init(), fitness: init(), talent: init(), pleasure: init(),
+    };
+    for (const id of identities) {
+      const key = (id.puzzlePiece as PieceKey | undefined);
+      if (!key || !(key in counts)) continue;
+      const status = (id.status ?? "draft") as keyof StatusCounts;
+      if (status in counts[key]) counts[key][status]++;
+    }
+    return counts;
+  }, [identities]);
+
+  const handleSelectPiece = (p: PieceKey) => {
+    setPiece(p);
+    setLocation(`/unpuzzle?piece=${p}`);
+  };
+
+  const handleBack = () => {
+    setPiece(null);
+    setLocation("/unpuzzle");
+  };
+
+  if (piece) {
+    return <PieceDetailView piece={piece} onBack={handleBack} />;
   }
-
-  const getCounts = (pieceName: string) => ({
-    identities: identities.filter(i => i.puzzlePiece === pieceName).length,
-    beliefs: beliefs.filter(b => b.puzzlePiece === pieceName).length,
-    antiHabits: antiHabits.filter(a => a.puzzlePiece === pieceName).length,
-    laws: laws.filter(l => l.puzzlePiece === pieceName).length,
-  });
 
   return (
     <div className="bg-background">
       <div className="max-w-2xl mx-auto px-4 py-6 pb-24 space-y-6">
-        {/* Back */}
-        <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-          <ChevronLeft className="w-4 h-4" /> Back to Dashboard
-        </Link>
+        <button
+          onClick={() => window.history.back()}
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" /> Back
+        </button>
 
-        {/* Header */}
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Puzzle className="w-6 h-6 text-primary" /> UnPuzzle
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Your life, fully assembled. Build each piece with intention.
+            Your life, fully assembled. Tap a piece to see its identities.
           </p>
         </div>
 
-        {/* Puzzle Wheel */}
-        <PuzzleWheel onSelect={(piece) => setView({ type: "piece", piece })} />
+        <PuzzleWheel onSelect={handleSelectPiece} countsByPiece={countsByPiece} />
 
-        {/* Piece Cards */}
         <div className="space-y-2">
           {PUZZLE_PIECES.map(p => {
-            const counts = getCounts(p.name);
+            const c = countsByPiece[p.name];
+            const total = c.draft + c.project + c.routine;
             return (
               <button
                 key={p.name}
-                onClick={() => setView({ type: "piece", piece: p.name })}
+                onClick={() => handleSelectPiece(p.name)}
                 className="w-full text-left p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors border-l-4"
                 style={{ borderLeftColor: p.color }}
               >
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold">{p.label}</p>
                     <p className="text-xs text-muted-foreground">{p.descriptor}</p>
                   </div>
-                  <ChevronLeft className="w-4 h-4 text-muted-foreground rotate-180" />
+                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
                 </div>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  {counts.identities} identities &middot; {counts.beliefs} beliefs &middot; {counts.antiHabits} anti-habits &middot; {counts.laws} laws
-                </p>
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  {total === 0 ? (
+                    <span className="text-[11px] text-muted-foreground">No identities yet</span>
+                  ) : (
+                    <>
+                      {c.draft > 0 && (
+                        <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/30">
+                          {c.draft} draft
+                        </Badge>
+                      )}
+                      {c.project > 0 && (
+                        <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                          {c.project} project
+                        </Badge>
+                      )}
+                      {c.routine > 0 && (
+                        <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/30">
+                          {c.routine} routine
+                        </Badge>
+                      )}
+                    </>
+                  )}
+                </div>
               </button>
             );
           })}
