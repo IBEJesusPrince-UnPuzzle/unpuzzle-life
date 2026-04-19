@@ -1,4 +1,5 @@
 import { useState } from "react";
+import html2canvas from "html2canvas";
 import { MessageSquareWarning, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -30,37 +31,24 @@ export function ReportIssueButton() {
   async function handleClick() {
     setCapturing(true);
     try {
-      // Use Screen Capture API for a pixel-perfect browser screenshot
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: "browser" } as any,
-        audio: false,
+      // Capture the main scrollable content area (excludes sidebar/floating elements)
+      const target = document.querySelector("main") || document.body;
+      const canvas = await html2canvas(target as HTMLElement, {
+        logging: false,
+        useCORS: true,
+        allowTaint: true,
+        scale: 1, // 1:1 to avoid oversized images
+        backgroundColor: null, // preserve transparent backgrounds
+        foreignObjectRendering: true, // better SVG support
+        removeContainer: true,
+        ignoreElements: (el) => {
+          // Skip the report button itself and any fixed overlays
+          return el.getAttribute?.("data-testid") === "button-report-issue";
+        },
       });
-      const track = stream.getVideoTracks()[0];
-
-      // Use a <video> element to grab a frame (works in all browsers)
-      const video = document.createElement("video");
-      video.srcObject = stream;
-      video.muted = true;
-      video.playsInline = true;
-      await video.play();
-      // Wait for the video to have a frame ready
-      await new Promise((r) => setTimeout(r, 200));
-
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d")!;
-      ctx.drawImage(video, 0, 0);
-
-      // Stop everything immediately
-      video.pause();
-      video.srcObject = null;
-      track.stop();
-
-      const dataUrl = canvas.toDataURL("image/png");
+      const dataUrl = canvas.toDataURL("image/png", 0.85);
       setScreenshot(dataUrl);
     } catch (err) {
-      // User cancelled the share prompt or API unavailable — continue without screenshot
       setScreenshot(null);
     } finally {
       setCapturing(false);
