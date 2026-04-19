@@ -34,6 +34,13 @@ const IMPORT_ORDER = [
   "Anti Habits",
   "Immutable Laws",
   "Immutable Law Logs",
+  // V2 tables (after their dependencies)
+  "Environment People",
+  "Environment Places",
+  "Environment Things",
+  "Responsibilities",
+  "Roles",
+  "Non Negotiables",
   "Wizard State",
 ];
 
@@ -54,6 +61,13 @@ const SHEET_TO_TABLE: Record<string, string> = {
   "Anti Habits": "anti_habits",
   "Immutable Laws": "immutable_laws",
   "Immutable Law Logs": "immutable_law_logs",
+  // V2 tables
+  "Environment People": "environment_people",
+  "Environment Places": "environment_places",
+  "Environment Things": "environment_things",
+  "Responsibilities": "responsibilities",
+  "Roles": "roles",
+  "Non Negotiables": "non_negotiables",
   "Wizard State": "wizard_state",
 };
 
@@ -62,6 +76,9 @@ const LEAF_TABLES = new Set([
   "Purposes", "Area Vision Snapshots",
   "Routine Logs", "Planner Tasks", "Inbox Items", "Weekly Reviews",
   "Environment Entities", "Beliefs", "Immutable Law Logs", "Wizard State",
+  // V2 leaf tables
+  "Environment People", "Environment Places", "Environment Things",
+  "Responsibilities", "Non Negotiables",
 ]);
 
 // ============================================================
@@ -242,6 +259,10 @@ interface LookupMaps {
   routineItemsByResponse: Map<string, number>;
   immutableLawsByTitle: Map<string, number>;
   antiHabitsByTitle: Map<string, number>;
+  // V2
+  peopleByName: Map<string, number>;
+  placesByName: Map<string, number>;
+  thingsByName: Map<string, number>;
 }
 
 function buildLookupMaps(userId: number): LookupMaps {
@@ -252,6 +273,10 @@ function buildLookupMaps(userId: number): LookupMaps {
     routineItemsByResponse: new Map(),
     immutableLawsByTitle: new Map(),
     antiHabitsByTitle: new Map(),
+    // V2
+    peopleByName: new Map(),
+    placesByName: new Map(),
+    thingsByName: new Map(),
   };
 
   const q = (sql: string) => {
@@ -264,6 +289,10 @@ function buildLookupMaps(userId: number): LookupMaps {
   for (const r of q("SELECT id, response FROM routine_items WHERE user_id = ?")) maps.routineItemsByResponse.set(r.response?.toLowerCase(), r.id);
   for (const r of q("SELECT id, title FROM immutable_laws WHERE user_id = ?")) maps.immutableLawsByTitle.set(r.title?.toLowerCase(), r.id);
   for (const r of q("SELECT id, title FROM anti_habits WHERE user_id = ?")) maps.antiHabitsByTitle.set(r.title?.toLowerCase(), r.id);
+  // V2
+  for (const r of q("SELECT id, name FROM environment_people WHERE user_id = ?")) maps.peopleByName.set(r.name?.toLowerCase(), r.id);
+  for (const r of q("SELECT id, name FROM environment_places WHERE user_id = ?")) maps.placesByName.set(r.name?.toLowerCase(), r.id);
+  for (const r of q("SELECT id, name FROM environment_things WHERE user_id = ?")) maps.thingsByName.set(r.name?.toLowerCase(), r.id);
 
   return maps;
 }
@@ -276,6 +305,10 @@ interface ReverseMaps {
   routineItemsById: Map<number, string>;
   immutableLawsById: Map<number, string>;
   antiHabitsById: Map<number, string>;
+  // V2
+  peopleById: Map<number, string>;
+  placesById: Map<number, string>;
+  thingsById: Map<number, string>;
 }
 
 function buildReverseMaps(userId: number): ReverseMaps {
@@ -286,6 +319,10 @@ function buildReverseMaps(userId: number): ReverseMaps {
     routineItemsById: new Map(),
     immutableLawsById: new Map(),
     antiHabitsById: new Map(),
+    // V2
+    peopleById: new Map(),
+    placesById: new Map(),
+    thingsById: new Map(),
   };
 
   const q = (sql: string) => {
@@ -298,6 +335,10 @@ function buildReverseMaps(userId: number): ReverseMaps {
   for (const r of q("SELECT id, response FROM routine_items WHERE user_id = ?")) maps.routineItemsById.set(r.id, r.response);
   for (const r of q("SELECT id, title FROM immutable_laws WHERE user_id = ?")) maps.immutableLawsById.set(r.id, r.title);
   for (const r of q("SELECT id, title FROM anti_habits WHERE user_id = ?")) maps.antiHabitsById.set(r.id, r.title);
+  // V2
+  for (const r of q("SELECT id, name FROM environment_people WHERE user_id = ?")) maps.peopleById.set(r.id, r.name);
+  for (const r of q("SELECT id, name FROM environment_places WHERE user_id = ?")) maps.placesById.set(r.id, r.name);
+  for (const r of q("SELECT id, name FROM environment_things WHERE user_id = ?")) maps.thingsById.set(r.id, r.name);
 
   return maps;
 }
@@ -364,6 +405,7 @@ function getExportRows(userId: number): Record<string, string[][]> {
     cellVal(r.time_of_day),
     cellVal(r.puzzle_piece),
     cellVal(r.location),
+    cellVal(r.status || "draft"),
     cellVal(r.archived),
     cellVal(r.archived_at),
   ]);
@@ -523,6 +565,58 @@ function getExportRows(userId: number): Record<string, string[][]> {
     cellVal(r.was_override),
     cellVal(r.override_reason),
     cellVal(rm.antiHabitsById.get(r.suggested_anti_habit_id) || ""),
+  ]);
+
+  // V2: Environment People
+  result["Environment People"] = q("environment_people").map(r => [
+    cellVal(r.name),
+    cellVal(r.relationship),
+  ]);
+
+  // V2: Environment Places
+  result["Environment Places"] = q("environment_places").map(r => [
+    cellVal(r.name),
+    cellVal(r.type),
+  ]);
+
+  // V2: Environment Things
+  result["Environment Things"] = q("environment_things").map(r => [
+    cellVal(r.name),
+    cellVal(r.category),
+  ]);
+
+  // V2: Responsibilities
+  result["Responsibilities"] = q("responsibilities").map(r => [
+    cellVal(r.name),
+    cellVal(rm.placesById.get(r.place_id) || ""),
+    cellVal(rm.thingsById.get(r.thing_id) || ""),
+    cellVal(r.cadence),
+    cellVal(r.day_of_week),
+    cellVal(r.custom_cron_expr),
+    cellVal(r.is_preset),
+  ]);
+
+  // V2: Roles (serialize linked people as semicolon-separated names)
+  result["Roles"] = q("roles").map(r => {
+    let peopleNames = "";
+    try {
+      const rp = sqlite.prepare("SELECT person_id FROM role_people WHERE role_id = ?").all(r.id) as any[];
+      peopleNames = rp.map((p: any) => rm.peopleById.get(p.person_id) || "").filter(Boolean).join(";");
+    } catch {}
+    return [
+      cellVal(r.name),
+      cellVal(r.description),
+      cellVal(r.cadence),
+      cellVal(r.day_of_week),
+      peopleNames,
+    ];
+  });
+
+  // V2: Non Negotiables
+  result["Non Negotiables"] = q("non_negotiables").map(r => [
+    cellVal(r.puzzle_piece),
+    cellVal(r.statement),
+    cellVal(rm.areasById.get(r.area_id) || ""),
   ]);
 
   // Wizard State
@@ -755,8 +849,9 @@ function insertRow(
       const areaId = row.area_name ? (maps.areasByName.get(row.area_name.toLowerCase()) ?? null) : null;
       if (!areaId) throw new Error("missing or unresolved area_name (required)");
       const freq = row.frequency ? stringToFrequency(row.frequency) : JSON.stringify({ type: "daily", interval: 1 });
-      sqlite.prepare(`INSERT INTO identities (user_id, statement, area_id, cue, craving, response, reward, frequency, active, time_of_day, puzzle_piece, location, created_at, archived, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(userId, row.statement, areaId, row.cue || "", row.craving || "", row.response || "", row.reward || "", freq, row.active !== undefined && row.active !== "" ? cellInt(row.active) : 1, row.time_of_day || "", row.puzzle_piece || "", row.location || "", now, cellInt(row.archived), cellOrNull(row.archived_at));
+      const status = row.status && ["draft", "project", "routine"].includes(row.status) ? row.status : "draft";
+      sqlite.prepare(`INSERT INTO identities (user_id, statement, area_id, cue, craving, response, reward, frequency, active, time_of_day, puzzle_piece, location, status, created_at, archived, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(userId, row.statement, areaId, row.cue || "", row.craving || "", row.response || "", row.reward || "", freq, row.active !== undefined && row.active !== "" ? cellInt(row.active) : 1, row.time_of_day || "", row.puzzle_piece || "", row.location || "", status, now, cellInt(row.archived), cellOrNull(row.archived_at));
       break;
     }
     case "Routine Items": {
@@ -845,6 +940,56 @@ function insertRow(
         .run(userId, lawId, cellOrNull(row.puzzle_piece) || "", row.date, cellInt(row.kept), cellOrNull(row.note), cellOrNull(row.trigger_type), cellInt(row.was_override), cellOrNull(row.override_reason), antiHabitId, now);
       break;
     }
+    case "Environment People": {
+      if (!row.name) throw new Error("missing name");
+      sqlite.prepare(`INSERT INTO environment_people (user_id, name, relationship, created_at) VALUES (?, ?, ?, ?)`)
+        .run(userId, row.name, cellOrNull(row.relationship), now);
+      break;
+    }
+    case "Environment Places": {
+      if (!row.name) throw new Error("missing name");
+      sqlite.prepare(`INSERT INTO environment_places (user_id, name, type, created_at) VALUES (?, ?, ?, ?)`)
+        .run(userId, row.name, cellOrNull(row.type), now);
+      break;
+    }
+    case "Environment Things": {
+      if (!row.name) throw new Error("missing name");
+      sqlite.prepare(`INSERT INTO environment_things (user_id, name, category, created_at) VALUES (?, ?, ?, ?)`)
+        .run(userId, row.name, cellOrNull(row.category), now);
+      break;
+    }
+    case "Responsibilities": {
+      if (!row.name) throw new Error("missing name");
+      const placeId = row.place_name ? (maps.placesByName.get(row.place_name.toLowerCase()) ?? null) : null;
+      const thingId = row.thing_name ? (maps.thingsByName.get(row.thing_name.toLowerCase()) ?? null) : null;
+      sqlite.prepare(`INSERT INTO responsibilities (user_id, name, place_id, thing_id, cadence, day_of_week, custom_cron_expr, is_preset, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(userId, row.name, placeId, thingId, cellOrNull(row.cadence) || "weekly", cellOrNull(row.day_of_week), cellOrNull(row.custom_cron_expr), cellInt(row.is_preset), now);
+      break;
+    }
+    case "Roles": {
+      if (!row.name) throw new Error("missing name");
+      const result = sqlite.prepare(`INSERT INTO roles (user_id, name, description, cadence, day_of_week, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+        .run(userId, row.name, cellOrNull(row.description), cellOrNull(row.cadence) || "weekly", cellOrNull(row.day_of_week), now);
+      // Populate role_people from semicolon-separated people_names
+      if (row.people_names) {
+        const roleId = Number(result.lastInsertRowid);
+        const names = row.people_names.split(";").map(s => s.trim()).filter(Boolean);
+        for (const name of names) {
+          const personId = maps.peopleByName.get(name.toLowerCase());
+          if (personId) {
+            sqlite.prepare(`INSERT INTO role_people (role_id, person_id) VALUES (?, ?)`).run(roleId, personId);
+          }
+        }
+      }
+      break;
+    }
+    case "Non Negotiables": {
+      if (!row.puzzle_piece || !row.statement) throw new Error("missing puzzle_piece or statement");
+      const nnAreaId = row.area_name ? (maps.areasByName.get(row.area_name.toLowerCase()) ?? null) : null;
+      sqlite.prepare(`INSERT INTO non_negotiables (user_id, puzzle_piece, statement, area_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`)
+        .run(userId, row.puzzle_piece, row.statement, nnAreaId, now, now);
+      break;
+    }
     case "Wizard State": {
       sqlite.prepare(`INSERT INTO wizard_state (user_id, current_phase, completed, completed_at) VALUES (?, ?, ?, ?)`)
         .run(userId, cellInt(row.current_phase) || 1, cellInt(row.completed), cellOrNull(row.completed_at));
@@ -900,6 +1045,7 @@ const SHEET_COLUMNS: Record<string, { header: string; desc: string; required: bo
     { header: "time_of_day", desc: "Time of day", required: true },
     { header: "puzzle_piece", desc: "Puzzle piece", required: true },
     { header: "location", desc: "Location", required: true },
+    { header: "status", desc: "draft|project|routine", required: false },
     { header: "archived", desc: "0 or 1", required: false },
     { header: "archived_at", desc: "ISO 8601", required: false },
   ],
@@ -1027,6 +1173,40 @@ const SHEET_COLUMNS: Record<string, { header: string; desc: string; required: bo
     { header: "was_override", desc: "0 or 1", required: false },
     { header: "override_reason", desc: "Reason", required: false },
     { header: "suggested_anti_habit_title", desc: "Anti-habit title", required: false },
+  ],
+  // V2 sheets
+  "Environment People": [
+    { header: "name", desc: "Person name", required: true },
+    { header: "relationship", desc: "Relationship (e.g. Son, Wife, Friend)", required: false },
+  ],
+  "Environment Places": [
+    { header: "name", desc: "Place name", required: true },
+    { header: "type", desc: "room|vehicle|location", required: false },
+  ],
+  "Environment Things": [
+    { header: "name", desc: "Thing name", required: true },
+    { header: "category", desc: "vehicle|equipment|tool", required: false },
+  ],
+  "Responsibilities": [
+    { header: "name", desc: "Responsibility name", required: true },
+    { header: "place_name", desc: "Linked place name", required: false },
+    { header: "thing_name", desc: "Linked thing name", required: false },
+    { header: "cadence", desc: "daily|weekly|biweekly|monthly|custom", required: false },
+    { header: "day_of_week", desc: "Day of week", required: false },
+    { header: "custom_cron_expr", desc: "Custom cron expression", required: false },
+    { header: "is_preset", desc: "0 or 1", required: false },
+  ],
+  "Roles": [
+    { header: "name", desc: "Role name", required: true },
+    { header: "description", desc: "Description", required: false },
+    { header: "cadence", desc: "daily|weekdays|weekly|biweekly|monthly|custom", required: false },
+    { header: "day_of_week", desc: "Day of week", required: false },
+    { header: "people_names", desc: "Linked people names (semicolon-separated)", required: false },
+  ],
+  "Non Negotiables": [
+    { header: "puzzle_piece", desc: "reason|finance|fitness|talent|pleasure", required: true },
+    { header: "statement", desc: "Non-negotiable statement", required: true },
+    { header: "area_name", desc: "Linked area (empty = global)", required: false },
   ],
   "Wizard State": [
     { header: "current_phase", desc: "1-4", required: false },

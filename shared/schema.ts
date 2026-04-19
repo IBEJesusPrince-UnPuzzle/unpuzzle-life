@@ -96,6 +96,7 @@ export const identities = sqliteTable("identities", {
   timeOfDay: text("time_of_day").notNull(),
   puzzlePiece: text("puzzle_piece").notNull(),          // reason | finance | fitness | talent | pleasure
   location: text("location").notNull(),                  // "where will this take place?"
+  status: text("status").notNull().default("draft"),     // draft | project | routine
   createdAt: text("created_at").notNull(),
   archived: integer("archived").notNull().default(0),
   archivedAt: text("archived_at"),
@@ -207,7 +208,91 @@ export const wizardState = sqliteTable("wizard_state", {
 });
 
 // ============================================================
-// ENVIRONMENT ENTITIES
+// V2: SHARED ENVIRONMENT (People, Places, Things)
+// ============================================================
+
+export const environmentPeople = sqliteTable("environment_people", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
+  name: text("name").notNull(),
+  relationship: text("relationship"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const environmentPlaces = sqliteTable("environment_places", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
+  name: text("name").notNull(),
+  type: text("type"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const environmentThings = sqliteTable("environment_things", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
+  name: text("name").notNull(),
+  category: text("category"),
+  createdAt: text("created_at").notNull(),
+});
+
+// Junction: links identity projects to their environment entities
+export const projectEnvironment = sqliteTable("project_environment", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull(),
+  entityType: text("entity_type").notNull(), // "person" | "place" | "thing"
+  entityId: integer("entity_id").notNull(),
+});
+
+// ============================================================
+// V2: RESPONSIBILITIES & ROLES
+// ============================================================
+
+export const responsibilities = sqliteTable("responsibilities", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
+  name: text("name").notNull(),
+  placeId: integer("place_id"),
+  thingId: integer("thing_id"),
+  cadence: text("cadence").notNull().default("weekly"), // daily | weekly | biweekly | monthly | custom
+  dayOfWeek: text("day_of_week"),
+  customCronExpr: text("custom_cron_expr"),
+  isPreset: integer("is_preset").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});
+
+export const roles = sqliteTable("roles", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
+  name: text("name").notNull(),
+  description: text("description"),
+  cadence: text("cadence").notNull().default("weekly"), // daily | weekdays | weekly | biweekly | monthly | custom
+  dayOfWeek: text("day_of_week"),
+  createdAt: text("created_at").notNull(),
+});
+
+// Junction: links roles to people (supports groups)
+export const rolePeople = sqliteTable("role_people", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  roleId: integer("role_id").notNull(),
+  personId: integer("person_id").notNull(),
+});
+
+// ============================================================
+// V2: NON-NEGOTIABLES (Two-Layer Model)
+// ============================================================
+
+export const nonNegotiables = sqliteTable("non_negotiables", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
+  puzzlePiece: text("puzzle_piece").notNull(), // reason | finance | fitness | talent | pleasure
+  statement: text("statement").notNull(),
+  areaId: integer("area_id"), // NULL = global, populated = area-specific
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+// ============================================================
+// LEGACY: ENVIRONMENT ENTITIES (v1 — kept for migration compatibility)
 // ============================================================
 
 export const environmentEntities = sqliteTable("environment_entities", {
@@ -356,6 +441,16 @@ export const insertPlannerTaskSchema = createInsertSchema(plannerTasks).omit({ i
 export const insertEnvironmentEntitySchema = createInsertSchema(environmentEntities).omit({ id: true });
 export const insertWizardStateSchema = createInsertSchema(wizardState).omit({ id: true });
 
+// V2 insert schemas
+export const insertEnvironmentPersonSchema = createInsertSchema(environmentPeople).omit({ id: true });
+export const insertEnvironmentPlaceSchema = createInsertSchema(environmentPlaces).omit({ id: true });
+export const insertEnvironmentThingSchema = createInsertSchema(environmentThings).omit({ id: true });
+export const insertProjectEnvironmentSchema = createInsertSchema(projectEnvironment).omit({ id: true });
+export const insertResponsibilitySchema = createInsertSchema(responsibilities).omit({ id: true });
+export const insertRoleSchema = createInsertSchema(roles).omit({ id: true });
+export const insertRolePeopleSchema = createInsertSchema(rolePeople).omit({ id: true });
+export const insertNonNegotiableSchema = createInsertSchema(nonNegotiables).omit({ id: true });
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Invitation = typeof invitations.$inferSelect;
@@ -385,6 +480,24 @@ export type EnvironmentEntity = typeof environmentEntities.$inferSelect;
 export type InsertEnvironmentEntity = z.infer<typeof insertEnvironmentEntitySchema>;
 export type WizardState = typeof wizardState.$inferSelect;
 export type InsertWizardState = z.infer<typeof insertWizardStateSchema>;
+
+// V2 types
+export type EnvironmentPerson = typeof environmentPeople.$inferSelect;
+export type InsertEnvironmentPerson = z.infer<typeof insertEnvironmentPersonSchema>;
+export type EnvironmentPlace = typeof environmentPlaces.$inferSelect;
+export type InsertEnvironmentPlace = z.infer<typeof insertEnvironmentPlaceSchema>;
+export type EnvironmentThing = typeof environmentThings.$inferSelect;
+export type InsertEnvironmentThing = z.infer<typeof insertEnvironmentThingSchema>;
+export type ProjectEnvironment = typeof projectEnvironment.$inferSelect;
+export type InsertProjectEnvironment = z.infer<typeof insertProjectEnvironmentSchema>;
+export type Responsibility = typeof responsibilities.$inferSelect;
+export type InsertResponsibility = z.infer<typeof insertResponsibilitySchema>;
+export type Role = typeof roles.$inferSelect;
+export type InsertRole = z.infer<typeof insertRoleSchema>;
+export type RolePeople = typeof rolePeople.$inferSelect;
+export type InsertRolePeople = z.infer<typeof insertRolePeopleSchema>;
+export type NonNegotiable = typeof nonNegotiables.$inferSelect;
+export type InsertNonNegotiable = z.infer<typeof insertNonNegotiableSchema>;
 
 export const insertPreferencesSchema = createInsertSchema(preferences).omit({ id: true });
 

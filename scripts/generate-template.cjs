@@ -73,6 +73,7 @@ const SHEETS = [
       { key: "time_of_day", header: "time_of_day", desc: "early_morning | morning | late_morning | afternoon | late_afternoon | evening | waking_hours", required: true },
       { key: "puzzle_piece", header: "puzzle_piece", desc: "reason | finance | fitness | talent | pleasure", required: true },
       { key: "location", header: "location", desc: "Where this takes place", required: true },
+      { key: "status", header: "status", desc: "draft | project | routine", required: false },
       { key: "archived", header: "archived", desc: "0 = active, 1 = archived", required: false },
       { key: "archived_at", header: "archived_at", desc: "Archive timestamp (ISO 8601)", required: false },
     ],
@@ -240,6 +241,63 @@ const SHEETS = [
       { key: "was_override", header: "was_override", desc: "0 = no, 1 = conscious override", required: false },
       { key: "override_reason", header: "override_reason", desc: "Why the override happened", required: false },
       { key: "suggested_anti_habit_title", header: "suggested_anti_habit_title", desc: "Suggested anti-habit title", required: false },
+    ],
+  },
+  {
+    name: "Environment People",
+    purpose: "Shared people entities (born in projects, reused in roles)",
+    columns: [
+      { key: "name", header: "name", desc: "Person's name (e.g. 'Marcus')", required: true },
+      { key: "relationship", header: "relationship", desc: "Relationship (e.g. 'Son', 'Wife', 'Friend')", required: false },
+    ],
+  },
+  {
+    name: "Environment Places",
+    purpose: "Shared places entities (born in projects, reused in responsibilities)",
+    columns: [
+      { key: "name", header: "name", desc: "Place name (e.g. 'Master Bedroom')", required: true },
+      { key: "type", header: "type", desc: "room | vehicle | location", required: false },
+    ],
+  },
+  {
+    name: "Environment Things",
+    purpose: "Shared things entities (born in projects, reused in responsibilities)",
+    columns: [
+      { key: "name", header: "name", desc: "Thing name (e.g. '2019 Honda Accord')", required: true },
+      { key: "category", header: "category", desc: "vehicle | equipment | tool", required: false },
+    ],
+  },
+  {
+    name: "Responsibilities",
+    purpose: "Recurring chores and life maintenance tasks",
+    columns: [
+      { key: "name", header: "name", desc: "Responsibility name (e.g. 'Bathroom', 'Laundry-Wash')", required: true },
+      { key: "place_name", header: "place_name", desc: "Linked place name (must match an Environment Place)", required: false },
+      { key: "thing_name", header: "thing_name", desc: "Linked thing name (must match an Environment Thing)", required: false },
+      { key: "cadence", header: "cadence", desc: "daily | weekly | biweekly | monthly | custom", required: false },
+      { key: "day_of_week", header: "day_of_week", desc: "Day of week (e.g. 'wednesday')", required: false },
+      { key: "custom_cron_expr", header: "custom_cron_expr", desc: "Custom cron expression for complex schedules", required: false },
+      { key: "is_preset", header: "is_preset", desc: "0 = user-created, 1 = preset", required: false },
+    ],
+  },
+  {
+    name: "Roles",
+    purpose: "Recurring commitments to specific people or groups",
+    columns: [
+      { key: "name", header: "name", desc: "Role name (e.g. 'Help Marcus with homework')", required: true },
+      { key: "description", header: "description", desc: "Optional detail", required: false },
+      { key: "cadence", header: "cadence", desc: "daily | weekdays | weekly | biweekly | monthly | custom", required: false },
+      { key: "day_of_week", header: "day_of_week", desc: "Day of week", required: false },
+      { key: "people_names", header: "people_names", desc: "Linked people names, separated by semicolons", required: false },
+    ],
+  },
+  {
+    name: "Non Negotiables",
+    purpose: "Two-layer boundaries: global (per puzzle piece) and area-specific",
+    columns: [
+      { key: "puzzle_piece", header: "puzzle_piece", desc: "reason | finance | fitness | talent | pleasure", required: true },
+      { key: "statement", header: "statement", desc: "Non-negotiable boundary statement", required: true },
+      { key: "area_name", header: "area_name", desc: "Linked area name (empty = global boundary)", required: false },
     ],
   },
   {

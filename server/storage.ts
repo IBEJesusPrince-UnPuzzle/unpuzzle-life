@@ -8,6 +8,9 @@ import {
   routineItems, routineLogs, plannerTasks, wizardState,
   environmentEntities, beliefs, antiHabits, immutableLaws, immutableLawLogs,
   preferences, areaVisionSnapshots,
+  // V2 tables
+  environmentPeople, environmentPlaces, environmentThings,
+  projectEnvironment, responsibilities, roles, rolePeople, nonNegotiables,
   type User, type InsertUser,
   type Invitation, type InsertInvitation,
   type Purpose, type InsertPurpose,
@@ -27,6 +30,15 @@ import {
   type ImmutableLaw, type InsertImmutableLaw,
   type ImmutableLawLog, type InsertImmutableLawLog,
   type Preferences,
+  // V2 types
+  type EnvironmentPerson, type InsertEnvironmentPerson,
+  type EnvironmentPlace, type InsertEnvironmentPlace,
+  type EnvironmentThing, type InsertEnvironmentThing,
+  type ProjectEnvironment, type InsertProjectEnvironment,
+  type Responsibility, type InsertResponsibility,
+  type Role, type InsertRole,
+  type RolePeople, type InsertRolePeople,
+  type NonNegotiable, type InsertNonNegotiable,
 } from "@shared/schema";
 
 const dbPath = process.env.DATABASE_PATH || "data.db";
@@ -306,6 +318,76 @@ sqlite.exec(`
     note TEXT,
     changed_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS environment_people (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    name TEXT NOT NULL,
+    relationship TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS environment_places (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    name TEXT NOT NULL,
+    type TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS environment_things (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    name TEXT NOT NULL,
+    category TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS project_environment (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS responsibilities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    name TEXT NOT NULL,
+    place_id INTEGER,
+    thing_id INTEGER,
+    cadence TEXT NOT NULL DEFAULT 'weekly',
+    day_of_week TEXT,
+    custom_cron_expr TEXT,
+    is_preset INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS roles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    name TEXT NOT NULL,
+    description TEXT,
+    cadence TEXT NOT NULL DEFAULT 'weekly',
+    day_of_week TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS role_people (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    role_id INTEGER NOT NULL,
+    person_id INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS non_negotiables (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    puzzle_piece TEXT NOT NULL,
+    statement TEXT NOT NULL,
+    area_id INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT
+  );
 `);
 
 // Drop dead tables from previous schema
@@ -384,6 +466,9 @@ addColumnIfMissing("wizard_state", "current_phase", "INTEGER NOT NULL DEFAULT 1"
 addColumnIfMissing("wizard_state", "completed", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("wizard_state", "completed_at", "TEXT");
 
+// V2: Add status column to identities (draft | project | routine)
+addColumnIfMissing("identities", "status", "TEXT NOT NULL DEFAULT 'draft'");
+
 // Phase 1B: Legacy migration (principles/mission removed — immutable laws handle this now)
 
 // Phase 1G: Rename routine_items.habit_id → identity_id, add puzzle_piece
@@ -414,6 +499,9 @@ const allDataTables = [
   "planner_tasks", "inbox_items", "weekly_reviews", "wizard_state",
   "environment_entities", "beliefs", "anti_habits", "immutable_laws",
   "immutable_law_logs", "preferences", "area_vision_snapshots",
+  // V2 tables (excluding junction tables project_environment and role_people which lack user_id)
+  "environment_people", "environment_places", "environment_things",
+  "responsibilities", "roles", "non_negotiables",
 ];
 for (const table of allDataTables) {
   addColumnIfMissing(table, "user_id", "INTEGER NOT NULL DEFAULT 1");
@@ -542,6 +630,54 @@ export interface IStorage {
   // Preferences
   getPreferences(userId: number): { displayName: string; timeFormat: string };
   updatePreferences(userId: number, data: { displayName?: string; timeFormat?: string }): { displayName: string; timeFormat: string };
+
+  // V2: Environment People
+  getEnvironmentPeople(userId: number): EnvironmentPerson[];
+  createEnvironmentPerson(userId: number, data: InsertEnvironmentPerson): EnvironmentPerson;
+  updateEnvironmentPerson(userId: number, id: number, data: Partial<InsertEnvironmentPerson>): EnvironmentPerson | undefined;
+  deleteEnvironmentPerson(userId: number, id: number): void;
+
+  // V2: Environment Places
+  getEnvironmentPlaces(userId: number): EnvironmentPlace[];
+  createEnvironmentPlace(userId: number, data: InsertEnvironmentPlace): EnvironmentPlace;
+  updateEnvironmentPlace(userId: number, id: number, data: Partial<InsertEnvironmentPlace>): EnvironmentPlace | undefined;
+  deleteEnvironmentPlace(userId: number, id: number): void;
+
+  // V2: Environment Things
+  getEnvironmentThings(userId: number): EnvironmentThing[];
+  createEnvironmentThing(userId: number, data: InsertEnvironmentThing): EnvironmentThing;
+  updateEnvironmentThing(userId: number, id: number, data: Partial<InsertEnvironmentThing>): EnvironmentThing | undefined;
+  deleteEnvironmentThing(userId: number, id: number): void;
+
+  // V2: Project Environment (junction)
+  getProjectEnvironment(projectId: number): ProjectEnvironment[];
+  addProjectEnvironment(data: InsertProjectEnvironment): ProjectEnvironment;
+  removeProjectEnvironment(id: number): void;
+
+  // V2: Responsibilities
+  getResponsibilities(userId: number): Responsibility[];
+  createResponsibility(userId: number, data: InsertResponsibility): Responsibility;
+  updateResponsibility(userId: number, id: number, data: Partial<InsertResponsibility>): Responsibility | undefined;
+  deleteResponsibility(userId: number, id: number): void;
+
+  // V2: Roles
+  getRoles(userId: number): Role[];
+  createRole(userId: number, data: InsertRole): Role;
+  updateRole(userId: number, id: number, data: Partial<InsertRole>): Role | undefined;
+  deleteRole(userId: number, id: number): void;
+
+  // V2: Role People (junction)
+  getRolePeople(roleId: number): RolePeople[];
+  addRolePerson(data: InsertRolePeople): RolePeople;
+  removeRolePerson(id: number): void;
+
+  // V2: Non-Negotiables
+  getNonNegotiables(userId: number): NonNegotiable[];
+  getNonNegotiablesByPiece(userId: number, puzzlePiece: string): NonNegotiable[];
+  getNonNegotiablesByArea(userId: number, areaId: number | null): NonNegotiable[];
+  createNonNegotiable(userId: number, data: InsertNonNegotiable): NonNegotiable;
+  updateNonNegotiable(userId: number, id: number, data: Partial<InsertNonNegotiable>): NonNegotiable | undefined;
+  deleteNonNegotiable(userId: number, id: number): void;
 
   // Reset
   resetDatabase(userId: number): void;
@@ -879,6 +1015,123 @@ export class DatabaseStorage implements IStorage {
     return this.getPreferences(userId);
   }
 
+  // V2: Environment People
+  getEnvironmentPeople(userId: number): EnvironmentPerson[] {
+    return db.select().from(environmentPeople).where(eq(environmentPeople.userId, userId)).all();
+  }
+  createEnvironmentPerson(userId: number, data: InsertEnvironmentPerson): EnvironmentPerson {
+    return db.insert(environmentPeople).values({ ...data, userId }).returning().get();
+  }
+  updateEnvironmentPerson(userId: number, id: number, data: Partial<InsertEnvironmentPerson>): EnvironmentPerson | undefined {
+    return db.update(environmentPeople).set(data).where(and(eq(environmentPeople.id, id), eq(environmentPeople.userId, userId))).returning().get();
+  }
+  deleteEnvironmentPerson(userId: number, id: number): void {
+    db.delete(environmentPeople).where(and(eq(environmentPeople.id, id), eq(environmentPeople.userId, userId))).run();
+  }
+
+  // V2: Environment Places
+  getEnvironmentPlaces(userId: number): EnvironmentPlace[] {
+    return db.select().from(environmentPlaces).where(eq(environmentPlaces.userId, userId)).all();
+  }
+  createEnvironmentPlace(userId: number, data: InsertEnvironmentPlace): EnvironmentPlace {
+    return db.insert(environmentPlaces).values({ ...data, userId }).returning().get();
+  }
+  updateEnvironmentPlace(userId: number, id: number, data: Partial<InsertEnvironmentPlace>): EnvironmentPlace | undefined {
+    return db.update(environmentPlaces).set(data).where(and(eq(environmentPlaces.id, id), eq(environmentPlaces.userId, userId))).returning().get();
+  }
+  deleteEnvironmentPlace(userId: number, id: number): void {
+    db.delete(environmentPlaces).where(and(eq(environmentPlaces.id, id), eq(environmentPlaces.userId, userId))).run();
+  }
+
+  // V2: Environment Things
+  getEnvironmentThings(userId: number): EnvironmentThing[] {
+    return db.select().from(environmentThings).where(eq(environmentThings.userId, userId)).all();
+  }
+  createEnvironmentThing(userId: number, data: InsertEnvironmentThing): EnvironmentThing {
+    return db.insert(environmentThings).values({ ...data, userId }).returning().get();
+  }
+  updateEnvironmentThing(userId: number, id: number, data: Partial<InsertEnvironmentThing>): EnvironmentThing | undefined {
+    return db.update(environmentThings).set(data).where(and(eq(environmentThings.id, id), eq(environmentThings.userId, userId))).returning().get();
+  }
+  deleteEnvironmentThing(userId: number, id: number): void {
+    db.delete(environmentThings).where(and(eq(environmentThings.id, id), eq(environmentThings.userId, userId))).run();
+  }
+
+  // V2: Project Environment (junction)
+  getProjectEnvironment(projectId: number): ProjectEnvironment[] {
+    return db.select().from(projectEnvironment).where(eq(projectEnvironment.projectId, projectId)).all();
+  }
+  addProjectEnvironment(data: InsertProjectEnvironment): ProjectEnvironment {
+    return db.insert(projectEnvironment).values(data).returning().get();
+  }
+  removeProjectEnvironment(id: number): void {
+    db.delete(projectEnvironment).where(eq(projectEnvironment.id, id)).run();
+  }
+
+  // V2: Responsibilities
+  getResponsibilities(userId: number): Responsibility[] {
+    return db.select().from(responsibilities).where(eq(responsibilities.userId, userId)).all();
+  }
+  createResponsibility(userId: number, data: InsertResponsibility): Responsibility {
+    return db.insert(responsibilities).values({ ...data, userId }).returning().get();
+  }
+  updateResponsibility(userId: number, id: number, data: Partial<InsertResponsibility>): Responsibility | undefined {
+    return db.update(responsibilities).set(data).where(and(eq(responsibilities.id, id), eq(responsibilities.userId, userId))).returning().get();
+  }
+  deleteResponsibility(userId: number, id: number): void {
+    db.delete(responsibilities).where(and(eq(responsibilities.id, id), eq(responsibilities.userId, userId))).run();
+  }
+
+  // V2: Roles
+  getRoles(userId: number): Role[] {
+    return db.select().from(roles).where(eq(roles.userId, userId)).all();
+  }
+  createRole(userId: number, data: InsertRole): Role {
+    return db.insert(roles).values({ ...data, userId }).returning().get();
+  }
+  updateRole(userId: number, id: number, data: Partial<InsertRole>): Role | undefined {
+    return db.update(roles).set(data).where(and(eq(roles.id, id), eq(roles.userId, userId))).returning().get();
+  }
+  deleteRole(userId: number, id: number): void {
+    // Cascade: delete role_people entries first
+    db.delete(rolePeople).where(eq(rolePeople.roleId, id)).run();
+    db.delete(roles).where(and(eq(roles.id, id), eq(roles.userId, userId))).run();
+  }
+
+  // V2: Role People (junction)
+  getRolePeople(roleId: number): RolePeople[] {
+    return db.select().from(rolePeople).where(eq(rolePeople.roleId, roleId)).all();
+  }
+  addRolePerson(data: InsertRolePeople): RolePeople {
+    return db.insert(rolePeople).values(data).returning().get();
+  }
+  removeRolePerson(id: number): void {
+    db.delete(rolePeople).where(eq(rolePeople.id, id)).run();
+  }
+
+  // V2: Non-Negotiables
+  getNonNegotiables(userId: number): NonNegotiable[] {
+    return db.select().from(nonNegotiables).where(eq(nonNegotiables.userId, userId)).orderBy(desc(nonNegotiables.createdAt)).all();
+  }
+  getNonNegotiablesByPiece(userId: number, puzzlePiece: string): NonNegotiable[] {
+    return db.select().from(nonNegotiables).where(and(eq(nonNegotiables.puzzlePiece, puzzlePiece), eq(nonNegotiables.userId, userId))).all();
+  }
+  getNonNegotiablesByArea(userId: number, areaId: number | null): NonNegotiable[] {
+    if (areaId === null) {
+      return db.select().from(nonNegotiables).where(and(isNull(nonNegotiables.areaId), eq(nonNegotiables.userId, userId))).all();
+    }
+    return db.select().from(nonNegotiables).where(and(eq(nonNegotiables.areaId, areaId), eq(nonNegotiables.userId, userId))).all();
+  }
+  createNonNegotiable(userId: number, data: InsertNonNegotiable): NonNegotiable {
+    return db.insert(nonNegotiables).values({ ...data, userId }).returning().get();
+  }
+  updateNonNegotiable(userId: number, id: number, data: Partial<InsertNonNegotiable>): NonNegotiable | undefined {
+    return db.update(nonNegotiables).set(data).where(and(eq(nonNegotiables.id, id), eq(nonNegotiables.userId, userId))).returning().get();
+  }
+  deleteNonNegotiable(userId: number, id: number): void {
+    db.delete(nonNegotiables).where(and(eq(nonNegotiables.id, id), eq(nonNegotiables.userId, userId))).run();
+  }
+
   // Reset
   resetDatabase(userId: number): void {
     const tables = [
@@ -887,10 +1140,16 @@ export class DatabaseStorage implements IStorage {
       "planner_tasks", "inbox_items", "weekly_reviews", "wizard_state",
       "environment_entities", "beliefs", "anti_habits", "immutable_laws", "immutable_law_logs",
       "area_vision_snapshots",
+      // V2 tables
+      "environment_people", "environment_places", "environment_things",
+      "responsibilities", "roles", "non_negotiables",
     ];
     for (const table of tables) {
       sqlite.exec(`DELETE FROM ${table} WHERE user_id = ${userId}`);
     }
+    // Clean orphans in junction tables (no user_id column)
+    sqlite.exec(`DELETE FROM project_environment WHERE project_id NOT IN (SELECT id FROM projects)`);
+    sqlite.exec(`DELETE FROM role_people WHERE role_id NOT IN (SELECT id FROM roles)`);
     // Reset preferences to defaults for this user
     sqlite.exec(`UPDATE preferences SET display_name = '', time_format = '12h' WHERE user_id = ${userId}`);
   }

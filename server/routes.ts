@@ -19,6 +19,10 @@ import {
   insertPlannerTaskSchema, insertEnvironmentEntitySchema,
   insertBeliefSchema, insertAntiHabitSchema,
   insertImmutableLawSchema, insertImmutableLawLogSchema,
+  // V2 schemas
+  insertEnvironmentPersonSchema, insertEnvironmentPlaceSchema, insertEnvironmentThingSchema,
+  insertProjectEnvironmentSchema, insertResponsibilitySchema,
+  insertRoleSchema, insertRolePeopleSchema, insertNonNegotiableSchema,
 } from "@shared/schema";
 
 export function registerRoutes(server: Server, app: Express) {
@@ -1340,6 +1344,221 @@ export function registerRoutes(server: Server, app: Express) {
     if (displayName !== undefined) data.displayName = String(displayName).slice(0, 50);
     if (timeFormat !== undefined && (timeFormat === "12h" || timeFormat === "24h")) data.timeFormat = timeFormat;
     res.json(storage.updatePreferences(userId, data));
+  });
+
+  // ============================================================
+  // V2: ENVIRONMENT PEOPLE
+  // ============================================================
+  app.get("/api/environment/people", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getEnvironmentPeople(userId));
+  });
+  app.post("/api/environment/people", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const data = { ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
+    const parsed = insertEnvironmentPersonSchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createEnvironmentPerson(userId, parsed.data));
+  });
+  app.patch("/api/environment/people/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateEnvironmentPerson(userId, Number(req.params.id), req.body);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/environment/people/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    storage.deleteEnvironmentPerson(userId, Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // V2: ENVIRONMENT PLACES
+  // ============================================================
+  app.get("/api/environment/places", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getEnvironmentPlaces(userId));
+  });
+  app.post("/api/environment/places", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const data = { ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
+    const parsed = insertEnvironmentPlaceSchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createEnvironmentPlace(userId, parsed.data));
+  });
+  app.patch("/api/environment/places/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateEnvironmentPlace(userId, Number(req.params.id), req.body);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/environment/places/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    storage.deleteEnvironmentPlace(userId, Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // V2: ENVIRONMENT THINGS
+  // ============================================================
+  app.get("/api/environment/things", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getEnvironmentThings(userId));
+  });
+  app.post("/api/environment/things", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const data = { ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
+    const parsed = insertEnvironmentThingSchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createEnvironmentThing(userId, parsed.data));
+  });
+  app.patch("/api/environment/things/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateEnvironmentThing(userId, Number(req.params.id), req.body);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/environment/things/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    storage.deleteEnvironmentThing(userId, Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // V2: PROJECT ENVIRONMENT (junction)
+  // ============================================================
+  app.get("/api/projects/:id/environment", (req, res) => {
+    res.json(storage.getProjectEnvironment(Number(req.params.id)));
+  });
+  app.post("/api/projects/:id/environment", (req, res) => {
+    const data = { ...req.body, projectId: Number(req.params.id) };
+    const parsed = insertProjectEnvironmentSchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.addProjectEnvironment(parsed.data));
+  });
+  app.delete("/api/projects/:projectId/environment/:id", (req, res) => {
+    storage.removeProjectEnvironment(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // V2: RESPONSIBILITIES
+  // ============================================================
+  app.get("/api/responsibilities", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getResponsibilities(userId));
+  });
+  app.post("/api/responsibilities", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const data = { ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
+    const parsed = insertResponsibilitySchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createResponsibility(userId, parsed.data));
+  });
+  app.patch("/api/responsibilities/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateResponsibility(userId, Number(req.params.id), req.body);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/responsibilities/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    storage.deleteResponsibility(userId, Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // V2: ROLES
+  // ============================================================
+  app.get("/api/roles", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const allRoles = storage.getRoles(userId);
+    // Embed people array in each role for convenience
+    const enriched = allRoles.map(role => ({
+      ...role,
+      people: storage.getRolePeople(role.id),
+    }));
+    res.json(enriched);
+  });
+  app.post("/api/roles", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const data = { ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
+    const parsed = insertRoleSchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createRole(userId, parsed.data));
+  });
+  app.patch("/api/roles/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateRole(userId, Number(req.params.id), req.body);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/roles/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    storage.deleteRole(userId, Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // V2: ROLE PEOPLE (junction)
+  app.post("/api/roles/:id/people", (req, res) => {
+    const data = { ...req.body, roleId: Number(req.params.id) };
+    const parsed = insertRolePeopleSchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.addRolePerson(parsed.data));
+  });
+  app.delete("/api/roles/:roleId/people/:id", (req, res) => {
+    storage.removeRolePerson(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // V2: NON-NEGOTIABLES
+  // ============================================================
+  app.get("/api/non-negotiables", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const areaIdParam = req.query.areaId;
+    if (areaIdParam !== undefined) {
+      const areaId = areaIdParam === "null" || areaIdParam === "" ? null : Number(areaIdParam);
+      return res.json(storage.getNonNegotiablesByArea(userId, areaId));
+    }
+    res.json(storage.getNonNegotiables(userId));
+  });
+  app.post("/api/non-negotiables", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const data = {
+      ...req.body,
+      createdAt: req.body.createdAt || new Date().toISOString(),
+      updatedAt: req.body.updatedAt || new Date().toISOString(),
+    };
+    const parsed = insertNonNegotiableSchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createNonNegotiable(userId, parsed.data));
+  });
+  app.patch("/api/non-negotiables/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const data = { ...req.body, updatedAt: new Date().toISOString() };
+    const result = storage.updateNonNegotiable(userId, Number(req.params.id), data);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/non-negotiables/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    storage.deleteNonNegotiable(userId, Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // V2: IDENTITY STATUS UPDATE
+  // ============================================================
+  app.patch("/api/identities/:id/status", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const { status } = req.body;
+    if (!status || !["draft", "project", "routine"].includes(status)) {
+      return res.status(400).json({ error: "status must be one of: draft, project, routine" });
+    }
+    const result = storage.updateIdentity(userId, Number(req.params.id), { status });
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
   });
 
   // ============================================================
