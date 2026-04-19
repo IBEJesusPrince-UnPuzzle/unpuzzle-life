@@ -14,10 +14,9 @@ import {
   Sparkles, GraduationCap, Sunrise,
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import type { Area } from "@shared/schema";
 import { getPieceColor } from "@/lib/piece-colors";
-import { SorterView } from "./planner";
 import { usePreferences } from "@/hooks/use-preferences";
 
 const DASHBOARD_PIECES = [
@@ -271,16 +270,12 @@ export default function Dashboard() {
   const todayKept = lawLogs.filter((log: any) => log.kept === 1).length;
   const todayBroken = lawLogs.filter((log: any) => log.kept === 0).length;
 
-  // Seed SorterView query caches from the combined endpoint to avoid duplicate fetches
+  // Seed shared query caches from the combined dashboard endpoint
   useEffect(() => {
     if (!dashboardData) return;
     queryClient.setQueryData(["/api/areas"], dashboardData.areas);
-    queryClient.setQueryData(["/api/routine-items"], dashboardData.routineItems);
-    queryClient.setQueryData(["/api/planner-tasks", today], dashboardData.todaysTasks);
-    queryClient.setQueryData(["/api/routine-logs", today], dashboardData.routineLogs);
   }, [dashboardData]);
 
-  const [, setLocation] = useLocation();
 
   const captureToInbox = useMutation({
     mutationFn: ({ content, areaId }: { content: string; areaId: number | null }) =>
@@ -626,10 +621,6 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* Embedded Agenda */}
-      <div className="-mx-6 -mb-6">
-        <SorterView areas={areas} onAreaClick={(id) => setLocation(`/planner`)} embedded />
-      </div>
     </div>
   );
 }
