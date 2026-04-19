@@ -26,6 +26,8 @@ import SomedayPage from "@/pages/someday";
 import WizardPage from "@/pages/wizard";
 import DraftReviewPage from "@/pages/draft-review";
 import ProjectBuilderPage from "@/pages/project-builder";
+import MorningBriefingPage from "@/pages/morning-briefing";
+import AgendaPage from "@/pages/agenda";
 import NotFound from "@/pages/not-found";
 
 function ProjectDetailRoute({ params }: { params: { id?: string } }) {
@@ -57,6 +59,8 @@ function AppRouter() {
       <Route path="/projects/:id/build" component={ProjectBuilderRoute} />
       <Route path="/projects/:id" component={ProjectDetailRoute} />
       <Route path="/drafts" component={DraftReviewPage} />
+      <Route path="/briefing" component={MorningBriefingPage} />
+      <Route path="/agenda" component={AgendaPage} />
       <Route path="/someday" component={SomedayPage} />
       <Route path="/wizard" component={WizardPage} />
       <Route path="/admin" component={AdminPage} />

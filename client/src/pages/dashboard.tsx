@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Fingerprint, Inbox as InboxIcon, Repeat2, FolderOpen, Plus, ArrowRight,
   FileEdit, ChevronRight, Shield, Check, X, Puzzle, Pencil,
-  Sparkles, GraduationCap,
+  Sparkles, GraduationCap, Sunrise,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
@@ -210,6 +210,9 @@ export default function Dashboard() {
     queryFn: () => apiRequest("GET", `/api/immutable-law-logs/date/${today}`).then(r => r.json()),
   });
 
+  const { data: responsibilities = [] } = useQuery<any[]>({ queryKey: ["/api/responsibilities"] });
+  const { data: roles = [] } = useQuery<any[]>({ queryKey: ["/api/roles"] });
+
   const { data: weeklyReviews = [] } = useQuery<any[]>({ queryKey: ["/api/weekly-reviews"] });
   const lastReview = weeklyReviews.sort((a: any, b: any) => b.weekOf.localeCompare(a.weekOf))[0];
   const lastRatings: Record<string, number> = lastReview?.puzzlePieceRatings
@@ -226,6 +229,42 @@ export default function Dashboard() {
   const draftIdentityCount = activeIdentities.filter((i: any) => i.status === "draft").length;
   const projectIdentityCount = activeIdentities.filter((i: any) => i.status === "project").length;
   const routineIdentityCount = activeIdentities.filter((i: any) => i.status === "routine").length;
+
+  // Agenda preview counts for today
+  const todayDow = new Date(today + "T12:00:00").getDay();
+  const isWeekdayToday = todayDow >= 1 && todayDow <= 5;
+  const DOW_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const matchFrequency = (f: string | null | undefined) => {
+    if (!f) return false;
+    const x = f.toLowerCase();
+    if (x === "daily") return true;
+    if (x === "weekdays") return isWeekdayToday;
+    if (x === "weekend" || x === "weekends") return !isWeekdayToday;
+    if (x.startsWith("weekly:")) return x.split(":")[1] === DOW_NAMES[todayDow];
+    if (DOW_NAMES.includes(x)) return x === DOW_NAMES[todayDow];
+    return false;
+  };
+  const matchCadence = (c: string | null | undefined, day: string | null | undefined) => {
+    if (!c) return false;
+    const x = c.toLowerCase();
+    if (x === "daily") return true;
+    if (x === "weekdays") return isWeekdayToday;
+    if (x === "weekend" || x === "weekends") return !isWeekdayToday;
+    if (x === "weekly" || x === "biweekly" || x === "monthly") {
+      return !!day && day.toLowerCase() === DOW_NAMES[todayDow];
+    }
+    return false;
+  };
+  const todayRoutineCount = activeIdentities.filter((i: any) => i.status === "routine" && matchFrequency(i.frequency)).length;
+  const todayTaskCount = (dashboardData?.todaysTasks || []).filter((t: any) => t.projectId != null && t.isDraft !== 1).length;
+  const todayRespCount = responsibilities.filter((r: any) => matchCadence(r.cadence, r.dayOfWeek)).length;
+  const todayRoleCount = roles.filter((r: any) => matchCadence(r.cadence, r.dayOfWeek)).length;
+  const agendaPreview = [
+    todayRoutineCount ? `${todayRoutineCount} routine${todayRoutineCount === 1 ? "" : "s"}` : null,
+    todayTaskCount ? `${todayTaskCount} task${todayTaskCount === 1 ? "" : "s"}` : null,
+    todayRespCount ? `${todayRespCount} responsibilit${todayRespCount === 1 ? "y" : "ies"}` : null,
+    todayRoleCount ? `${todayRoleCount} role${todayRoleCount === 1 ? "" : "s"}` : null,
+  ].filter(Boolean).join(", ");
 
   const activeLaws = laws.filter((l: any) => l.active);
   const checkedInLawIds = new Set(lawLogs.map((log: any) => log.immutableLawId));
@@ -362,6 +401,25 @@ export default function Dashboard() {
           </div>
         </Link>
       )}
+
+      {/* Start your day — Morning briefing / agenda entry */}
+      <Link href="/briefing">
+        <Card className="cursor-pointer hover:shadow-md transition-shadow border-primary/30 bg-primary/[0.03]">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+              <Sunrise className="w-5 h-5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold">Start your day</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {now.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+                {agendaPreview ? ` · ${agendaPreview} today` : " · Nothing scheduled today"}
+              </p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+          </CardContent>
+        </Card>
+      </Link>
 
       {/* Identity lifecycle cards */}
       {draftIdentityCount > 0 && (
