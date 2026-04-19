@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft } from "lucide-react";
 
 export default function NotFound() {
   return (
@@ -12,8 +12,15 @@ export default function NotFound() {
           </div>
 
           <p className="mt-4 text-sm text-gray-600">
-            Did you forget to add the page to the router?
+            The page you're looking for doesn't exist.
           </p>
+
+          <button
+            onClick={() => window.history.back()}
+            className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" /> Go back
+          </button>
         </CardContent>
       </Card>
     </div>
