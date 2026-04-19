@@ -363,6 +363,24 @@ function registerAdminRoutes(app: Express) {
     res.json({ ok: true });
   });
 
+  // Reset user password (admin only)
+  app.post("/api/admin/users/:id/reset-password", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      const { newPassword } = req.body;
+      if (!newPassword || newPassword.length < 8) {
+        return res.status(400).json({ message: "New password must be at least 8 characters" });
+      }
+      const target = storage.getUserById(id);
+      if (!target) return res.status(404).json({ message: "User not found" });
+      const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+      storage.updateUser(id, { passwordHash } as any);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to reset password" });
+    }
+  });
+
   // Impersonate user
   app.post("/api/admin/impersonate/:id", requireAdmin, (req: Request, res: Response) => {
     const targetId = Number(req.params.id);

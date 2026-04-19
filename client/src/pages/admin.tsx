@@ -10,6 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { Eye, EyeOff, KeyRound } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 interface AdminUser {
   id: number;
@@ -63,6 +66,9 @@ export default function AdminPage() {
 function UsersTab() {
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
+  const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   const { data: users = [], isLoading } = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
@@ -78,6 +84,22 @@ function UsersTab() {
     },
     onError: (error: Error) => {
       toast({ variant: "destructive", title: "Failed to update user", description: error.message });
+    },
+  });
+
+  const resetPassword = useMutation({
+    mutationFn: async ({ id, newPassword }: { id: number; newPassword: string }) => {
+      const res = await apiRequest("POST", `/api/admin/users/${id}/reset-password`, { newPassword });
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Password reset successfully" });
+      setResetTarget(null);
+      setNewPassword("");
+      setShowNewPassword(false);
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", title: "Failed to reset password", description: error.message.replace(/^\d+:\s*/, "") });
     },
   });
 
@@ -154,22 +176,81 @@ function UsersTab() {
                   {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString() : "Never"}
                 </TableCell>
                 <TableCell>
-                  {u.id !== currentUser?.id && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => impersonate.mutate(u.id)}
-                      disabled={impersonate.isPending}
-                    >
-                      Impersonate
-                    </Button>
-                  )}
+                  <div className="flex gap-2">
+                    {u.id !== currentUser?.id && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setResetTarget(u);
+                            setNewPassword("");
+                            setShowNewPassword(false);
+                          }}
+                        >
+                          <KeyRound className="h-3.5 w-3.5 mr-1" />
+                          Reset PW
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => impersonate.mutate(u.id)}
+                          disabled={impersonate.isPending}
+                        >
+                          Impersonate
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </CardContent>
+
+      <Dialog open={!!resetTarget} onOpenChange={(open) => { if (!open) { setResetTarget(null); setNewPassword(""); setShowNewPassword(false); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Set a new password for <span className="font-medium text-foreground">{resetTarget?.displayName}</span> ({resetTarget?.email})
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="admin-new-pw">New Password</Label>
+            <div className="relative">
+              <Input
+                id="admin-new-pw"
+                type={showNewPassword ? "text" : "password"}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Minimum 8 characters"
+                minLength={8}
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword(!showNewPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                tabIndex={-1}
+                aria-label={showNewPassword ? "Hide password" : "Show password"}
+              >
+                {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetTarget(null)}>Cancel</Button>
+            <Button
+              disabled={newPassword.length < 8 || resetPassword.isPending}
+              onClick={() => { if (resetTarget) resetPassword.mutate({ id: resetTarget.id, newPassword }); }}
+            >
+              {resetPassword.isPending ? "Resetting..." : "Reset Password"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
