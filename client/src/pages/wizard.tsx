@@ -11,8 +11,9 @@ import {
 import {
   Puzzle, ChevronRight, ChevronLeft, Sparkles, Plus, Trash2, Pencil,
 } from "lucide-react";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocation, Link } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 import type {
   Area, Purpose, Identity, NonNegotiable, Responsibility, Role,
   EnvironmentPerson, EnvironmentPlace,
@@ -103,15 +104,26 @@ export default function WizardPage() {
   const [onNextHolder, setOnNextHolder] = useState<{ fn: (() => Promise<boolean>) | null }>({ fn: null });
   const setOnNext = (fn: (() => Promise<boolean>) | null) => setOnNextHolder({ fn });
 
+  const { toast } = useToast();
+
   const goNext = async () => {
-    if (onNextHolder.fn) {
-      const ok = await onNextHolder.fn();
-      if (!ok) return;
-    }
-    if (phase < 4) {
-      const next = phase + 1;
-      setPhase(next);
-      saveWizardPhase.mutate(next);
+    try {
+      if (onNextHolder.fn) {
+        const ok = await onNextHolder.fn();
+        if (!ok) return;
+      }
+      if (phase < 4) {
+        const next = phase + 1;
+        setPhase(next);
+        saveWizardPhase.mutate(next);
+      }
+    } catch (err: any) {
+      console.error("Wizard goNext error:", err);
+      toast({
+        variant: "destructive",
+        title: "Something went wrong",
+        description: err?.message?.replace(/^\d+:\s*/, "") || "Please try again.",
+      });
     }
   };
 
@@ -253,22 +265,25 @@ function Step1Purpose({ setCanAdvance, setOnNext }: StepProps) {
     if (existing?.statement) setStatement(existing.statement);
   }, [existing?.id]);
 
-  const savePurpose = useMutation({
-    mutationFn: async () => {
-      const body = { statement: statement.trim(), createdAt: new Date().toISOString() };
-      if (existing) {
-        return apiRequest("PATCH", `/api/purposes/${existing.id}`, { statement: statement.trim() });
-      }
-      return apiRequest("POST", "/api/purposes", body);
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/purposes"] }),
-  });
+  // Use refs to avoid stale closures in the onNext callback
+  const statementRef = useRef(statement);
+  statementRef.current = statement;
+  const existingRef = useRef(existing);
+  existingRef.current = existing;
 
   useEffect(() => {
     setCanAdvance(statement.trim().length > 0);
     setOnNext(async () => {
-      if (!statement.trim()) return false;
-      await savePurpose.mutateAsync();
+      const s = statementRef.current.trim();
+      if (!s) return false;
+      const ex = existingRef.current;
+      const body = { statement: s, createdAt: new Date().toISOString() };
+      if (ex) {
+        await apiRequest("PATCH", `/api/purposes/${ex.id}`, { statement: s });
+      } else {
+        await apiRequest("POST", "/api/purposes", body);
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/purposes"] });
       return true;
     });
     return () => setOnNext(null);
