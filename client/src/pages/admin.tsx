@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff, KeyRound } from "lucide-react";
@@ -120,94 +120,82 @@ function UsersTab() {
   if (isLoading) return <p className="py-4 text-muted-foreground">Loading users...</p>;
 
   return (
-    <Card>
-      <CardContent className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Last Login</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {users.map((u) => (
-              <TableRow key={u.id}>
-                <TableCell>
-                  <div>
-                    <div className="font-medium">{u.displayName}</div>
-                    <div className="text-sm text-muted-foreground">{u.email}</div>
+    <>
+      <div className="space-y-3">
+        {users.map((u) => (
+          <Card key={u.id}>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{u.displayName}</div>
+                  <div className="text-sm text-muted-foreground truncate">{u.email}</div>
+                </div>
+                <div className="text-xs text-muted-foreground text-right shrink-0">
+                  {u.lastLoginAt ? `Last login ${new Date(u.lastLoginAt).toLocaleDateString()}` : "Never logged in"}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  defaultValue={u.role}
+                  onValueChange={(role) => updateUser.mutate({ id: u.id, data: { role } })}
+                  disabled={u.id === currentUser?.id}
+                >
+                  <SelectTrigger className="w-[130px] h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="super_admin">Super Admin</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="user">User</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  defaultValue={u.status}
+                  onValueChange={(status) => updateUser.mutate({ id: u.id, data: { status } })}
+                  disabled={u.id === currentUser?.id}
+                >
+                  <SelectTrigger className="w-[110px] h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="suspended">Suspended</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {u.id !== currentUser?.id && (
+                  <div className="flex gap-2 ml-auto">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => {
+                        setResetTarget(u);
+                        setNewPassword("");
+                        setShowNewPassword(false);
+                      }}
+                    >
+                      <KeyRound className="h-3.5 w-3.5 mr-1" />
+                      Reset PW
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => impersonate.mutate(u.id)}
+                      disabled={impersonate.isPending}
+                    >
+                      Impersonate
+                    </Button>
                   </div>
-                </TableCell>
-                <TableCell>
-                  <Select
-                    defaultValue={u.role}
-                    onValueChange={(role) => updateUser.mutate({ id: u.id, data: { role } })}
-                    disabled={u.id === currentUser?.id}
-                  >
-                    <SelectTrigger className="w-[130px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="super_admin">Super Admin</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="user">User</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </TableCell>
-                <TableCell>
-                  <Select
-                    defaultValue={u.status}
-                    onValueChange={(status) => updateUser.mutate({ id: u.id, data: { status } })}
-                    disabled={u.id === currentUser?.id}
-                  >
-                    <SelectTrigger className="w-[110px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="suspended">Suspended</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString() : "Never"}
-                </TableCell>
-                <TableCell>
-                  <div className="flex gap-2">
-                    {u.id !== currentUser?.id && (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setResetTarget(u);
-                            setNewPassword("");
-                            setShowNewPassword(false);
-                          }}
-                        >
-                          <KeyRound className="h-3.5 w-3.5 mr-1" />
-                          Reset PW
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => impersonate.mutate(u.id)}
-                          disabled={impersonate.isPending}
-                        >
-                          Impersonate
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
       <Dialog open={!!resetTarget} onOpenChange={(open) => { if (!open) { setResetTarget(null); setNewPassword(""); setShowNewPassword(false); } }}>
         <DialogContent className="sm:max-w-md">
@@ -251,7 +239,7 @@ function UsersTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </>
   );
 }
 
@@ -319,70 +307,54 @@ function InvitationsTab() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <p className="p-4 text-muted-foreground">Loading invitations...</p>
-          ) : invitations.length === 0 ? (
-            <p className="p-4 text-muted-foreground">No invitations yet.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Invite Link</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invitations.map((inv) => (
-                  <TableRow key={inv.id}>
-                    <TableCell>{inv.email}</TableCell>
-                    <TableCell>
-                      <Badge variant={inv.status === "pending" ? "secondary" : "outline"}>
-                        {inv.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => {
-                            const link = `${window.location.origin}/#/register?token=${inv.token}`;
-                            navigator.clipboard.writeText(link);
-                            toast({ title: "Invite link copied to clipboard" });
-                          }}
-                        >
-                          Copy Invite Link
-                        </Button>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {new Date(inv.expiresAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      {inv.status === "pending" && (
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => deleteInvitation.mutate(inv.id)}
-                          disabled={deleteInvitation.isPending}
-                        >
-                          Delete
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {isLoading ? (
+        <p className="py-4 text-muted-foreground">Loading invitations...</p>
+      ) : invitations.length === 0 ? (
+        <p className="py-4 text-muted-foreground">No invitations yet.</p>
+      ) : (
+        <div className="space-y-3">
+          {invitations.map((inv) => (
+            <Card key={inv.id}>
+              <CardContent className="p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{inv.email}</div>
+                    <div className="text-xs text-muted-foreground">Expires {new Date(inv.expiresAt).toLocaleDateString()}</div>
+                  </div>
+                  <Badge variant={inv.status === "pending" ? "secondary" : "outline"}>
+                    {inv.status}
+                  </Badge>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => {
+                      const link = `${window.location.origin}/#/register?token=${inv.token}`;
+                      navigator.clipboard.writeText(link);
+                      toast({ title: "Invite link copied to clipboard" });
+                    }}
+                  >
+                    Copy Invite Link
+                  </Button>
+                  {inv.status === "pending" && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => deleteInvitation.mutate(inv.id)}
+                      disabled={deleteInvitation.isPending}
+                    >
+                      Delete
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
