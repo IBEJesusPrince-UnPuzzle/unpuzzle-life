@@ -486,10 +486,12 @@ export function SorterView({ areas, onAreaClick, embedded }: { areas: Area[]; on
 
         <div className="flex-1" />
 
-        <Button variant="outline" size="sm" className="h-7 gap-1"
-          onClick={() => setShowAddDialog(true)}>
-          <Plus className="w-3 h-3" /> Task
-        </Button>
+        {!embedded && (
+          <Button variant="outline" size="sm" className="h-7 gap-1"
+            onClick={() => setShowAddDialog(true)}>
+            <Plus className="w-3 h-3" /> Task
+          </Button>
+        )}
       </div>
 
       {/* Day header + stats */}
@@ -520,11 +522,13 @@ export function SorterView({ areas, onAreaClick, embedded }: { areas: Area[]; on
           <CardContent className="p-8 text-center text-muted-foreground">
             <CalendarDays className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="text-sm font-medium">No tasks planned</p>
-            <p className="text-xs mt-1">Add tasks for this day to build your plan.</p>
-            <Button variant="outline" size="sm" className="mt-3"
-              onClick={() => setShowAddDialog(true)}>
-              <Plus className="w-3 h-3 mr-1" /> Add first task
-            </Button>
+            <p className="text-xs mt-1">{embedded ? "Nothing scheduled for this day." : "Add tasks for this day to build your plan."}</p>
+            {!embedded && (
+              <Button variant="outline" size="sm" className="mt-3"
+                onClick={() => setShowAddDialog(true)}>
+                <Plus className="w-3 h-3 mr-1" /> Add first task
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -563,13 +567,15 @@ export function SorterView({ areas, onAreaClick, embedded }: { areas: Area[]; on
         </div>
       )}
 
-      {/* Add Task Dialog */}
-      <AddTaskDialog
-        open={showAddDialog}
-        onOpenChange={setShowAddDialog}
-        areas={areas}
-        defaultDate={selectedDate}
-      />
+      {/* Add Task Dialog — only on standalone planner page */}
+      {!embedded && (
+        <AddTaskDialog
+          open={showAddDialog}
+          onOpenChange={setShowAddDialog}
+          areas={areas}
+          defaultDate={selectedDate}
+        />
+      )}
     </div>
   );
 }
