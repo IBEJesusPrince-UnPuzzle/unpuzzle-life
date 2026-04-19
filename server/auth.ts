@@ -111,7 +111,7 @@ export function setupAuth(app: Express) {
 }
 
 function seedSuperAdmin() {
-  const email = (process.env.ADMIN_EMAIL || "ibejesusprince@gmail.com").toLowerCase().trim();
+  const email = (process.env.ADMIN_EMAIL || "tab@theesweetesttaboo.com").toLowerCase().trim();
   const password = process.env.ADMIN_PASSWORD || crypto.randomBytes(16).toString("hex");
   const passwordHash = bcrypt.hashSync(password, SALT_ROUNDS);
 
