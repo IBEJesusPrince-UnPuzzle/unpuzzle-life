@@ -13,12 +13,19 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Compass, Plus, Pencil, ArrowLeft, MoreHorizontal, Clock, Archive, Copy, Check, X,
+  ChevronDown, ChevronRight, Trash2, Shield,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { usePreferences } from "@/hooks/use-preferences";
-import type { Area } from "@shared/schema";
+import { getPieceColor, type PieceKey } from "@/lib/piece-colors";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import type { Area, Identity, NonNegotiable } from "@shared/schema";
+
+const PUZZLE_PIECES: PieceKey[] = ["reason", "finance", "fitness", "talent", "pleasure"];
 
 type ClarityView =
   | { type: "board" }
@@ -499,6 +506,303 @@ function SnapshotTimeline({
 }
 
 // ============================================================
+// IDENTITIES SECTION (6A) — collapsible list of identities for an area
+// ============================================================
+function IdentitiesSection({ areaId }: { areaId: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const [, setLocation] = useLocation();
+  const { data: identities = [] } = useQuery<Identity[]>({
+    queryKey: ["/api/identities"],
+  });
+
+  const areaIdentities = identities.filter((i) => i.areaId === areaId && !i.archived);
+  if (areaIdentities.length === 0) return null;
+
+  // Group by puzzlePiece
+  const grouped: Record<string, Identity[]> = {};
+  for (const id of areaIdentities) {
+    const key = (id.puzzlePiece || "").toLowerCase();
+    (grouped[key] = grouped[key] || []).push(id);
+  }
+  const groupKeys = Object.keys(grouped).sort();
+
+  const statusClass = (status: string) => {
+    switch (status) {
+      case "project": return "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300";
+      case "routine": return "bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300";
+      default: return "bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-300";
+    }
+  };
+
+  const handleTap = (identity: Identity) => {
+    if (identity.status === "draft") {
+      setLocation("/drafts");
+    } else if (identity.status === "project") {
+      setLocation(`/projects/${identity.id}/build`);
+    }
+    // routine — no navigation
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <span>Identities ({areaIdentities.length})</span>
+      </button>
+
+      {expanded && (
+        <div className="mt-2 space-y-3 animate-in slide-in-from-top-1 duration-150">
+          {groupKeys.map((pieceKey) => {
+            const color = getPieceColor(pieceKey);
+            const items = grouped[pieceKey];
+            return (
+              <div key={pieceKey} className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: color.accent || undefined }}
+                  />
+                  <span className={`text-xs font-medium ${color.text}`}>{color.label || pieceKey}</span>
+                </div>
+                <div className="space-y-1 pl-3.5">
+                  {items.map((identity) => {
+                    const tappable = identity.status === "draft" || identity.status === "project";
+                    return (
+                      <div
+                        key={identity.id}
+                        onClick={() => tappable && handleTap(identity)}
+                        className={`flex items-center justify-between gap-2 text-xs rounded-md px-2 py-1.5 ${tappable ? "cursor-pointer hover:bg-muted/60" : ""}`}
+                      >
+                        <span className="truncate flex-1 min-w-0">{identity.statement}</span>
+                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusClass(identity.status)}`}>
+                          {identity.status}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// BOUNDARIES SECTION (6B) — collapsible non-negotiables for an area
+// ============================================================
+function BoundariesSection({ areaId }: { areaId: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [newPiece, setNewPiece] = useState<PieceKey>("reason");
+  const [newStatement, setNewStatement] = useState("");
+  const { toast } = useToast();
+
+  const { data: boundaries = [] } = useQuery<NonNegotiable[]>({
+    queryKey: ["/api/non-negotiables", { areaId }],
+    queryFn: () =>
+      apiRequest("GET", `/api/non-negotiables?areaId=${areaId}`).then((r) => r.json()),
+    enabled: expanded,
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/non-negotiables", { areaId }] });
+    queryClient.invalidateQueries({ queryKey: ["/api/non-negotiables"] });
+  };
+
+  const updateBoundary = useMutation({
+    mutationFn: (vars: { id: number; statement: string }) =>
+      apiRequest("PATCH", `/api/non-negotiables/${vars.id}`, { statement: vars.statement }),
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Boundary updated." });
+      setEditingId(null);
+      setEditDraft("");
+    },
+  });
+
+  const createBoundary = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/non-negotiables", {
+        puzzlePiece: newPiece,
+        statement: newStatement.trim(),
+        areaId,
+        createdAt: new Date().toISOString(),
+      }),
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Boundary added." });
+      setAdding(false);
+      setNewStatement("");
+      setNewPiece("reason");
+    },
+  });
+
+  const deleteBoundary = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/non-negotiables/${id}`),
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Boundary deleted." });
+    },
+  });
+
+  const startEdit = (b: NonNegotiable) => {
+    setEditingId(b.id);
+    setEditDraft(b.statement);
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <Shield className="w-3 h-3" />
+        <span>Boundaries{boundaries.length > 0 ? ` (${boundaries.length})` : ""}</span>
+      </button>
+
+      {expanded && (
+        <div className="mt-2 space-y-2 animate-in slide-in-from-top-1 duration-150">
+          {boundaries.map((b) => {
+            const color = getPieceColor(b.puzzlePiece);
+            const isEditing = editingId === b.id;
+            return (
+              <div key={b.id} className="flex items-start gap-2 text-xs rounded-md px-2 py-1.5 hover:bg-muted/40 group/boundary">
+                <span
+                  className="w-2 h-2 rounded-full shrink-0 mt-1.5"
+                  style={{ backgroundColor: color.accent || undefined }}
+                  title={color.label || b.puzzlePiece}
+                />
+                {isEditing ? (
+                  <div className="flex-1 space-y-2">
+                    <Textarea
+                      value={editDraft}
+                      onChange={(e) => setEditDraft(e.target.value)}
+                      className="min-h-[60px] text-xs resize-none"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          setEditingId(null);
+                          setEditDraft("");
+                        }
+                      }}
+                    />
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        className="h-6 text-xs gap-1"
+                        onClick={() => updateBoundary.mutate({ id: b.id, statement: editDraft.trim() })}
+                        disabled={!editDraft.trim() || updateBoundary.isPending}
+                      >
+                        <Check className="w-3 h-3" /> Save
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-xs gap-1"
+                        onClick={() => { setEditingId(null); setEditDraft(""); }}
+                      >
+                        <X className="w-3 h-3" /> Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => startEdit(b)}
+                      className="flex-1 text-left leading-relaxed"
+                    >
+                      {b.statement}
+                    </button>
+                    <button
+                      onClick={() => deleteBoundary.mutate(b.id)}
+                      className="shrink-0 opacity-0 group-hover/boundary:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                      title="Delete boundary"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+
+          {adding ? (
+            <div className="space-y-2 rounded-md border p-2 bg-muted/20">
+              <Select value={newPiece} onValueChange={(v) => setNewPiece(v as PieceKey)}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PUZZLE_PIECES.map((p) => {
+                    const c = getPieceColor(p);
+                    return (
+                      <SelectItem key={p} value={p}>
+                        <span className="flex items-center gap-2">
+                          <span
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: c.accent }}
+                          />
+                          {c.label}
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              <Textarea
+                value={newStatement}
+                onChange={(e) => setNewStatement(e.target.value)}
+                placeholder="e.g. I won't check email before 9am..."
+                className="min-h-[60px] text-xs resize-none"
+                autoFocus
+              />
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  className="h-6 text-xs gap-1"
+                  onClick={() => createBoundary.mutate()}
+                  disabled={!newStatement.trim() || createBoundary.isPending}
+                >
+                  <Check className="w-3 h-3" /> Save
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-xs gap-1"
+                  onClick={() => {
+                    setAdding(false);
+                    setNewStatement("");
+                    setNewPiece("reason");
+                  }}
+                >
+                  <X className="w-3 h-3" /> Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setAdding(true)}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1"
+            >
+              <Plus className="w-3 h-3" /> Add boundary
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
 // AREA VISION CARD — tap to edit inline
 // ============================================================
 function AreaVisionCard({
@@ -716,6 +1020,10 @@ function AreaVisionCard({
               />
             </div>
           )}
+
+          {/* Identities (6A) & Boundaries (6B) */}
+          <IdentitiesSection areaId={area.id} />
+          <BoundariesSection areaId={area.id} />
         </CardContent>
       </Card>
 
