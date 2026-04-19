@@ -1651,7 +1651,7 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   // SUPPORT REQUESTS
   // ============================================================
-  app.post("/api/support-requests", (req, res) => {
+  app.post("/api/support-requests", requireAuth, (req, res) => {
     try {
       const userId = getEffectiveUserId(req);
       const { description, screenshotBase64, pageUrl, userAgent, screenSize } = req.body || {};
