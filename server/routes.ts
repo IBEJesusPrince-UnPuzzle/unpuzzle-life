@@ -220,6 +220,13 @@ export function registerRoutes(server: Server, app: Express) {
     const userId = getEffectiveUserId(req);
     res.json(storage.getProjects(userId));
   });
+  app.post("/api/projects", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const data = { ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
+    const parsed = insertProjectSchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createProject(userId, parsed.data));
+  });
   app.patch("/api/projects/:id", (req, res) => {
     const userId = getEffectiveUserId(req);
     const result = storage.updateProject(userId, Number(req.params.id), req.body);

@@ -24,12 +24,20 @@ import AuthPage, { RegisterPage } from "@/pages/auth-page";
 import AdminPage from "@/pages/admin";
 import SomedayPage from "@/pages/someday";
 import WizardPage from "@/pages/wizard";
+import DraftReviewPage from "@/pages/draft-review";
+import ProjectBuilderPage from "@/pages/project-builder";
 import NotFound from "@/pages/not-found";
 
 function ProjectDetailRoute({ params }: { params: { id?: string } }) {
   const id = Number(params?.id);
   if (!id || isNaN(id)) return <NotFound />;
   return <ProjectDetailPage id={id} />;
+}
+
+function ProjectBuilderRoute({ params }: { params: { id?: string } }) {
+  const id = Number(params?.id);
+  if (!id || isNaN(id)) return <NotFound />;
+  return <ProjectBuilderPage id={String(id)} />;
 }
 
 function AppRouter() {
@@ -46,7 +54,9 @@ function AppRouter() {
       <Route path="/identity-vote" component={IdentityVotePage} />
       <Route path="/data" component={DataPage} />
       <Route path="/projects" component={ProjectsPage} />
+      <Route path="/projects/:id/build" component={ProjectBuilderRoute} />
       <Route path="/projects/:id" component={ProjectDetailRoute} />
+      <Route path="/drafts" component={DraftReviewPage} />
       <Route path="/someday" component={SomedayPage} />
       <Route path="/wizard" component={WizardPage} />
       <Route path="/admin" component={AdminPage} />

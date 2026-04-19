@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Fingerprint, Inbox as InboxIcon, Repeat2, FolderOpen, Plus, ArrowRight,
   FileEdit, ChevronRight, Shield, Check, X, Puzzle, Pencil,
+  Sparkles, GraduationCap,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
@@ -202,6 +203,7 @@ export default function Dashboard() {
   }>({ queryKey: ["/api/dashboard-data"] });
 
   const { data: purposes = [] } = useQuery<any[]>({ queryKey: ["/api/purposes"] });
+  const { data: identities = [] } = useQuery<any[]>({ queryKey: ["/api/identities"] });
   const { data: laws = [] } = useQuery<any[]>({ queryKey: ["/api/immutable-laws"] });
   const { data: lawLogs = [] } = useQuery<any[]>({
     queryKey: ["/api/immutable-law-logs/date", today],
@@ -219,6 +221,11 @@ export default function Dashboard() {
   const areas = dashboardData?.areas || [];
   const routineItems = dashboardData?.routineItems || [];
   const draftRoutineCount = routineItems.filter((i: any) => i.isDraft === 1 && i.active).length;
+
+  const activeIdentities = identities.filter((i: any) => i.active);
+  const draftIdentityCount = activeIdentities.filter((i: any) => i.status === "draft").length;
+  const projectIdentityCount = activeIdentities.filter((i: any) => i.status === "project").length;
+  const routineIdentityCount = activeIdentities.filter((i: any) => i.status === "routine").length;
 
   const activeLaws = laws.filter((l: any) => l.active);
   const checkedInLawIds = new Set(lawLogs.map((log: any) => log.immutableLawId));
@@ -348,6 +355,64 @@ export default function Dashboard() {
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Open Routines to set a time and lock them in
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+          </div>
+        </Link>
+      )}
+
+      {/* Identity lifecycle cards */}
+      {draftIdentityCount > 0 && (
+        <Link href="/drafts">
+          <div className="rounded-lg border border-primary/30 bg-primary/[0.04] p-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-primary/[0.08] transition-colors">
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-4 h-4 text-primary shrink-0" />
+              <div>
+                <p className="text-sm font-medium">
+                  You have {draftIdentityCount} draft {draftIdentityCount === 1 ? "identity" : "identities"} to review
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Decide which ones to keep, edit, or remove
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+          </div>
+        </Link>
+      )}
+
+      {projectIdentityCount > 0 && (
+        <Link href="/projects">
+          <div className="rounded-lg border bg-card p-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-muted/40 transition-colors">
+            <div className="flex items-center gap-2.5">
+              <FolderOpen className="w-4 h-4 text-primary shrink-0" />
+              <div>
+                <p className="text-sm font-medium">
+                  {projectIdentityCount} active {projectIdentityCount === 1 ? "project" : "projects"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Build environment and tasks to reach routine
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+          </div>
+        </Link>
+      )}
+
+      {routineIdentityCount > 0 && (
+        <Link href="/routine">
+          <div className="rounded-lg border bg-card p-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-muted/40 transition-colors">
+            <div className="flex items-center gap-2.5">
+              <GraduationCap className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium">
+                  {routineIdentityCount} {routineIdentityCount === 1 ? "routine" : "routines"} today
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Graduated identities running on cadence
                 </p>
               </div>
             </div>
