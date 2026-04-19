@@ -1,7 +1,7 @@
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
   SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
-  SidebarHeader, SidebarFooter, SidebarTrigger,
+  SidebarHeader, SidebarFooter, SidebarTrigger, useSidebar,
 } from "@/components/ui/sidebar";
 import { Link } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
@@ -22,6 +22,9 @@ const navItems = [
 export function AppSidebar() {
   const [location] = useHashLocation();
   const { user, logoutMutation } = useAuth();
+  const { setOpenMobile } = useSidebar();
+
+  const closeSidebar = () => setOpenMobile(false);
 
   const [isDark, setIsDark] = useState(() => {
     const stored = localStorage.getItem("theme");
@@ -79,7 +82,7 @@ export function AppSidebar() {
                       isActive={isActive}
                       data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
                     >
-                      <Link href={item.url}>
+                      <Link href={item.url} onClick={closeSidebar}>
                         <item.icon className="w-4 h-4" />
                         <span>{item.title}</span>
                       </Link>
@@ -102,7 +105,7 @@ export function AppSidebar() {
                   isActive={location === "/admin"}
                   data-testid="nav-admin"
                 >
-                  <Link href="/admin">
+                  <Link href="/admin" onClick={closeSidebar}>
                     <Shield className="w-4 h-4" />
                     <span>Admin</span>
                   </Link>
