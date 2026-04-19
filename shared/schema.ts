@@ -411,6 +411,23 @@ export const immutableLawLogs = sqliteTable("immutable_law_logs", {
 });
 
 // ============================================================
+// SUPPORT REQUESTS
+// ============================================================
+
+export const supportRequests = sqliteTable("support_requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  description: text("description").notNull(),
+  screenshotBase64: text("screenshot_base64"),
+  pageUrl: text("page_url"),
+  userAgent: text("user_agent"),
+  screenSize: text("screen_size"),
+  status: text("status").notNull().default("open"), // "open" | "resolved"
+  resolvedAt: text("resolved_at"),
+  createdAt: text("created_at").notNull(),
+});
+
+// ============================================================
 // PREFERENCES
 // ============================================================
 
@@ -517,3 +534,7 @@ export type ImmutableLaw = typeof immutableLaws.$inferSelect;
 export type InsertImmutableLaw = z.infer<typeof insertImmutableLawSchema>;
 export type ImmutableLawLog = typeof immutableLawLogs.$inferSelect;
 export type InsertImmutableLawLog = z.infer<typeof insertImmutableLawLogSchema>;
+
+export const insertSupportRequestSchema = createInsertSchema(supportRequests).omit({ id: true });
+export type SupportRequest = typeof supportRequests.$inferSelect;
+export type InsertSupportRequest = z.infer<typeof insertSupportRequestSchema>;

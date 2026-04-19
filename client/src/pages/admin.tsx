@@ -14,6 +14,21 @@ import { Eye, EyeOff, KeyRound } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
+interface SupportRequestRow {
+  id: number;
+  userId: number;
+  userEmail: string | null;
+  userDisplayName: string | null;
+  description: string;
+  screenshotBase64: string | null;
+  pageUrl: string | null;
+  userAgent: string | null;
+  screenSize: string | null;
+  status: string;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
 interface AdminUser {
   id: number;
   email: string;
@@ -51,6 +66,7 @@ export default function AdminPage() {
         <TabsList>
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="invitations">Invitations</TabsTrigger>
+          <SupportTabTrigger />
         </TabsList>
         <TabsContent value="users">
           <UsersTab />
@@ -58,7 +74,194 @@ export default function AdminPage() {
         <TabsContent value="invitations">
           <InvitationsTab />
         </TabsContent>
+        <TabsContent value="support">
+          <SupportTab />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function SupportTabTrigger() {
+  const { data: requests = [] } = useQuery<SupportRequestRow[]>({
+    queryKey: ["/api/admin/support-requests"],
+  });
+  const openCount = requests.filter((r) => r.status === "open").length;
+  return (
+    <TabsTrigger value="support">
+      Support
+      {openCount > 0 && (
+        <Badge variant="destructive" className="ml-2 h-5 px-1.5 text-xs">
+          {openCount}
+        </Badge>
+      )}
+    </TabsTrigger>
+  );
+}
+
+function SupportTab() {
+  const { toast } = useToast();
+  const [filter, setFilter] = useState<"all" | "open" | "resolved">("all");
+  const [viewingScreenshot, setViewingScreenshot] = useState<string | null>(null);
+
+  const { data: requests = [], isLoading } = useQuery<SupportRequestRow[]>({
+    queryKey: ["/api/admin/support-requests"],
+  });
+
+  const resolve = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("PATCH", `/api/admin/support-requests/${id}`, { status: "resolved" });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/support-requests"] });
+      toast({ title: "Marked as resolved" });
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", title: "Failed to resolve", description: error.message });
+    },
+  });
+
+  const impersonate = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/admin/impersonate/${id}`);
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+      window.location.hash = "#/";
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", title: "Failed to impersonate", description: error.message });
+    },
+  });
+
+  if (isLoading) return <p className="py-4 text-muted-foreground">Loading support requests...</p>;
+
+  const filtered = requests.filter((r) => filter === "all" || r.status === filter);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <Button
+          variant={filter === "all" ? "default" : "outline"}
+          size="sm"
+          className="h-8 text-xs"
+          onClick={() => setFilter("all")}
+        >
+          All ({requests.length})
+        </Button>
+        <Button
+          variant={filter === "open" ? "default" : "outline"}
+          size="sm"
+          className="h-8 text-xs"
+          onClick={() => setFilter("open")}
+        >
+          Open ({requests.filter((r) => r.status === "open").length})
+        </Button>
+        <Button
+          variant={filter === "resolved" ? "default" : "outline"}
+          size="sm"
+          className="h-8 text-xs"
+          onClick={() => setFilter("resolved")}
+        >
+          Resolved ({requests.filter((r) => r.status === "resolved").length})
+        </Button>
+      </div>
+
+      {filtered.length === 0 ? (
+        <p className="py-8 text-center text-muted-foreground">No support requests yet</p>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((r) => (
+            <Card key={r.id}>
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{r.userDisplayName || r.userEmail || `User #${r.userId}`}</div>
+                    <div className="text-sm text-muted-foreground truncate">{r.userEmail}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge
+                      variant={r.status === "open" ? "secondary" : "outline"}
+                      className={
+                        r.status === "open"
+                          ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30"
+                          : "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30"
+                      }
+                    >
+                      {r.status}
+                    </Badge>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(r.createdAt).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-sm whitespace-pre-wrap">{r.description}</div>
+
+                {r.screenshotBase64 && (
+                  <button
+                    type="button"
+                    onClick={() => setViewingScreenshot(r.screenshotBase64)}
+                    className="block rounded border overflow-hidden hover:opacity-80 transition-opacity"
+                  >
+                    <img
+                      src={r.screenshotBase64}
+                      alt="Screenshot"
+                      className="max-h-40 object-contain bg-muted"
+                    />
+                  </button>
+                )}
+
+                <div className="text-xs text-muted-foreground space-y-0.5">
+                  {r.pageUrl && <div className="truncate"><span className="font-medium">Page:</span> {r.pageUrl}</div>}
+                  {r.screenSize && <div><span className="font-medium">Screen:</span> {r.screenSize}</div>}
+                  {r.userAgent && <div className="truncate"><span className="font-medium">UA:</span> {r.userAgent}</div>}
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => impersonate.mutate(r.userId)}
+                    disabled={impersonate.isPending}
+                  >
+                    Impersonate
+                  </Button>
+                  {r.status === "open" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => resolve.mutate(r.id)}
+                      disabled={resolve.isPending}
+                    >
+                      Resolve
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={!!viewingScreenshot} onOpenChange={(o) => { if (!o) setViewingScreenshot(null); }}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Screenshot</DialogTitle>
+          </DialogHeader>
+          {viewingScreenshot && (
+            <img
+              src={viewingScreenshot}
+              alt="Full-size screenshot"
+              className="w-full h-auto rounded border"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

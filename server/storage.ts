@@ -388,6 +388,19 @@ sqlite.exec(`
     created_at TEXT NOT NULL,
     updated_at TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS support_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    description TEXT NOT NULL,
+    screenshot_base64 TEXT,
+    page_url TEXT,
+    user_agent TEXT,
+    screen_size TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    resolved_at TEXT,
+    created_at TEXT NOT NULL
+  );
 `);
 
 // Drop dead tables from previous schema

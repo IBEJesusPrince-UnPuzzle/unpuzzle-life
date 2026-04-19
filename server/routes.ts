@@ -2,7 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import multer from "multer";
 import { storage, sqlite } from "./storage";
-import { requireAuth, getEffectiveUserId } from "./auth";
+import { requireAuth, requireAdmin, getEffectiveUserId } from "./auth";
 import { exportWorkbook, importWorkbook, importSingleCsv, generateCsvTemplate, getSheetNames, getLeafTables } from "./xlsx-io";
 import fs from "fs";
 import path from "path";
@@ -1646,6 +1646,80 @@ export function registerRoutes(server: Server, app: Express) {
   // Get available sheet names and leaf tables
   app.get("/api/import/meta", (_req, res) => {
     res.json({ sheets: getSheetNames(), leafTables: getLeafTables() });
+  });
+
+  // ============================================================
+  // SUPPORT REQUESTS
+  // ============================================================
+  app.post("/api/support-requests", (req, res) => {
+    try {
+      const userId = getEffectiveUserId(req);
+      const { description, screenshotBase64, pageUrl, userAgent, screenSize } = req.body || {};
+      if (!description || typeof description !== "string") {
+        return res.status(400).json({ error: "description is required" });
+      }
+      const createdAt = new Date().toISOString();
+      const result = sqlite
+        .prepare(
+          `INSERT INTO support_requests (user_id, description, screenshot_base64, page_url, user_agent, screen_size, status, resolved_at, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'open', NULL, ?)`
+        )
+        .run(
+          userId,
+          description,
+          screenshotBase64 || null,
+          pageUrl || null,
+          userAgent || null,
+          screenSize || null,
+          createdAt
+        );
+      const row = sqlite
+        .prepare("SELECT * FROM support_requests WHERE id = ?")
+        .get(result.lastInsertRowid) as any;
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/support-requests", requireAdmin, (_req, res) => {
+    try {
+      const rows = sqlite
+        .prepare(
+          `SELECT sr.id, sr.user_id as userId, u.email as userEmail, u.display_name as userDisplayName,
+                  sr.description, sr.screenshot_base64 as screenshotBase64,
+                  sr.page_url as pageUrl, sr.user_agent as userAgent, sr.screen_size as screenSize,
+                  sr.status, sr.resolved_at as resolvedAt, sr.created_at as createdAt
+           FROM support_requests sr
+           LEFT JOIN users u ON u.id = sr.user_id
+           ORDER BY sr.created_at DESC`
+        )
+        .all();
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/support-requests/:id", requireAdmin, (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { status } = req.body || {};
+      if (status !== "resolved") {
+        return res.status(400).json({ error: "status must be 'resolved'" });
+      }
+      const resolvedAt = new Date().toISOString();
+      const updateResult = sqlite
+        .prepare("UPDATE support_requests SET status = ?, resolved_at = ? WHERE id = ?")
+        .run("resolved", resolvedAt, id);
+      if (updateResult.changes === 0) {
+        return res.status(404).json({ error: "Not found" });
+      }
+      const row = sqlite.prepare("SELECT * FROM support_requests WHERE id = ?").get(id) as any;
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Internal server error" });
+    }
   });
 
   // ============================================================
