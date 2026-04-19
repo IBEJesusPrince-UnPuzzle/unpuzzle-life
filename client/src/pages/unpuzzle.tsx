@@ -404,32 +404,8 @@ function PieceDetailView({ piece, onBack }: { piece: PieceKey; onBack: () => voi
   );
 }
 
-function parsePieceFromSearch(): PieceKey | null {
-  if (typeof window === "undefined") return null;
-  const params = new URLSearchParams(window.location.hash.includes("?")
-    ? window.location.hash.split("?")[1]
-    : window.location.search
-  );
-  const val = params.get("piece");
-  if (!val) return null;
-  const normalized = val.toLowerCase() as PieceKey;
-  if (PUZZLE_PIECES.some(p => p.name === normalized)) return normalized;
-  return null;
-}
-
 export default function UnPuzzlePage() {
-  const [, setLocation] = useLocation();
-  const [piece, setPiece] = useState<PieceKey | null>(() => parsePieceFromSearch());
-
-  useEffect(() => {
-    const onHashChange = () => setPiece(parsePieceFromSearch());
-    window.addEventListener("hashchange", onHashChange);
-    window.addEventListener("popstate", onHashChange);
-    return () => {
-      window.removeEventListener("hashchange", onHashChange);
-      window.removeEventListener("popstate", onHashChange);
-    };
-  }, []);
+  const [piece, setPiece] = useState<PieceKey | null>(null);
 
   const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
 
@@ -449,12 +425,10 @@ export default function UnPuzzlePage() {
 
   const handleSelectPiece = (p: PieceKey) => {
     setPiece(p);
-    setLocation(`/unpuzzle?piece=${p}`);
   };
 
   const handleBack = () => {
     setPiece(null);
-    setLocation("/unpuzzle");
   };
 
   if (piece) {
