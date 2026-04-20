@@ -111,11 +111,11 @@ export function ReportIssueButton() {
           </DialogHeader>
           <div className="space-y-4">
             {screenshot ? (
-              <div className="relative">
+              <div className="relative rounded border-2 border-dashed border-border bg-zinc-800 dark:bg-zinc-900 p-2">
                 <img
                   src={screenshot}
                   alt="Screenshot preview"
-                  className="max-h-40 w-full object-contain rounded border bg-muted"
+                  className="max-h-40 w-full object-contain rounded"
                 />
                 <button
                   type="button"
