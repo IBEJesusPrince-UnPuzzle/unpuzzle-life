@@ -230,6 +230,32 @@ export function useWizardDraft({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const restoredOnce = useRef(false);
 
+  // Args for the write that is currently pending (either sitting on the
+  // `timer` debounce, or waiting for a flush). Updated every time the user's
+  // value changes for the active key. Used by the debounce callback, by the
+  // unmount path, and — crucially — by the pagehide / beforeunload handlers
+  // that run synchronously when the browser is tearing the page down.
+  const pendingWrite = useRef<{
+    key: string;
+    value: string;
+    committedValue: string | undefined;
+  } | null>(null);
+
+  const flush = useCallback(() => {
+    const w = pendingWrite.current;
+    if (!w) return;
+    pendingWrite.current = null;
+    if (w.committedValue != null && w.value === w.committedValue) {
+      clearDraft(w.key);
+      return;
+    }
+    if (!w.value) {
+      clearDraft(w.key);
+      return;
+    }
+    writeDraft(w.key, w.value);
+  }, []);
+
   const refreshArchives = useCallback(() => {
     if (userId == null) return;
     setArchives(listArchives(userId, phase, fieldId));
@@ -256,25 +282,57 @@ export function useWizardDraft({
   // Debounced autosave on value change.
   useEffect(() => {
     if (!key || !restoreReady) return;
+    // If a prior debounce was pending *for a different key*, commit it now
+    // before we overwrite it — otherwise switching fields mid-edit would
+    // drop the prior slot's text.
+    const prior = pendingWrite.current;
+    if (prior && prior.key !== key) {
+      if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+      flush();
+    }
+    pendingWrite.current = { key, value, committedValue };
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      // If value matches committed server value, there's nothing to recover
-      // and keeping a redundant draft could trigger the cross-session prompt
-      // on the next visit. Treat it as "nothing to draft."
-      if (committedValue != null && value === committedValue) {
-        clearDraft(key);
-        return;
-      }
-      if (!value) {
-        clearDraft(key);
-        return;
-      }
-      writeDraft(key, value);
+      timer.current = null;
+      flush();
     }, debounceMs);
     return () => {
-      if (timer.current) clearTimeout(timer.current);
+      if (timer.current) {
+        clearTimeout(timer.current);
+        timer.current = null;
+      }
     };
-  }, [key, value, committedValue, debounceMs, restoreReady]);
+  }, [key, value, committedValue, debounceMs, restoreReady, flush]);
+
+  // On unmount, commit any pending debounce so a teardown (route change, step
+  // advance, form reset) doesn't drop the last keystrokes.
+  useEffect(() => {
+    return () => {
+      if (timer.current) {
+        clearTimeout(timer.current);
+        timer.current = null;
+      }
+      flush();
+    };
+  }, [flush]);
+
+  // Flush pending writes when the page is being hidden or unloaded. `pagehide`
+  // and the hidden visibilitychange fire reliably across browsers (including
+  // iOS Safari, where `beforeunload` does not); `beforeunload` covers desktop
+  // refresh. Any of the three may fire first; `flush` is idempotent because
+  // it nulls `pendingWrite.current`.
+  useEffect(() => {
+    const onHide = () => flush();
+    const onVis = () => { if (document.visibilityState === "hidden") flush(); };
+    window.addEventListener("pagehide", onHide);
+    window.addEventListener("beforeunload", onHide);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("pagehide", onHide);
+      window.removeEventListener("beforeunload", onHide);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [flush]);
 
   const clearActive = useCallback(() => {
     if (!key) return;
