@@ -19,6 +19,13 @@ import type {
   EnvironmentPerson, EnvironmentPlace,
 } from "@shared/schema";
 import { PIECE_COLORS, type PieceKey } from "@/lib/piece-colors";
+import { useAuth } from "@/hooks/use-auth";
+import {
+  clearDraft, draftKey, isWizardSessionActive, markWizardSessionActive,
+  phaseHasDrafts, archivePhaseDrafts,
+} from "@/hooks/use-wizard-draft";
+import { DraftField } from "@/components/wizard-draft-field";
+import { WizardDraftPrompt } from "@/components/wizard-draft-prompt";
 
 // ============================================================
 // CONSTANTS
@@ -73,6 +80,8 @@ const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "S
 export default function WizardPage() {
   const [, navigate] = useLocation();
   const [phase, setPhase] = useState(1);
+  const { user } = useAuth();
+  const userId = user?.id;
 
   // Pre-load wizard state
   const { data: wizardState } = useQuery<{ currentPhase: number; completed: number }>({
@@ -84,6 +93,47 @@ export default function WizardPage() {
       setPhase(wizardState.currentPhase);
     }
   }, [wizardState?.currentPhase]);
+
+  // ---- Draft autosave: session flag + cross-session prompt ----
+  // restoreReady gates silent per-field restore until we've resolved the prompt
+  // (if one is needed). In-session, resolves immediately.
+  const [restoreReady, setRestoreReady] = useState(false);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [draftsVersion, setDraftsVersion] = useState(0);
+
+  useEffect(() => {
+    if (userId == null) return;
+    const sessionActive = isWizardSessionActive();
+    if (sessionActive) {
+      // Same browser session — silently restore any drafts in any field.
+      markWizardSessionActive();
+      setRestoreReady(true);
+      return;
+    }
+    // New session: if any active drafts exist for the *current* phase, prompt.
+    if (phaseHasDrafts(userId, phase)) {
+      setPromptOpen(true);
+    } else {
+      markWizardSessionActive();
+      setRestoreReady(true);
+    }
+  }, [userId, phase]);
+
+  const handlePickItUp = () => {
+    if (userId == null) return;
+    markWizardSessionActive();
+    setPromptOpen(false);
+    setRestoreReady(true);
+  };
+
+  const handleStartFresh = () => {
+    if (userId == null) return;
+    archivePhaseDrafts(userId, phase);
+    markWizardSessionActive();
+    setPromptOpen(false);
+    setDraftsVersion(v => v + 1);
+    setRestoreReady(true);
+  };
 
   const saveWizardPhase = useMutation({
     mutationFn: (p: number) => apiRequest("PATCH", "/api/wizard-state", { currentPhase: p }),
@@ -192,27 +242,45 @@ export default function WizardPage() {
           <Step1Purpose
             setCanAdvance={setCanAdvance}
             setOnNext={setOnNext}
+            userId={userId}
+            restoreReady={restoreReady}
+            draftsVersion={draftsVersion}
           />
         )}
         {phase === 2 && (
           <Step2AirportTest
             setCanAdvance={setCanAdvance}
             setOnNext={setOnNext}
+            userId={userId}
+            restoreReady={restoreReady}
+            draftsVersion={draftsVersion}
           />
         )}
         {phase === 3 && (
           <Step3PuzzleBreakdown
             setCanAdvance={setCanAdvance}
             setOnNext={setOnNext}
+            userId={userId}
+            restoreReady={restoreReady}
+            draftsVersion={draftsVersion}
           />
         )}
         {phase === 4 && (
           <Step4Responsibilities
             setCanAdvance={setCanAdvance}
             setOnNext={setOnNext}
+            userId={userId}
+            restoreReady={restoreReady}
+            draftsVersion={draftsVersion}
           />
         )}
       </div>
+
+      <WizardDraftPrompt
+        open={promptOpen}
+        onPickItUp={handlePickItUp}
+        onStartFresh={handleStartFresh}
+      />
 
       {/* Bottom navigation */}
       <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t px-4 py-4 z-20">
@@ -250,13 +318,18 @@ export default function WizardPage() {
 interface StepProps {
   setCanAdvance: (v: boolean) => void;
   setOnNext: (fn: (() => Promise<boolean>) | null) => void;
+  userId: number | undefined;
+  restoreReady: boolean;
+  // Bumped on "Start fresh" so step state can re-sync from server / clear
+  // in-memory copies of now-archived drafts.
+  draftsVersion: number;
 }
 
 // ============================================================
 // STEP 1: PURPOSE
 // ============================================================
 
-function Step1Purpose({ setCanAdvance, setOnNext }: StepProps) {
+function Step1Purpose({ setCanAdvance, setOnNext, userId, restoreReady, draftsVersion }: StepProps) {
   const { data: purposes = [] } = useQuery<Purpose[]>({ queryKey: ["/api/purposes"] });
   const existing = purposes[0];
   const [statement, setStatement] = useState("");
@@ -264,6 +337,12 @@ function Step1Purpose({ setCanAdvance, setOnNext }: StepProps) {
   useEffect(() => {
     if (existing?.statement) setStatement(existing.statement);
   }, [existing?.id]);
+
+  // On "Start fresh" re-sync to committed server text (or empty).
+  useEffect(() => {
+    setStatement(existing?.statement ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftsVersion]);
 
   // Use refs to avoid stale closures in the onNext callback
   const statementRef = useRef(statement);
@@ -284,10 +363,12 @@ function Step1Purpose({ setCanAdvance, setOnNext }: StepProps) {
         await apiRequest("POST", "/api/purposes", body);
       }
       queryClient.invalidateQueries({ queryKey: ["/api/purposes"] });
+      // Clear the draft now that it's committed.
+      if (userId != null) clearDraft(draftKey(userId, 1, "purpose:statement"));
       return true;
     });
     return () => setOnNext(null);
-  }, [statement, existing?.id]);
+  }, [statement, existing?.id, userId]);
 
   return (
     <div className="space-y-6">
@@ -304,13 +385,23 @@ function Step1Purpose({ setCanAdvance, setOnNext }: StepProps) {
         <label className="text-sm font-semibold text-foreground mb-2 block">
           What is your life's purpose?
         </label>
-        <Textarea
+        <DraftField
+          userId={userId}
+          phase={1}
+          fieldId="purpose:statement"
           value={statement}
-          onChange={e => setStatement(e.target.value)}
-          placeholder="e.g. To live with integrity, create joy for my family, and leave the world better than I found it..."
-          className="min-h-[140px] text-sm"
-          data-testid="input-purpose"
-        />
+          onChange={setStatement}
+          restoreReady={restoreReady}
+          committedValue={existing?.statement ?? ""}
+        >
+          <Textarea
+            value={statement}
+            onChange={e => setStatement(e.target.value)}
+            placeholder="e.g. To live with integrity, create joy for my family, and leave the world better than I found it..."
+            className="min-h-[140px] text-sm"
+            data-testid="input-purpose"
+          />
+        </DraftField>
         <p className="text-xs text-muted-foreground mt-2">
           Your purpose is the big-picture why behind everything you do. Boundaries and non-negotiables
           come later, one puzzle piece at a time.
@@ -324,11 +415,27 @@ function Step1Purpose({ setCanAdvance, setOnNext }: StepProps) {
 // STEP 2: AIRPORT TEST (Areas + Visions)
 // ============================================================
 
-function Step2AirportTest({ setCanAdvance, setOnNext }: StepProps) {
+function Step2AirportTest({ setCanAdvance, setOnNext, userId, restoreReady, draftsVersion }: StepProps) {
   const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
   const [name, setName] = useState("");
   const [visionText, setVisionText] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
+
+  // Field IDs: while adding a new area, use the "new" slot; while editing,
+  // scope by area id so each edit has its own draft.
+  const nameFieldId = editingId == null ? "area:new:name" : `area:edit:${editingId}:name`;
+  const visionFieldId = editingId == null ? "area:new:vision" : `area:edit:${editingId}:vision`;
+
+  // Committed server value for the vision text (only when editing).
+  const editingArea = editingId != null ? areas.find(a => a.id === editingId) : undefined;
+  const committedName = editingArea?.name ?? "";
+  const committedVision = editingArea?.visionText ?? "";
+
+  useEffect(() => {
+    setName("");
+    setVisionText("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftsVersion]);
 
   const createArea = useMutation({
     mutationFn: (body: { name: string; visionText: string; sortOrder: number }) =>
@@ -369,6 +476,7 @@ function Step2AirportTest({ setCanAdvance, setOnNext }: StepProps) {
 
   const handleAdd = async () => {
     if (!name.trim() || !visionText.trim()) return;
+    const prevEditingId = editingId;
     if (editingId != null) {
       await updateArea.mutateAsync({ id: editingId, visionText: visionText.trim() });
       setEditingId(null);
@@ -378,6 +486,16 @@ function Step2AirportTest({ setCanAdvance, setOnNext }: StepProps) {
         visionText: visionText.trim(),
         sortOrder: activeAreas.length,
       });
+    }
+    // Clear the draft slots that were in play.
+    if (userId != null) {
+      if (prevEditingId != null) {
+        clearDraft(draftKey(userId, 2, `area:edit:${prevEditingId}:name`));
+        clearDraft(draftKey(userId, 2, `area:edit:${prevEditingId}:vision`));
+      } else {
+        clearDraft(draftKey(userId, 2, "area:new:name"));
+        clearDraft(draftKey(userId, 2, "area:new:vision"));
+      }
     }
     setName("");
     setVisionText("");
@@ -485,13 +603,23 @@ function Step2AirportTest({ setCanAdvance, setOnNext }: StepProps) {
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
               {areaNameLabel}
             </label>
-            <Input
+            <DraftField
+              userId={userId}
+              phase={2}
+              fieldId={nameFieldId}
               value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="e.g. Family, Travel, Business, Health…"
-              disabled={editingId != null}
-              data-testid="input-area-name"
-            />
+              onChange={setName}
+              restoreReady={restoreReady && editingId == null}
+              committedValue={committedName}
+            >
+              <Input
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="e.g. Family, Travel, Business, Health…"
+                disabled={editingId != null}
+                data-testid="input-area-name"
+              />
+            </DraftField>
             {editingId != null && (
               <p className="text-[10px] text-muted-foreground mt-1">Area names can't be renamed.</p>
             )}
@@ -500,13 +628,23 @@ function Step2AirportTest({ setCanAdvance, setOnNext }: StepProps) {
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
               {detailLabel}
             </label>
-            <Textarea
+            <DraftField
+              userId={userId}
+              phase={2}
+              fieldId={visionFieldId}
               value={visionText}
-              onChange={e => setVisionText(e.target.value)}
-              placeholder="Paint the picture, in your own words…"
-              className="min-h-[100px] text-sm"
-              data-testid="input-area-vision"
-            />
+              onChange={setVisionText}
+              restoreReady={restoreReady}
+              committedValue={committedVision}
+            >
+              <Textarea
+                value={visionText}
+                onChange={e => setVisionText(e.target.value)}
+                placeholder="Paint the picture, in your own words…"
+                className="min-h-[100px] text-sm"
+                data-testid="input-area-vision"
+              />
+            </DraftField>
           </div>
           <div className="flex gap-2">
             <Button
@@ -539,7 +677,7 @@ function Step2AirportTest({ setCanAdvance, setOnNext }: StepProps) {
 // STEP 3: PUZZLE PIECE BREAKDOWN + GLOBAL NON-NEGOTIABLES
 // ============================================================
 
-function Step3PuzzleBreakdown({ setCanAdvance, setOnNext }: StepProps) {
+function Step3PuzzleBreakdown({ setCanAdvance, setOnNext, userId, restoreReady, draftsVersion }: StepProps) {
   const { data: areas = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
   const { data: identities = [] } = useQuery<Identity[]>({ queryKey: ["/api/identities"] });
   const { data: nonNegotiables = [] } = useQuery<NonNegotiable[]>({ queryKey: ["/api/non-negotiables"] });
@@ -589,6 +727,18 @@ function Step3PuzzleBreakdown({ setCanAdvance, setOnNext }: StepProps) {
       firstTimeForPiece ? (existingGlobalNN?.statement || "") : "",
     );
   }, [areaIdx, pieceIdx, existingIdentity?.id, existingGlobalNN?.id]);
+
+  // On Start fresh: re-sync to committed values (the draftsVersion bump).
+  useEffect(() => {
+    setIdentityText(existingIdentity?.statement || "");
+    setNonNegotiableText(
+      firstTimeForPiece ? (existingGlobalNN?.statement || "") : "",
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftsVersion]);
+
+  const identityFieldId = currentArea ? `identity:${currentArea.id}:${currentPiece}` : "";
+  const nonNegotiableFieldId = `nonNegotiable:${currentPiece}`;
 
   const createIdentity = useMutation({
     mutationFn: (body: any) => apiRequest("POST", "/api/identities", body),
@@ -663,6 +813,13 @@ function Step3PuzzleBreakdown({ setCanAdvance, setOnNext }: StepProps) {
         location: "",
         createdAt: new Date().toISOString(),
       });
+    }
+    // Clear drafts for fields we just committed.
+    if (userId != null) {
+      clearDraft(draftKey(userId, 3, `identity:${currentArea.id}:${currentPiece}`));
+      if (firstTimeForPiece) {
+        clearDraft(draftKey(userId, 3, `nonNegotiable:${currentPiece}`));
+      }
     }
     return true;
   };
@@ -752,12 +909,22 @@ function Step3PuzzleBreakdown({ setCanAdvance, setOnNext }: StepProps) {
               {pieceColor.label} non-negotiable (global)
             </label>
             <p className="text-sm">{NON_NEGOTIABLE_PROMPTS[currentPiece]}</p>
-            <Textarea
+            <DraftField
+              userId={userId}
+              phase={3}
+              fieldId={nonNegotiableFieldId}
               value={nonNegotiableText}
-              onChange={e => setNonNegotiableText(e.target.value)}
-              placeholder="This one's for life — not just this area."
-              className="min-h-[80px] text-sm"
-            />
+              onChange={setNonNegotiableText}
+              restoreReady={restoreReady}
+              committedValue={existingGlobalNN?.statement ?? ""}
+            >
+              <Textarea
+                value={nonNegotiableText}
+                onChange={e => setNonNegotiableText(e.target.value)}
+                placeholder="This one's for life — not just this area."
+                className="min-h-[80px] text-sm"
+              />
+            </DraftField>
           </CardContent>
         </Card>
       ) : existingGlobalNN ? (
@@ -780,12 +947,24 @@ function Step3PuzzleBreakdown({ setCanAdvance, setOnNext }: StepProps) {
           <p className="text-sm leading-relaxed">{IDENTITY_PROMPTS[currentPiece](currentArea.name)}</p>
           <div className="flex items-start gap-2">
             <span className="text-sm text-muted-foreground shrink-0 pt-2">I am someone who</span>
-            <Textarea
-              value={identityText}
-              onChange={e => setIdentityText(e.target.value)}
-              placeholder="..."
-              className="min-h-[80px] text-sm flex-1"
-            />
+            <div className="flex-1">
+              <DraftField
+                userId={userId}
+                phase={3}
+                fieldId={identityFieldId}
+                value={identityText}
+                onChange={setIdentityText}
+                restoreReady={restoreReady}
+                committedValue={existingIdentity?.statement ?? ""}
+              >
+                <Textarea
+                  value={identityText}
+                  onChange={e => setIdentityText(e.target.value)}
+                  placeholder="..."
+                  className="min-h-[80px] text-sm w-full"
+                />
+              </DraftField>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -823,7 +1002,7 @@ function Step3PuzzleBreakdown({ setCanAdvance, setOnNext }: StepProps) {
 // STEP 4: RESPONSIBILITIES & ROLES
 // ============================================================
 
-function Step4Responsibilities({ setCanAdvance, setOnNext }: StepProps) {
+function Step4Responsibilities({ setCanAdvance, setOnNext, userId, restoreReady, draftsVersion }: StepProps) {
   useEffect(() => {
     setCanAdvance(true);
     setOnNext(null);
@@ -841,19 +1020,23 @@ function Step4Responsibilities({ setCanAdvance, setOnNext }: StepProps) {
         </CardContent>
       </Card>
 
-      <ResponsibilitiesSection />
-      <RolesSection />
+      <ResponsibilitiesSection userId={userId} restoreReady={restoreReady} draftsVersion={draftsVersion} />
+      <RolesSection userId={userId} restoreReady={restoreReady} draftsVersion={draftsVersion} />
     </div>
   );
 }
 
+interface SubsectionProps {
+  userId: number | undefined;
+  restoreReady: boolean;
+  draftsVersion: number;
+}
+
 // -------------- Responsibilities --------------
 
-function ResponsibilitiesSection() {
+function ResponsibilitiesSection({ userId, restoreReady, draftsVersion }: SubsectionProps) {
   const { data: responsibilities = [] } = useQuery<Responsibility[]>({ queryKey: ["/api/responsibilities"] });
   const { data: places = [] } = useQuery<EnvironmentPlace[]>({ queryKey: ["/api/environment/places"] });
-
-  const [customName, setCustomName] = useState("");
 
   const createResponsibility = useMutation({
     mutationFn: (body: any) => apiRequest("POST", "/api/responsibilities", body),
@@ -951,6 +1134,9 @@ function ResponsibilitiesSection() {
             const place = await createPlace.mutateAsync(name);
             return place.id;
           }}
+          userId={userId}
+          restoreReady={restoreReady}
+          draftsVersion={draftsVersion}
         />
       </div>
     </section>
@@ -1064,11 +1250,14 @@ function PresetChoreRow({
 }
 
 function CustomResponsibilityForm({
-  places, onAdd, onCreatePlace,
+  places, onAdd, onCreatePlace, userId, restoreReady, draftsVersion,
 }: {
   places: EnvironmentPlace[];
   onAdd: (name: string, placeId: number | null, cadence: string, dayOfWeek: string | null) => Promise<void>;
   onCreatePlace: (name: string) => Promise<number>;
+  userId: number | undefined;
+  restoreReady: boolean;
+  draftsVersion: number;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -1076,6 +1265,12 @@ function CustomResponsibilityForm({
   const [newPlaceName, setNewPlaceName] = useState("");
   const [cadence, setCadence] = useState("weekly");
   const [dayOfWeek, setDayOfWeek] = useState<string>("");
+
+  useEffect(() => {
+    setName("");
+    setNewPlaceName("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftsVersion]);
 
   if (!open) {
     return (
@@ -1095,6 +1290,10 @@ function CustomResponsibilityForm({
     }
     const dow = (cadence === "weekly" || cadence === "biweekly") ? (dayOfWeek || null) : null;
     await onAdd(name.trim(), finalPlaceId, cadence, dow);
+    if (userId != null) {
+      clearDraft(draftKey(userId, 4, "responsibility:custom:name"));
+      clearDraft(draftKey(userId, 4, "responsibility:custom:newPlaceName"));
+    }
     setName("");
     setPlaceId("");
     setNewPlaceName("");
@@ -1106,12 +1305,21 @@ function CustomResponsibilityForm({
   return (
     <Card>
       <CardContent className="p-3 space-y-2">
-        <Input
+        <DraftField
+          userId={userId}
+          phase={4}
+          fieldId="responsibility:custom:name"
           value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder="Responsibility name"
-          className="h-9 text-sm"
-        />
+          onChange={setName}
+          restoreReady={restoreReady}
+        >
+          <Input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Responsibility name"
+            className="h-9 text-sm"
+          />
+        </DraftField>
         <div>
           <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
             Place (optional)
@@ -1128,12 +1336,21 @@ function CustomResponsibilityForm({
             </SelectContent>
           </Select>
           {placeId === "__new__" && (
-            <Input
+            <DraftField
+              userId={userId}
+              phase={4}
+              fieldId="responsibility:custom:newPlaceName"
               value={newPlaceName}
-              onChange={e => setNewPlaceName(e.target.value)}
-              placeholder="New place name"
-              className="mt-2 h-9 text-sm"
-            />
+              onChange={setNewPlaceName}
+              restoreReady={restoreReady}
+            >
+              <Input
+                value={newPlaceName}
+                onChange={e => setNewPlaceName(e.target.value)}
+                placeholder="New place name"
+                className="mt-2 h-9 text-sm"
+              />
+            </DraftField>
           )}
         </div>
         <CadencePicker cadence={cadence} setCadence={setCadence} dayOfWeek={dayOfWeek} setDayOfWeek={setDayOfWeek} />
@@ -1201,7 +1418,7 @@ function CadencePicker({
 
 // -------------- Roles --------------
 
-function RolesSection() {
+function RolesSection({ userId, restoreReady, draftsVersion }: SubsectionProps) {
   const { data: roles = [] } = useQuery<(Role & { people?: any[] })[]>({ queryKey: ["/api/roles"] });
   const { data: people = [] } = useQuery<EnvironmentPerson[]>({ queryKey: ["/api/environment/people"] });
 
@@ -1255,6 +1472,9 @@ function RolesSection() {
 
       <RoleCreator
         people={people}
+        userId={userId}
+        restoreReady={restoreReady}
+        draftsVersion={draftsVersion}
         onCreate={async ({ name, description, cadence, dayOfWeek, personId, newPersonName, newPersonRelationship }) => {
           const role = await createRole.mutateAsync({
             name, description, cadence, dayOfWeek,
@@ -1278,7 +1498,7 @@ function RolesSection() {
 }
 
 function RoleCreator({
-  people, onCreate,
+  people, onCreate, userId, restoreReady, draftsVersion,
 }: {
   people: EnvironmentPerson[];
   onCreate: (args: {
@@ -1290,6 +1510,9 @@ function RoleCreator({
     newPersonName?: string;
     newPersonRelationship?: string;
   }) => Promise<void>;
+  userId: number | undefined;
+  restoreReady: boolean;
+  draftsVersion: number;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -1299,6 +1522,14 @@ function RoleCreator({
   const [newPersonRelationship, setNewPersonRelationship] = useState("");
   const [cadence, setCadence] = useState("weekly");
   const [dayOfWeek, setDayOfWeek] = useState<string>("");
+
+  useEffect(() => {
+    setName("");
+    setDescription("");
+    setNewPersonName("");
+    setNewPersonRelationship("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftsVersion]);
 
   if (!open) {
     return (
@@ -1320,6 +1551,12 @@ function RoleCreator({
       newPersonName: personId === "__new__" ? newPersonName : undefined,
       newPersonRelationship: personId === "__new__" ? newPersonRelationship : undefined,
     });
+    if (userId != null) {
+      clearDraft(draftKey(userId, 4, "role:name"));
+      clearDraft(draftKey(userId, 4, "role:description"));
+      clearDraft(draftKey(userId, 4, "role:newPersonName"));
+      clearDraft(draftKey(userId, 4, "role:newPersonRelationship"));
+    }
     setName("");
     setDescription("");
     setPersonId("");
@@ -1333,18 +1570,36 @@ function RoleCreator({
   return (
     <Card>
       <CardContent className="p-3 space-y-2">
-        <Input
+        <DraftField
+          userId={userId}
+          phase={4}
+          fieldId="role:name"
           value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder="Role name (e.g. Help Marcus with homework)"
-          className="h-9 text-sm"
-        />
-        <Textarea
+          onChange={setName}
+          restoreReady={restoreReady}
+        >
+          <Input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Role name (e.g. Help Marcus with homework)"
+            className="h-9 text-sm"
+          />
+        </DraftField>
+        <DraftField
+          userId={userId}
+          phase={4}
+          fieldId="role:description"
           value={description}
-          onChange={e => setDescription(e.target.value)}
-          placeholder="Description (optional)"
-          className="min-h-[60px] text-sm"
-        />
+          onChange={setDescription}
+          restoreReady={restoreReady}
+        >
+          <Textarea
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="Description (optional)"
+            className="min-h-[60px] text-sm"
+          />
+        </DraftField>
         <div>
           <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
             Person
@@ -1364,18 +1619,36 @@ function RoleCreator({
           </Select>
           {personId === "__new__" && (
             <div className="mt-2 space-y-2">
-              <Input
+              <DraftField
+                userId={userId}
+                phase={4}
+                fieldId="role:newPersonName"
                 value={newPersonName}
-                onChange={e => setNewPersonName(e.target.value)}
-                placeholder="Person name"
-                className="h-9 text-sm"
-              />
-              <Input
+                onChange={setNewPersonName}
+                restoreReady={restoreReady}
+              >
+                <Input
+                  value={newPersonName}
+                  onChange={e => setNewPersonName(e.target.value)}
+                  placeholder="Person name"
+                  className="h-9 text-sm"
+                />
+              </DraftField>
+              <DraftField
+                userId={userId}
+                phase={4}
+                fieldId="role:newPersonRelationship"
                 value={newPersonRelationship}
-                onChange={e => setNewPersonRelationship(e.target.value)}
-                placeholder="Relationship (optional)"
-                className="h-9 text-sm"
-              />
+                onChange={setNewPersonRelationship}
+                restoreReady={restoreReady}
+              >
+                <Input
+                  value={newPersonRelationship}
+                  onChange={e => setNewPersonRelationship(e.target.value)}
+                  placeholder="Relationship (optional)"
+                  className="h-9 text-sm"
+                />
+              </DraftField>
             </div>
           )}
         </div>
