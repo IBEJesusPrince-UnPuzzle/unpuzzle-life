@@ -25,24 +25,26 @@ const ARCHIVE_PREFIX = "wizardDraftArchive:";
 
 // -- key builders ---------------------------------------------
 
-export function draftKey(userId: string | number, phase: number, fieldId: string): string {
+export type DraftScope = number | string;
+
+export function draftKey(userId: string | number, phase: DraftScope, fieldId: string): string {
   return `${DRAFT_PREFIX}${userId}:${phase}:${fieldId}`;
 }
 
 export function archiveKey(
   userId: string | number,
-  phase: number,
+  phase: DraftScope,
   fieldId: string,
   ts: number,
 ): string {
   return `${ARCHIVE_PREFIX}${userId}:${phase}:${fieldId}:${ts}`;
 }
 
-function archivePrefixFor(userId: string | number, phase: number, fieldId: string): string {
+function archivePrefixFor(userId: string | number, phase: DraftScope, fieldId: string): string {
   return `${ARCHIVE_PREFIX}${userId}:${phase}:${fieldId}:`;
 }
 
-function phaseDraftPrefix(userId: string | number, phase: number): string {
+function phaseDraftPrefix(userId: string | number, phase: DraftScope): string {
   return `${DRAFT_PREFIX}${userId}:${phase}:`;
 }
 
@@ -83,7 +85,7 @@ export function clearDraft(key: string): void {
 // Returns the archive key if one was created, otherwise null.
 export function archiveDraft(
   userId: string | number,
-  phase: number,
+  phase: DraftScope,
   fieldId: string,
 ): string | null {
   const key = draftKey(userId, phase, fieldId);
@@ -105,7 +107,7 @@ export function archiveDraft(
 
 export function listArchives(
   userId: string | number,
-  phase: number,
+  phase: DraftScope,
   fieldId: string,
 ): ArchivedDraft[] {
   const prefix = archivePrefixFor(userId, phase, fieldId);
@@ -139,7 +141,7 @@ export function listArchives(
 // during "restore earlier version").
 export function archiveValue(
   userId: string | number,
-  phase: number,
+  phase: DraftScope,
   fieldId: string,
   value: string,
 ): string | null {
@@ -155,7 +157,7 @@ export function archiveValue(
 }
 
 // For the whole phase — are there any active drafts?
-export function phaseHasDrafts(userId: string | number, phase: number): boolean {
+export function phaseHasDrafts(userId: string | number, phase: DraftScope): boolean {
   const prefix = phaseDraftPrefix(userId, phase);
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
@@ -168,7 +170,7 @@ export function phaseHasDrafts(userId: string | number, phase: number): boolean 
 }
 
 // Archive and clear every active draft in this phase (used for "Start fresh").
-export function archivePhaseDrafts(userId: string | number, phase: number): void {
+export function archivePhaseDrafts(userId: string | number, phase: DraftScope): void {
   const prefix = phaseDraftPrefix(userId, phase);
   const keys: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
@@ -201,7 +203,7 @@ export function markWizardSessionActive(): void {
 
 export interface UseWizardDraftOptions {
   userId: string | number | null | undefined;
-  phase: number;
+  phase: DraftScope;
   fieldId: string;
   value: string;
   setValue: (v: string) => void;

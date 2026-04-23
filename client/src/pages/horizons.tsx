@@ -18,7 +18,13 @@ import {
 import { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { usePreferences } from "@/hooks/use-preferences";
+import {
+  clearDraft, draftKey, isWizardSessionActive, markWizardSessionActive,
+  phaseHasDrafts, archivePhaseDrafts,
+} from "@/hooks/use-wizard-draft";
+import { DraftField } from "@/components/wizard-draft-field";
 import { getPieceColor, type PieceKey } from "@/lib/piece-colors";
 import {
   ClarityRitual, decideRitualTier, markClarityActive, markClarityExit,
@@ -1257,6 +1263,17 @@ function VisionWriter({
   // Re-entry ritual state
   const [ritualTier, setRitualTier] = useState<"silent" | "mini" | "full" | "full_with_cue" | null>(null);
 
+  // Draft autosave scope — unique per user per area.
+  // Using a string scope ("portal:<id>") keeps this distinct from wizard
+  // phase ints (1-4) in the shared localStorage namespace.
+  const { user } = useAuth();
+  const userId = user?.id;
+  const draftScope = `portal:${area.id}` as const;
+  const fieldId = "vision";
+  const [restoreReady, setRestoreReady] = useState(false);
+  const [draftPromptOpen, setDraftPromptOpen] = useState(false);
+  const [draftsVersion, setDraftsVersion] = useState(0);
+
   useEffect(() => {
     if (skipRitual) {
       markClarityActive();
@@ -1278,6 +1295,39 @@ function VisionWriter({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skipRitual]);
 
+  // Resolve draft restore: silent same-session, inline prompt cross-session.
+  useEffect(() => {
+    if (userId == null) return;
+    if (isWizardSessionActive()) {
+      markWizardSessionActive();
+      setRestoreReady(true);
+      return;
+    }
+    if (phaseHasDrafts(userId, draftScope)) {
+      setDraftPromptOpen(true);
+    } else {
+      markWizardSessionActive();
+      setRestoreReady(true);
+    }
+  }, [userId, draftScope]);
+
+  const handlePickItUp = () => {
+    markWizardSessionActive();
+    setDraftPromptOpen(false);
+    setRestoreReady(true);
+  };
+
+  const handleStartFresh = () => {
+    if (userId == null) return;
+    archivePhaseDrafts(userId, draftScope);
+    markWizardSessionActive();
+    setDraftPromptOpen(false);
+    setDraftsVersion(v => v + 1);
+    // Revert to committed server text so the user starts from a clean slate.
+    setVisionText(area.visionText || "");
+    setRestoreReady(true);
+  };
+
   const handleRitualDone = () => {
     setRitualTier("silent");
     setTimeout(() => textareaRef.current?.focus(), 50);
@@ -1291,6 +1341,11 @@ function VisionWriter({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/areas"] });
       queryClient.invalidateQueries({ queryKey: [`/api/areas/${area.id}/snapshots`] });
+      // Draft is now committed — drop the active slot so the next visit
+      // won't prompt for restore. Archives are preserved.
+      if (userId != null) {
+        clearDraft(draftKey(userId, draftScope, fieldId));
+      }
       // Portal-voice affirmation — quiet, brief, auto-dismiss.
       setShowSavedAffirmation(true);
       setTimeout(() => {
@@ -1362,14 +1417,55 @@ function VisionWriter({
             space. Paint it as if it's already true — what does amazing look like here?
           </p>
 
-          <Textarea
-            ref={textareaRef}
+          {/* Inline cross-session restore prompt — rendered in-place rather
+              than as a modal to match the focused, portal-voice feel. */}
+          {draftPromptOpen && (
+            <div
+              className={`rounded-2xl border ${color.border} bg-background/70 backdrop-blur-sm p-4 space-y-3`}
+              data-testid="portal-draft-prompt"
+            >
+              <p className="text-sm leading-relaxed text-foreground">
+                We held onto what you were writing here. Pick it up, or start fresh?
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleStartFresh}
+                  data-testid="portal-start-fresh"
+                >
+                  Start fresh
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handlePickItUp}
+                  data-testid="portal-pick-it-up"
+                >
+                  Pick it up
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <DraftField
+            key={draftsVersion}
+            userId={userId}
+            phase={draftScope}
+            fieldId={fieldId}
             value={visionText}
-            onChange={(e) => setVisionText(e.target.value)}
-            placeholder={`My ${area.name} is...`}
-            className="w-full min-h-[300px] text-base leading-relaxed resize-none border-0 shadow-none focus-visible:ring-0 p-0 bg-transparent"
-            data-testid="input-vision-text"
-          />
+            onChange={setVisionText}
+            restoreReady={restoreReady}
+            committedValue={area.visionText ?? ""}
+          >
+            <Textarea
+              ref={textareaRef}
+              value={visionText}
+              onChange={(e) => setVisionText(e.target.value)}
+              placeholder={`My ${area.name} is...`}
+              className="w-full min-h-[300px] text-base leading-relaxed resize-none border-0 shadow-none focus-visible:ring-0 p-0 bg-transparent"
+              data-testid="input-vision-text"
+            />
+          </DraftField>
         </div>
       </div>
     </div>

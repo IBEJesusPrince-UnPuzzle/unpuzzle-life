@@ -8,12 +8,12 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  useWizardDraft, formatArchiveTime, type ArchivedDraft,
+  useWizardDraft, formatArchiveTime, type ArchivedDraft, type DraftScope,
 } from "@/hooks/use-wizard-draft";
 
 interface DraftFieldProps {
   userId: string | number | null | undefined;
-  phase: number;
+  phase: DraftScope;
   fieldId: string;
   value: string;
   onChange: (v: string) => void;
