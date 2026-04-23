@@ -291,6 +291,15 @@ function Step1Purpose({ setCanAdvance, setOnNext }: StepProps) {
 
   return (
     <div className="space-y-6">
+      {/* Portal-voice entry cue — primes the user before the Purpose question */}
+      <Card className="border-amber-500/30 bg-amber-500/5">
+        <CardContent className="p-4">
+          <p className="text-sm leading-relaxed text-center italic text-amber-800 dark:text-amber-300">
+            Before we begin, let's take a deep breath.
+          </p>
+        </CardContent>
+      </Card>
+
       <div>
         <label className="text-sm font-semibold text-foreground mb-2 block">
           What is your life's purpose?
@@ -346,6 +355,18 @@ function Step2AirportTest({ setCanAdvance, setOnNext }: StepProps) {
     return () => setOnNext(null);
   }, [activeAreas.length]);
 
+  // Edit-bug fix: Sync form fields to the currently-edited area whenever editingId changes,
+  // driven off the freshest `areas` snapshot. Previous implementation wrote to state
+  // directly inside the click handler, which could be stale if the query had refetched
+  // in flight — producing the "previous area's body" bleed-through.
+  useEffect(() => {
+    if (editingId == null) return;
+    const target = areas.find(a => a.id === editingId);
+    if (!target) return;
+    setName(target.name);
+    setVisionText(target.visionText || "");
+  }, [editingId, areas]);
+
   const handleAdd = async () => {
     if (!name.trim() || !visionText.trim()) return;
     if (editingId != null) {
@@ -363,9 +384,12 @@ function Step2AirportTest({ setCanAdvance, setOnNext }: StepProps) {
   };
 
   const startEdit = (area: Area) => {
+    // Clear the form first so we never show the prior draft while the effect
+    // above swaps in the target area's values. Clearing guarantees a single
+    // deterministic source of truth for what appears in the form.
+    setName("");
+    setVisionText("");
     setEditingId(area.id);
-    setName(area.name);
-    setVisionText(area.visionText || "");
   };
 
   const cancelEdit = () => {
@@ -374,9 +398,20 @@ function Step2AirportTest({ setCanAdvance, setOnNext }: StepProps) {
     setVisionText("");
   };
 
-  const prompt = activeAreas.length === 0
-    ? "Your friend says, 'Tell me more! What's the first thing that comes to mind?' What area of your life is amazing, and what does that look like?"
-    : "What else is going on that's so great? Keep going — what else?";
+  // ====== Locked copy per docs/clarity-portal-design.md §3 ======
+
+  const isFirstArea = activeAreas.length === 0;
+
+  const areaNameLabel = isFirstArea
+    ? "What's the first area of your amazing life?"
+    : "What's another area of your amazing life?";
+
+  const detailLabel = (() => {
+    const n = name.trim() || "this area";
+    return isFirstArea
+      ? `Tell your friend how amazing ${n} is. What do they see? What do you feel?`
+      : `And ${n}? Paint that picture too.`;
+  })();
 
   return (
     <div className="space-y-6">
@@ -384,12 +419,16 @@ function Step2AirportTest({ setCanAdvance, setOnNext }: StepProps) {
         Inspired by The Airport Test from Pat Flynn's <em>Will It Fly?</em>
       </p>
 
-      {/* Scene-setting card */}
+      {/* Opening prompt — shown once at the top of Phase 2 */}
       <Card className="border-amber-500/30 bg-amber-500/5">
-        <CardContent className="p-4">
+        <CardContent className="p-4 space-y-3">
           <p className="text-sm leading-relaxed">
-            Imagine you've traveled 5 years into the future. You're at the airport and run into an old
-            friend. They ask how life is going. You say: <em>"AMAZING! Life couldn't get any better."</em>
+            Close your eyes for a moment. A good friend — someone who truly wants the best for you —
+            leans in and asks: <em>"Tell me about your amazing life. What does it look like?"</em>
+          </p>
+          <p className="text-sm leading-relaxed">
+            Paint the picture. Name an area of your life, then tell them how amazing it is. Add
+            another. And another. Use your own words.
           </p>
         </CardContent>
       </Card>
@@ -413,10 +452,22 @@ function Step2AirportTest({ setCanAdvance, setOnNext }: StepProps) {
                     )}
                   </div>
                   <div className="flex gap-1 shrink-0">
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEdit(area)}>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      onClick={() => startEdit(area)}
+                      data-testid={`button-edit-area-${area.id}`}
+                    >
                       <Pencil className="w-3.5 h-3.5" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => deleteArea.mutate(area.id)}>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      onClick={() => deleteArea.mutate(area.id)}
+                      data-testid={`button-delete-area-${area.id}`}
+                    >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   </div>
@@ -430,16 +481,16 @@ function Step2AirportTest({ setCanAdvance, setOnNext }: StepProps) {
       {/* Entry form */}
       <Card className="border-amber-500/30">
         <CardContent className="p-4 space-y-3">
-          <p className="text-sm leading-relaxed">{prompt}</p>
           <div>
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
-              Area name
+              {areaNameLabel}
             </label>
             <Input
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="e.g. Family"
+              placeholder="e.g. Family, Travel, Business, Health…"
               disabled={editingId != null}
+              data-testid="input-area-name"
             />
             {editingId != null && (
               <p className="text-[10px] text-muted-foreground mt-1">Area names can't be renamed.</p>
@@ -447,13 +498,14 @@ function Step2AirportTest({ setCanAdvance, setOnNext }: StepProps) {
           </div>
           <div>
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
-              5-year vision
+              {detailLabel}
             </label>
             <Textarea
               value={visionText}
               onChange={e => setVisionText(e.target.value)}
-              placeholder="What does 'amazing' look like here? Paint the picture..."
+              placeholder="Paint the picture, in your own words…"
               className="min-h-[100px] text-sm"
+              data-testid="input-area-vision"
             />
           </div>
           <div className="flex gap-2">
@@ -461,6 +513,7 @@ function Step2AirportTest({ setCanAdvance, setOnNext }: StepProps) {
               onClick={handleAdd}
               disabled={!name.trim() || !visionText.trim() || createArea.isPending || updateArea.isPending}
               className="flex-1 bg-amber-600 hover:bg-amber-700 text-white"
+              data-testid="button-add-area"
             >
               <Plus className="w-4 h-4 mr-1" />
               {editingId != null ? "Save changes" : "Add this area"}
@@ -471,6 +524,13 @@ function Step2AirportTest({ setCanAdvance, setOnNext }: StepProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Continue cue */}
+      {activeAreas.length > 0 && editingId == null && (
+        <p className="text-xs text-center text-muted-foreground italic">
+          Add another area, or when the picture feels complete, step forward.
+        </p>
+      )}
     </div>
   );
 }

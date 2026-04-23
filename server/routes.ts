@@ -1346,10 +1346,11 @@ export function registerRoutes(server: Server, app: Express) {
   });
   app.put("/api/preferences", (req, res) => {
     const userId = getEffectiveUserId(req);
-    const { displayName, timeFormat } = req.body;
-    const data: { displayName?: string; timeFormat?: string } = {};
+    const { displayName, timeFormat, claritySkipRitual } = req.body;
+    const data: { displayName?: string; timeFormat?: string; claritySkipRitual?: boolean } = {};
     if (displayName !== undefined) data.displayName = String(displayName).slice(0, 50);
     if (timeFormat !== undefined && (timeFormat === "12h" || timeFormat === "24h")) data.timeFormat = timeFormat;
+    if (claritySkipRitual !== undefined) data.claritySkipRitual = !!claritySkipRitual;
     res.json(storage.updatePreferences(userId, data));
   });
 

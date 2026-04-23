@@ -436,6 +436,7 @@ export const preferences = sqliteTable("preferences", {
   userId: integer("user_id").notNull().default(1),
   displayName: text("display_name").notNull().default(""),
   timeFormat: text("time_format").notNull().default("12h"), // "12h" | "24h"
+  claritySkipRitual: integer("clarity_skip_ritual").notNull().default(0), // 0 | 1
 });
 
 // ============================================================

@@ -307,7 +307,8 @@ sqlite.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     display_name TEXT NOT NULL DEFAULT '',
-    time_format TEXT NOT NULL DEFAULT '12h'
+    time_format TEXT NOT NULL DEFAULT '12h',
+    clarity_skip_ritual INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS area_vision_snapshots (
@@ -473,6 +474,9 @@ addColumnIfMissing("identities", "location", "TEXT");
 addColumnIfMissing("projects", "puzzle_piece", "TEXT");
 addColumnIfMissing("projects", "identity_id", "INTEGER");
 addColumnIfMissing("weekly_reviews", "puzzle_piece_ratings", "TEXT");
+
+// Clarity Portal: skip ritual preference
+addColumnIfMissing("preferences", "clarity_skip_ritual", "INTEGER NOT NULL DEFAULT 0");
 
 // Ensure wizard_state has all columns
 addColumnIfMissing("wizard_state", "current_phase", "INTEGER NOT NULL DEFAULT 1");
@@ -641,8 +645,8 @@ export interface IStorage {
   upsertWizardState(userId: number, data: Partial<InsertWizardState>): WizardState;
 
   // Preferences
-  getPreferences(userId: number): { displayName: string; timeFormat: string };
-  updatePreferences(userId: number, data: { displayName?: string; timeFormat?: string }): { displayName: string; timeFormat: string };
+  getPreferences(userId: number): { displayName: string; timeFormat: string; claritySkipRitual: boolean };
+  updatePreferences(userId: number, data: { displayName?: string; timeFormat?: string; claritySkipRitual?: boolean }): { displayName: string; timeFormat: string; claritySkipRitual: boolean };
 
   // V2: Environment People
   getEnvironmentPeople(userId: number): EnvironmentPerson[];
@@ -1006,23 +1010,32 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Preferences
-  getPreferences(userId: number): { displayName: string; timeFormat: string } {
+  getPreferences(userId: number): { displayName: string; timeFormat: string; claritySkipRitual: boolean } {
     const row = db.select().from(preferences).where(eq(preferences.userId, userId)).get();
-    if (!row) return { displayName: "", timeFormat: "12h" };
-    return { displayName: row.displayName, timeFormat: row.timeFormat };
+    if (!row) return { displayName: "", timeFormat: "12h", claritySkipRitual: false };
+    return {
+      displayName: row.displayName,
+      timeFormat: row.timeFormat,
+      claritySkipRitual: !!row.claritySkipRitual,
+    };
   }
-  updatePreferences(userId: number, data: { displayName?: string; timeFormat?: string }): { displayName: string; timeFormat: string } {
+  updatePreferences(
+    userId: number,
+    data: { displayName?: string; timeFormat?: string; claritySkipRitual?: boolean },
+  ): { displayName: string; timeFormat: string; claritySkipRitual: boolean } {
     const existing = db.select().from(preferences).where(eq(preferences.userId, userId)).get();
     if (existing) {
       const updated: any = {};
       if (data.displayName !== undefined) updated.displayName = data.displayName;
       if (data.timeFormat !== undefined) updated.timeFormat = data.timeFormat;
+      if (data.claritySkipRitual !== undefined) updated.claritySkipRitual = data.claritySkipRitual ? 1 : 0;
       db.update(preferences).set(updated).where(eq(preferences.id, existing.id)).run();
     } else {
       db.insert(preferences).values({
         userId,
         displayName: data.displayName ?? "",
         timeFormat: data.timeFormat ?? "12h",
+        claritySkipRitual: data.claritySkipRitual ? 1 : 0,
       }).run();
     }
     return this.getPreferences(userId);
@@ -1164,7 +1177,7 @@ export class DatabaseStorage implements IStorage {
     sqlite.exec(`DELETE FROM project_environment WHERE project_id NOT IN (SELECT id FROM projects)`);
     sqlite.exec(`DELETE FROM role_people WHERE role_id NOT IN (SELECT id FROM roles)`);
     // Reset preferences to defaults for this user
-    sqlite.exec(`UPDATE preferences SET display_name = '', time_format = '12h' WHERE user_id = ${userId}`);
+    sqlite.exec(`UPDATE preferences SET display_name = '', time_format = '12h', clarity_skip_ritual = 0 WHERE user_id = ${userId}`);
   }
 
 }

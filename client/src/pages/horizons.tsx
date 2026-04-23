@@ -13,13 +13,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Compass, Plus, Pencil, ArrowLeft, MoreHorizontal, Clock, Archive, Copy, Check, X,
-  ChevronDown, ChevronRight, Trash2, Shield,
+  ChevronDown, ChevronRight, Trash2, Shield, DoorOpen,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { usePreferences } from "@/hooks/use-preferences";
 import { getPieceColor, type PieceKey } from "@/lib/piece-colors";
+import {
+  ClarityRitual, decideRitualTier, markClarityActive, markClarityExit,
+  getPieceGradientClass,
+} from "@/components/clarity-ritual";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -29,7 +33,7 @@ const PUZZLE_PIECES: PieceKey[] = ["reason", "finance", "fitness", "talent", "pl
 
 type ClarityView =
   | { type: "board" }
-  | { type: "writer"; areaId: number; isNew?: boolean };
+  | { type: "writer"; areaId: number; isNew?: boolean; bypassRitual?: boolean };
 
 // ============================================================
 // HELPER: format ISO timestamp for display
@@ -803,14 +807,17 @@ function BoundariesSection({ areaId }: { areaId: number }) {
 }
 
 // ============================================================
-// AREA VISION CARD — tap to edit inline
+// AREA VISION CARD — tap to edit inline (quick edit, no ritual).
+// The arrow button opens the immersive Piece Portal with ritual.
 // ============================================================
 function AreaVisionCard({
   area,
   areas,
+  onOpenPortal,
 }: {
   area: Area;
   areas: Area[];
+  onOpenPortal?: (areaId: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -976,6 +983,20 @@ function AreaVisionCard({
             >
               <Pencil className="w-3.5 h-3.5 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors" />
 
+              {/* Portal entry — opens immersive mode with ritual */}
+              {onOpenPortal && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  title="Step into this Piece"
+                  onClick={() => onOpenPortal(area.id)}
+                  data-testid={`button-open-portal-${area.id}`}
+                >
+                  <DoorOpen className="w-3.5 h-3.5" />
+                </Button>
+              )}
+
               {/* Three-dot menu */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -1039,9 +1060,11 @@ function AreaVisionCard({
 function VisionBoard({
   areas,
   onOpenWriter,
+  onOpenPortal,
 }: {
   areas: Area[];
   onOpenWriter: (areaId: number, isNew?: boolean) => void;
+  onOpenPortal: (areaId: number) => void;
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const areasWithVision = areas.filter((a) => a.visionText);
@@ -1167,6 +1190,7 @@ function VisionBoard({
             key={area.id}
             area={area}
             areas={areas}
+            onOpenPortal={onOpenPortal}
           />
         ))}
       </div>
@@ -1179,6 +1203,7 @@ function VisionBoard({
               key={area.id}
               area={area}
               areas={areas}
+              onOpenPortal={onOpenPortal}
             />
           ))}
         </div>
@@ -1208,23 +1233,55 @@ function VisionBoard({
 }
 
 // ============================================================
-// VISION WRITER (State 3)
+// VISION WRITER (State 3) — Portal mode
 // ============================================================
+// This is the immersive "Piece portal" — piece-colored gradient, portal voice,
+// and the re-entry ritual gates the first paint.
+// The quick-edit escape hatch is the inline AreaVisionCard editor on the board:
+// tap the card body to edit without crossing the portal threshold. The pencil
+// icon / URL with `?areaId=` opens this immersive writer.
 function VisionWriter({
   area,
   onBack,
+  skipRitual,
 }: {
   area: Area;
   onBack: () => void;
+  skipRitual: boolean;
 }) {
   const [visionText, setVisionText] = useState(area.visionText || "");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+  const [showSavedAffirmation, setShowSavedAffirmation] = useState(false);
+
+  // Re-entry ritual state
+  const [ritualTier, setRitualTier] = useState<"silent" | "mini" | "full" | "full_with_cue" | null>(null);
 
   useEffect(() => {
-    // Autofocus the textarea
-    textareaRef.current?.focus();
-  }, []);
+    if (skipRitual) {
+      markClarityActive();
+      setRitualTier("silent");
+      // Autofocus once the ritual is out of the way
+      setTimeout(() => textareaRef.current?.focus(), 50);
+      return;
+    }
+    const { tier } = decideRitualTier();
+    markClarityActive();
+    setRitualTier(tier);
+    if (tier === "silent") {
+      setTimeout(() => textareaRef.current?.focus(), 50);
+    }
+    // On unmount (navigate away), record exit time
+    return () => {
+      markClarityExit();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skipRitual]);
+
+  const handleRitualDone = () => {
+    setRitualTier("silent");
+    setTimeout(() => textareaRef.current?.focus(), 50);
+  };
 
   const saveVision = useMutation({
     mutationFn: () =>
@@ -1234,52 +1291,86 @@ function VisionWriter({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/areas"] });
       queryClient.invalidateQueries({ queryKey: [`/api/areas/${area.id}/snapshots`] });
-      toast({ title: "Vision saved." });
-      onBack();
+      // Portal-voice affirmation — quiet, brief, auto-dismiss.
+      setShowSavedAffirmation(true);
+      setTimeout(() => {
+        setShowSavedAffirmation(false);
+        onBack();
+      }, 1400);
     },
   });
 
-  return (
-    <div className="p-6 max-w-3xl mx-auto flex flex-col">
-      {/* Top bar */}
-      <div className="flex items-center justify-between mb-8">
-        <button
-          onClick={onBack}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </button>
-        <Button
-          onClick={() => saveVision.mutate()}
-          disabled={saveVision.isPending}
-        >
-          Save vision
-        </Button>
-      </div>
+  const gradient = getPieceGradientClass(area.puzzlePiece);
+  const color = getPieceColor(area.puzzlePiece);
 
-      {/* Body */}
-      <div className="flex-1 space-y-6">
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">In the area of...</p>
-          <Badge variant="secondary" className="text-sm">
-            {area.name}
-          </Badge>
+  return (
+    <div
+      className={`min-h-screen bg-gradient-to-b ${gradient} transition-colors duration-700`}
+      data-testid="vision-writer-portal"
+    >
+      {/* Ritual overlay */}
+      {ritualTier && ritualTier !== "silent" && (
+        <ClarityRitual
+          pieceName={area.name}
+          pieceKey={area.puzzlePiece as any}
+          tier={ritualTier}
+          onDone={handleRitualDone}
+        />
+      )}
+
+      {/* "Seen. Saved." affirmation */}
+      {showSavedAffirmation && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center pointer-events-none animate-in fade-in duration-300"
+          data-testid="seen-saved-affirmation"
+        >
+          <div className={`px-6 py-4 rounded-2xl bg-background/80 backdrop-blur-md border ${color.border} shadow-lg`}>
+            <p className={`text-lg font-light tracking-wide ${color.text}`}>Seen. Saved.</p>
+          </div>
+        </div>
+      )}
+
+      <div className="p-6 max-w-3xl mx-auto flex flex-col">
+        {/* Top bar */}
+        <div className="flex items-center justify-between mb-8">
+          <button
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors py-2 px-4 rounded-full border border-primary/20 bg-primary/5"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <Button
+            onClick={() => saveVision.mutate()}
+            disabled={saveVision.isPending}
+            data-testid="button-save-vision"
+          >
+            Save vision
+          </Button>
         </div>
 
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          Five years from now, your close friend asks how your{" "}
-          <span className="font-medium text-foreground">{area.name}</span> life
-          is going. You can't stop smiling. Tell them everything — write it as
-          if it's already happened.
-        </p>
+        {/* Body — portal voice */}
+        <div className="flex-1 space-y-6">
+          <div className="space-y-2">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">You are inside</p>
+            <Badge variant="secondary" className={`text-sm ${color.text}`}>
+              {area.name}
+            </Badge>
+          </div>
 
-        <Textarea
-          ref={textareaRef}
-          value={visionText}
-          onChange={(e) => setVisionText(e.target.value)}
-          placeholder={`My ${area.name} is...`}
-          className="w-full min-h-[300px] text-base leading-relaxed resize-none border-0 shadow-none focus-visible:ring-0 p-0 bg-transparent"
-        />
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Breathe. This is your <span className="font-medium text-foreground">{area.name}</span>{" "}
+            space. Paint it as if it's already true — what does amazing look like here?
+          </p>
+
+          <Textarea
+            ref={textareaRef}
+            value={visionText}
+            onChange={(e) => setVisionText(e.target.value)}
+            placeholder={`My ${area.name} is...`}
+            className="w-full min-h-[300px] text-base leading-relaxed resize-none border-0 shadow-none focus-visible:ring-0 p-0 bg-transparent"
+            data-testid="input-vision-text"
+          />
+        </div>
       </div>
     </div>
   );
@@ -1289,14 +1380,24 @@ function VisionWriter({
 // CLARITY PAGE — main export
 // ============================================================
 export default function HorizonsPage() {
+  const { data: prefs } = usePreferences();
+
   // Sync view state to URL hash params for deep linking
+  // `?areaId=N` → open in portal mode
+  // `?areaId=N&quick=1` → direct-edit URL that bypasses the ritual (escape hatch)
   const [view, setViewState] = useState<ClarityView>(() => {
     const hash = window.location.hash;
     const searchIdx = hash.indexOf("?");
     if (searchIdx !== -1) {
       const params = new URLSearchParams(hash.slice(searchIdx));
       const areaId = params.get("areaId");
-      if (areaId) return { type: "writer", areaId: Number(areaId) };
+      if (areaId) {
+        return {
+          type: "writer",
+          areaId: Number(areaId),
+          bypassRitual: params.get("quick") === "1",
+        };
+      }
     }
     return { type: "board" };
   });
@@ -1305,7 +1406,8 @@ export default function HorizonsPage() {
     setViewState(v);
     const basePath = "#/horizons";
     if (v.type === "writer") {
-      window.history.replaceState(null, "", `${basePath}?areaId=${v.areaId}`);
+      const q = v.bypassRitual ? "&quick=1" : "";
+      window.history.replaceState(null, "", `${basePath}?areaId=${v.areaId}${q}`);
     } else {
       window.history.replaceState(null, "", basePath);
     }
@@ -1325,6 +1427,7 @@ export default function HorizonsPage() {
           onOpenWriter={(areaId, isNew) =>
             setView({ type: "writer", areaId, isNew })
           }
+          onOpenPortal={(areaId) => setView({ type: "writer", areaId })}
         />
       );
     }
@@ -1332,6 +1435,7 @@ export default function HorizonsPage() {
       <VisionWriter
         area={area}
         onBack={() => setView({ type: "board" })}
+        skipRitual={!!prefs?.claritySkipRitual || !!view.bypassRitual}
       />
     );
   }
@@ -1342,6 +1446,7 @@ export default function HorizonsPage() {
       onOpenWriter={(areaId, isNew) =>
         setView({ type: "writer", areaId, isNew })
       }
+      onOpenPortal={(areaId) => setView({ type: "writer", areaId })}
     />
   );
 }

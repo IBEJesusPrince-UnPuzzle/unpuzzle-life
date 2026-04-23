@@ -30,12 +30,14 @@ export default function DataPage() {
   // Preferences state
   const [displayName, setDisplayName] = useState("");
   const [timeFormat, setTimeFormat] = useState<"12h" | "24h">("12h");
+  const [claritySkipRitual, setClaritySkipRitual] = useState(false);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
 
   // Sync initial preferences
   if (prefs && !prefsLoaded) {
     setDisplayName(prefs.displayName);
     setTimeFormat(prefs.timeFormat);
+    setClaritySkipRitual(!!prefs.claritySkipRitual);
     setPrefsLoaded(true);
   }
 
@@ -70,7 +72,7 @@ export default function DataPage() {
 
   // Mutations
   const savePrefsMutation = useMutation({
-    mutationFn: () => apiRequest("PUT", "/api/preferences", { displayName, timeFormat }),
+    mutationFn: () => apiRequest("PUT", "/api/preferences", { displayName, timeFormat, claritySkipRitual }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/preferences"] });
       toast({ title: "Preferences saved" });
@@ -236,6 +238,23 @@ export default function DataPage() {
                 <span className="text-sm">24-hour</span>
               </label>
             </div>
+          </div>
+
+          <div className="space-y-2 pt-2 border-t">
+            <Label htmlFor="claritySkipRitual" className="flex items-center gap-2 cursor-pointer">
+              <input
+                id="claritySkipRitual"
+                type="checkbox"
+                checked={claritySkipRitual}
+                onChange={(e) => setClaritySkipRitual(e.target.checked)}
+                className="accent-primary"
+                data-testid="input-clarity-skip-ritual"
+              />
+              <span className="text-sm">Skip Clarity re-entry ritual</span>
+            </Label>
+            <p className="text-xs text-muted-foreground pl-6">
+              When on, opening a Piece in Clarity always resumes silently — no breath, no "Welcome back."
+            </p>
           </div>
 
           <Button onClick={() => savePrefsMutation.mutate()} disabled={savePrefsMutation.isPending}>
