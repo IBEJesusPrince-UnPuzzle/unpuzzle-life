@@ -5,27 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  Inbox as InboxIcon, Plus, ArrowRight, Trash2, Zap, Pencil, Check, X,
-  FolderOpen, Archive, Sparkles, ArrowLeft, Undo2, Clock, CalendarDays,
+  Inbox as InboxIcon, Plus, Trash2, Pencil, Check, X, Undo2, Archive,
 } from "lucide-react";
-import { Link } from "wouter";
 import { useState } from "react";
-import type { InboxItem, Project, Area } from "@shared/schema";
+import type { InboxItem } from "@shared/schema";
 import { usePreferences } from "@/hooks/use-preferences";
-
-type ProcessStep = "choose" | "doItNow" | "doItLater" | "addToProject" | "fileIt" | "wonderIt" | "trashIt";
 
 export default function InboxPage() {
   const { data: prefs } = usePreferences();
   const [newItem, setNewItem] = useState("");
-  const [captureAreaId, setCaptureAreaId] = useState<string>("");
-  const [processingId, setProcessingId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
 
@@ -34,24 +22,19 @@ export default function InboxPage() {
     queryKey: ["/api/inbox/trashed"],
     queryFn: () => apiRequest("GET", "/api/inbox/trashed").then(r => r.json()),
   });
-  const { data: projectsList = [] } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
-  const { data: areasList = [] } = useQuery<Area[]>({ queryKey: ["/api/areas"] });
 
   const unprocessed = items.filter(i => !i.processed);
   const processed = items.filter(i => i.processed);
 
   const addItem = useMutation({
-    mutationFn: ({ content, areaId }: { content: string; areaId: number | null }) =>
+    mutationFn: (content: string) =>
       apiRequest("POST", "/api/inbox", {
         content,
-        areaId,
         createdAt: new Date().toISOString(),
       }),
     onSuccess: () => {
       setNewItem("");
-      setCaptureAreaId("");
       queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
     },
   });
 
@@ -64,53 +47,43 @@ export default function InboxPage() {
     },
   });
 
+  const trashItem = useMutation({
+    mutationFn: (id: number) => apiRequest("POST", `/api/inbox/${id}/soft-delete`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inbox/trashed"] });
+    },
+  });
+
   const restoreItem = useMutation({
     mutationFn: (id: number) => apiRequest("POST", `/api/inbox/${id}/restore`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inbox/trashed"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
     },
   });
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center gap-2 mb-4">
-        <button onClick={() => window.history.back()} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft className="w-4 h-4" /> Back
-        </button>
-      </div>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Inbox</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Capture everything. Process into the right place.
+            Capture everything. Processing flow returns in Phase 6.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link href="/someday">
-            <Badge variant="outline" className="text-xs cursor-pointer hover:bg-purple-500/10 transition-colors text-purple-600 dark:text-purple-400 border-purple-500/30">
-              <Sparkles className="w-3 h-3 mr-1" /> Someday
-            </Badge>
-          </Link>
-          <Badge variant="secondary" className="text-sm">
-            {unprocessed.length} unprocessed
-          </Badge>
-        </div>
+        <Badge variant="secondary" className="text-sm">
+          {unprocessed.length} unprocessed
+        </Badge>
       </div>
 
       {/* Capture */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (newItem.trim()) {
-            addItem.mutate({
-              content: newItem.trim(),
-              areaId: captureAreaId && captureAreaId !== "none" ? Number(captureAreaId) : null,
-            });
-          }
+          if (newItem.trim()) addItem.mutate(newItem.trim());
         }}
-        className="flex flex-col sm:flex-row gap-2 sm:items-end"
+        className="flex gap-2"
       >
         <Input
           placeholder="What's on your mind? Brain dump here..."
@@ -119,35 +92,24 @@ export default function InboxPage() {
           className="flex-1"
           data-testid="input-inbox-capture"
         />
-        <div className="flex gap-2">
-          <Select value={captureAreaId} onValueChange={setCaptureAreaId}>
-            <SelectTrigger className="text-sm w-40">
-              <SelectValue placeholder="Related Area..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No area</SelectItem>
-              {areasList.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Button type="submit" disabled={!newItem.trim()} data-testid="button-inbox-add">
-            <Plus className="w-4 h-4 mr-1" /> Add
-          </Button>
-        </div>
+        <Button type="submit" disabled={!newItem.trim()} data-testid="button-inbox-add">
+          <Plus className="w-4 h-4 mr-1" /> Add
+        </Button>
       </form>
 
-      {/* Unprocessed Items */}
+      {/* Unprocessed */}
       {unprocessed.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
           <InboxIcon className="w-12 h-12 mx-auto mb-3 opacity-30" />
           <p className="text-sm font-medium">Inbox zero</p>
-          <p className="text-xs mt-1">Your mind is clear. Capture anything new above.</p>
+          <p className="text-xs mt-1">Capture anything new above.</p>
         </div>
       ) : (
         <div className="space-y-2">
           {unprocessed.map((item) => (
             <Card key={item.id} className="group">
               <CardContent className="p-4 flex items-start gap-3">
-                <Zap className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                <InboxIcon className="w-4 h-4 text-primary mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   {editingId === item.id ? (
                     <div className="flex items-center gap-1.5">
@@ -164,34 +126,22 @@ export default function InboxPage() {
                       />
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0 shrink-0 text-primary"
                         disabled={!editText.trim()}
-                        onClick={() => updateItem.mutate({ id: item.id, content: editText.trim() })}
-                        data-testid={`button-save-edit-${item.id}`}>
+                        onClick={() => updateItem.mutate({ id: item.id, content: editText.trim() })}>
                         <Check className="w-3.5 h-3.5" />
                       </Button>
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0 shrink-0 text-muted-foreground"
-                        onClick={() => setEditingId(null)}
-                        data-testid={`button-cancel-edit-${item.id}`}>
+                        onClick={() => setEditingId(null)}>
                         <X className="w-3.5 h-3.5" />
                       </Button>
                     </div>
                   ) : (
                     <>
                       <p className="text-sm" data-testid={`inbox-item-${item.id}`}>{item.content}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <p className="text-[10px] text-muted-foreground">
-                          {new Date(item.createdAt).toLocaleDateString(prefs?.timeFormat === "24h" ? "en-GB" : "en-US", {
-                            month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: prefs?.timeFormat !== "24h"
-                          })}
-                        </p>
-                        {item.areaId && (() => {
-                          const area = areasList.find(a => a.id === item.areaId);
-                          return area ? (
-                            <span className="text-[10px] text-muted-foreground">
-                              In the area of <span className="font-medium text-foreground">{area.name}</span>
-                            </span>
-                          ) : null;
-                        })()}
-                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        {new Date(item.createdAt).toLocaleDateString(prefs?.timeFormat === "24h" ? "en-GB" : "en-US", {
+                          month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: prefs?.timeFormat !== "24h",
+                        })}
+                      </p>
                     </>
                   )}
                 </div>
@@ -205,29 +155,15 @@ export default function InboxPage() {
                   >
                     <Pencil className="w-3 h-3" />
                   </Button>
-                  <Dialog open={processingId === item.id} onOpenChange={(open) => {
-                    if (!open) setProcessingId(null);
-                  }}>
-                    <DialogTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-xs h-7"
-                        onClick={() => setProcessingId(item.id)}
-                        data-testid={`button-process-${item.id}`}
-                      >
-                        <ArrowRight className="w-3 h-3 mr-1" /> Process
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-                      <ProcessWizard
-                        item={item}
-                        projects={projectsList}
-                        areas={areasList}
-                        onDone={() => setProcessingId(null)}
-                      />
-                    </DialogContent>
-                  </Dialog>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs h-7 text-muted-foreground hover:text-destructive"
+                    onClick={() => trashItem.mutate(item.id)}
+                    data-testid={`button-trash-${item.id}`}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -235,55 +171,33 @@ export default function InboxPage() {
         </div>
       )}
 
-      {/* Recently Processed */}
+      {/* Recently processed (read-only — processing flow returns Phase 6) */}
       {processed.length > 0 && (
         <div className="pt-4">
           <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
             Recently processed
           </p>
           <div className="space-y-1">
-            {processed.slice(0, 10).map((item) => {
-              const itemArea = areasList.find(a => a.id === item.areaId);
-              const isQuickTask = item.processedAs === "quick_task";
-              const isSomeday = item.processedAs === "someday";
-              const hasLinkedTask = !!item.linkedPlannerTaskId;
-
-              return (
-                <div key={item.id} className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-                  <Archive className="w-3 h-3" />
-                  <span className={`truncate flex-1 ${isQuickTask ? "line-through" : ""}`}>{item.content}</span>
-                  {itemArea && (
-                    <span className="text-[10px] text-muted-foreground shrink-0">
-                      {itemArea.name}
-                    </span>
-                  )}
-                  {hasLinkedTask ? (
-                    <Link href="/planner">
-                      <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0 cursor-pointer hover:bg-primary/10 transition-colors">
-                        {item.processedAs}
-                      </Badge>
-                    </Link>
-                  ) : isSomeday ? (
-                    <Link href="/someday">
-                      <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0 cursor-pointer hover:bg-purple-500/10 transition-colors text-purple-600 dark:text-purple-400 border-purple-500/30">
-                        someday
-                      </Badge>
-                    </Link>
-                  ) : (
-                    <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0">{item.processedAs}</Badge>
-                  )}
-                </div>
-              );
-            })}
+            {processed.slice(0, 10).map((item) => (
+              <div key={item.id} className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                <Archive className="w-3 h-3" />
+                <span className="truncate flex-1">{item.content}</span>
+                {item.processedAs && (
+                  <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0">
+                    {item.processedAs}
+                  </Badge>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Recently Trashed */}
+      {/* Recently trashed */}
       {trashedItems.length > 0 && (
         <div className="pt-4">
           <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
-            Recently Trashed (7-day recovery)
+            Recently trashed (7-day recovery)
           </p>
           <div className="space-y-1">
             {trashedItems.map((item) => (
@@ -307,517 +221,6 @@ export default function InboxPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ============================================================
-// PROCESS WIZARD
-// ============================================================
-function ProcessWizard({ item, projects, areas, onDone }: {
-  item: InboxItem;
-  projects: Project[];
-  areas: Area[];
-  onDone: () => void;
-}) {
-  const [step, setStep] = useState<ProcessStep>("choose");
-
-  return (
-    <div>
-      <DialogHeader>
-        <DialogTitle className="text-base">
-          Process: {item.content}
-        </DialogTitle>
-      </DialogHeader>
-
-      <div className="pt-3">
-        {step === "choose" && (
-          <ChooseStep onSelect={setStep} />
-        )}
-        {step === "doItNow" && (
-          <DoItNowStep item={item} onBack={() => setStep("choose")} onDone={onDone} />
-        )}
-        {step === "doItLater" && (
-          <DoItLaterStep item={item} areas={areas} onBack={() => setStep("choose")} onDone={onDone} />
-        )}
-        {step === "addToProject" && (
-          <AddToProjectStep item={item} projects={projects} onBack={() => setStep("choose")} onDone={onDone} />
-        )}
-        {step === "fileIt" && (
-          <FileItStep item={item} projects={projects} onBack={() => setStep("choose")} onDone={onDone} />
-        )}
-        {step === "wonderIt" && (
-          <WonderItStep item={item} onBack={() => setStep("choose")} onDone={onDone} />
-        )}
-        {step === "trashIt" && (
-          <TrashItStep item={item} onBack={() => setStep("choose")} onDone={onDone} />
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// STEP 1: CHOOSE — 6 options
-// ============================================================
-function ChooseStep({ onSelect }: { onSelect: (step: ProcessStep) => void }) {
-  const options: { step: ProcessStep; label: string; desc: string; icon: React.ReactNode; color: string }[] = [
-    {
-      step: "doItNow",
-      label: "Do It Now",
-      desc: "Takes less than 5 minutes — done immediately",
-      icon: <Zap className="w-5 h-5" />,
-      color: "hover:border-amber-500/50 hover:bg-amber-500/5",
-    },
-    {
-      step: "doItLater",
-      label: "Do It Later",
-      desc: "Schedule a task for a specific date",
-      icon: <CalendarDays className="w-5 h-5" />,
-      color: "hover:border-sky-500/50 hover:bg-sky-500/5",
-    },
-    {
-      step: "addToProject",
-      label: "Add To Project",
-      desc: "Multi-step outcome",
-      icon: <FolderOpen className="w-5 h-5" />,
-      color: "hover:border-blue-500/50 hover:bg-blue-500/5",
-    },
-    {
-      step: "fileIt",
-      label: "File It",
-      desc: "Reference for later",
-      icon: <Archive className="w-5 h-5" />,
-      color: "hover:border-emerald-500/50 hover:bg-emerald-500/5",
-    },
-    {
-      step: "wonderIt",
-      label: "Wonder It",
-      desc: "Someday / maybe",
-      icon: <Sparkles className="w-5 h-5" />,
-      color: "hover:border-purple-500/50 hover:bg-purple-500/5",
-    },
-    {
-      step: "trashIt",
-      label: "Trash It",
-      desc: "Not actionable",
-      icon: <Trash2 className="w-5 h-5" />,
-      color: "hover:border-red-500/50 hover:bg-red-500/5",
-    },
-  ];
-
-  return (
-    <div className="space-y-2">
-      <p className="text-sm text-muted-foreground mb-3">What is this?</p>
-      {options.map((opt) => (
-        <button
-          key={opt.step}
-          onClick={() => onSelect(opt.step)}
-          className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-colors text-left ${opt.color}`}
-          data-testid={`process-option-${opt.step}`}
-        >
-          <div className="shrink-0 text-muted-foreground">{opt.icon}</div>
-          <div>
-            <p className="text-sm font-medium">{opt.label}</p>
-            <p className="text-xs text-muted-foreground">{opt.desc}</p>
-          </div>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ============================================================
-// DO IT NOW — Create done planner task immediately
-// ============================================================
-function DoItNowStep({ item, onBack, onDone }: {
-  item: InboxItem; onBack: () => void; onDone: () => void;
-}) {
-  const [done, setDone] = useState(false);
-
-  const doIt = useMutation({
-    mutationFn: async () => {
-      const today = new Date().toISOString().split("T")[0];
-      const res = await apiRequest("POST", "/api/planner-tasks", {
-        date: today,
-        task: item.content,
-        status: "done",
-        areaId: item.areaId || null,
-      });
-      const newTask = await res.json();
-      await apiRequest("PATCH", `/api/inbox/${item.id}`, {
-        processed: 1,
-        processedAs: "quick_task",
-        linkedPlannerTaskId: newTask.id,
-      });
-    },
-    onSuccess: () => {
-      setDone(true);
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      setTimeout(onDone, 1000);
-    },
-  });
-
-  if (done) {
-    return (
-      <div className="py-8 text-center space-y-2">
-        <Zap className="w-8 h-8 mx-auto text-amber-500" />
-        <p className="text-sm font-medium">Done!</p>
-        <p className="text-xs text-muted-foreground">Task completed and item processed.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <button onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-        <ArrowLeft className="w-3 h-3" /> Back to choices
-      </button>
-
-      <div className="py-4 text-center space-y-3">
-        <Zap className="w-8 h-8 mx-auto text-amber-500/50" />
-        <p className="text-sm">
-          Mark <strong>"{item.content}"</strong> as done right now?
-        </p>
-        <p className="text-xs text-muted-foreground">Creates a completed task for today.</p>
-        <Button className="w-full" onClick={() => doIt.mutate()} data-testid="button-doit-now">
-          <Zap className="w-4 h-4 mr-1" /> Do It Now
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// DO IT LATER — Schedule a planner task
-// ============================================================
-function DoItLaterStep({ item, areas, onBack, onDone }: {
-  item: InboxItem; areas: Area[]; onBack: () => void; onDone: () => void;
-}) {
-  const [task, setTask] = useState(item.content);
-  const [areaId, setAreaId] = useState<string>(item.areaId ? String(item.areaId) : "");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
-  const [context, setContext] = useState("");
-  const [energy, setEnergy] = useState("");
-
-  const create = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/planner-tasks", {
-        date,
-        areaId: areaId && areaId !== "none" ? Number(areaId) : null,
-        task,
-        startTime: startTime || null,
-        endTime: endTime || null,
-        hours: null,
-        status: "planned",
-        recurrence: null,
-        context: context && context !== "none" ? context : null,
-        energy: energy && energy !== "none" ? energy : null,
-      });
-      const newTask = await res.json();
-      await apiRequest("PATCH", `/api/inbox/${item.id}`, {
-        processed: 1,
-        processedAs: "task",
-        linkedPlannerTaskId: newTask.id,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      onDone();
-    },
-  });
-
-  return (
-    <div className="space-y-4">
-      <button onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-        <ArrowLeft className="w-3 h-3" /> Back to choices
-      </button>
-
-      <div className="space-y-3">
-        <div>
-          <label className="text-xs font-medium mb-1 block text-muted-foreground">What</label>
-          <Input value={task} onChange={e => setTask(e.target.value)} placeholder="What needs to be done?" className="text-sm" data-testid="input-doit-task" />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="text-xs font-medium mb-1 block text-muted-foreground">Date</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)}
-              className="w-full h-9 px-3 text-sm border rounded-md bg-card text-foreground" />
-          </div>
-          <div>
-            <label className="text-xs font-medium mb-1 block text-muted-foreground">Area</label>
-            <Select value={areaId} onValueChange={setAreaId}>
-              <SelectTrigger className="text-sm"><SelectValue placeholder="Select area" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No area</SelectItem>
-                {areas.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="text-xs font-medium mb-1 block text-muted-foreground">Context</label>
-            <Select value={context} onValueChange={setContext}>
-              <SelectTrigger className="text-sm"><SelectValue placeholder="Any context" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Any context</SelectItem>
-                <SelectItem value="@home">@home</SelectItem>
-                <SelectItem value="@work">@work</SelectItem>
-                <SelectItem value="@phone">@phone</SelectItem>
-                <SelectItem value="@computer">@computer</SelectItem>
-                <SelectItem value="@errands">@errands</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-xs font-medium mb-1 block text-muted-foreground">Energy</label>
-            <Select value={energy} onValueChange={setEnergy}>
-              <SelectTrigger className="text-sm"><SelectValue placeholder="Any energy" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Any energy</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="text-xs font-medium mb-1 block text-muted-foreground">Start Time</label>
-            <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
-              className="w-full h-9 px-3 text-sm border rounded-md bg-card text-foreground" />
-          </div>
-          <div>
-            <label className="text-xs font-medium mb-1 block text-muted-foreground">End Time</label>
-            <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)}
-              className="w-full h-9 px-3 text-sm border rounded-md bg-card text-foreground" />
-          </div>
-        </div>
-
-        <Button className="w-full" disabled={!task.trim()} onClick={() => create.mutate()} data-testid="button-doit-save">
-          <CalendarDays className="w-4 h-4 mr-1" /> Schedule Task & Process
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// ADD TO PROJECTS
-// ============================================================
-function AddToProjectStep({ item, projects, onBack, onDone }: {
-  item: InboxItem; projects: Project[]; onBack: () => void; onDone: () => void;
-}) {
-  const activeProjects = projects.filter(p => !p.archived);
-
-  const addToExisting = useMutation({
-    mutationFn: async (projectId: number) => {
-      const res = await apiRequest("POST", "/api/planner-tasks", {
-        date: new Date().toISOString().split("T")[0],
-        task: item.content,
-        projectId,
-        areaId: item.areaId || null,
-        status: "planned",
-      });
-      const newTask = await res.json();
-      await apiRequest("PATCH", `/api/inbox/${item.id}`, {
-        processed: 1,
-        processedAs: "project",
-        linkedPlannerTaskId: newTask.id,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/planner-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      onDone();
-    },
-  });
-
-  return (
-    <div className="space-y-4">
-      <button onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-        <ArrowLeft className="w-3 h-3" /> Back to choices
-      </button>
-
-      <div className="space-y-2">
-        <p className="text-sm text-muted-foreground">Add to an existing project:</p>
-        {activeProjects.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic">No active projects. Create identities in UnPuzzle to generate projects.</p>
-        ) : (
-          activeProjects.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => addToExisting.mutate(p.id)}
-              className="w-full flex items-center gap-3 p-3 rounded-lg border hover:border-blue-500/50 hover:bg-blue-500/5 transition-colors text-left"
-              data-testid={`select-project-${p.id}`}
-            >
-              <FolderOpen className="w-4 h-4 text-muted-foreground shrink-0" />
-              <span className="text-sm">{p.title}</span>
-            </button>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// FILE IT
-// ============================================================
-function FileItStep({ item, projects, onBack, onDone }: {
-  item: InboxItem; projects: Project[]; onBack: () => void; onDone: () => void;
-}) {
-  const [projectId, setProjectId] = useState<string>("");
-
-  const file = useMutation({
-    mutationFn: () => apiRequest("PATCH", `/api/inbox/${item.id}`, {
-      processed: 1,
-      processedAs: "reference",
-      referenceProjectId: projectId && projectId !== "none" ? Number(projectId) : null,
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      onDone();
-    },
-  });
-
-  return (
-    <div className="space-y-4">
-      <button onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-        <ArrowLeft className="w-3 h-3" /> Back to choices
-      </button>
-
-      <div className="space-y-3">
-        <p className="text-sm text-muted-foreground">File this item for future reference:</p>
-        <div>
-          <label className="text-xs font-medium mb-1 block text-muted-foreground">Project (optional)</label>
-          <Select value={projectId} onValueChange={setProjectId}>
-            <SelectTrigger className="text-sm"><SelectValue placeholder="No project" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No project</SelectItem>
-              {projects.filter(p => !p.archived).map(p =>
-                <SelectItem key={p.id} value={String(p.id)}>{p.title}</SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-        </div>
-        <Button className="w-full" onClick={() => file.mutate()} data-testid="button-file-save">
-          <Archive className="w-4 h-4 mr-1" /> File & Process
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// WONDER IT — Someday/Maybe
-// ============================================================
-function WonderItStep({ item, onBack, onDone }: {
-  item: InboxItem; onBack: () => void; onDone: () => void;
-}) {
-  const [done, setDone] = useState(false);
-
-  const wonder = useMutation({
-    mutationFn: () => apiRequest("PATCH", `/api/inbox/${item.id}`, {
-      processed: 1,
-      processedAs: "someday",
-    }),
-    onSuccess: () => {
-      setDone(true);
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      setTimeout(onDone, 1200);
-    },
-  });
-
-  if (done) {
-    return (
-      <div className="py-8 text-center space-y-2">
-        <Sparkles className="w-8 h-8 mx-auto text-purple-500" />
-        <p className="text-sm font-medium">Filed to Someday/Maybe</p>
-        <p className="text-xs text-muted-foreground">
-          You can revisit this anytime from the{" "}
-          <Link href="/someday" className="text-purple-500 underline">Someday page</Link>.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <button onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-        <ArrowLeft className="w-3 h-3" /> Back to choices
-      </button>
-
-      <div className="py-4 text-center space-y-3">
-        <Sparkles className="w-8 h-8 mx-auto text-purple-500/50" />
-        <p className="text-sm">
-          This will file <strong>"{item.content}"</strong> to your <strong>Someday/Maybe</strong> list.
-        </p>
-        <p className="text-xs text-muted-foreground">You can revisit and re-process it anytime.</p>
-        <Button className="w-full" onClick={() => wonder.mutate()} data-testid="button-wonder-confirm">
-          <Sparkles className="w-4 h-4 mr-1" /> Wonder It
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// TRASH IT — Soft delete
-// ============================================================
-function TrashItStep({ item, onBack, onDone }: {
-  item: InboxItem; onBack: () => void; onDone: () => void;
-}) {
-  const [done, setDone] = useState(false);
-
-  const trash = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/inbox/${item.id}/soft-delete`),
-    onSuccess: () => {
-      setDone(true);
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inbox/trashed"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      setTimeout(onDone, 1200);
-    },
-  });
-
-  if (done) {
-    return (
-      <div className="py-8 text-center space-y-2">
-        <Trash2 className="w-8 h-8 mx-auto text-red-500" />
-        <p className="text-sm font-medium">Trashed</p>
-        <p className="text-xs text-muted-foreground">You can restore it within 7 days.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <button onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-        <ArrowLeft className="w-3 h-3" /> Back to choices
-      </button>
-
-      <div className="py-4 text-center space-y-3">
-        <Trash2 className="w-8 h-8 mx-auto text-red-500/50" />
-        <p className="text-sm">
-          Trash <strong>"{item.content}"</strong>?
-        </p>
-        <p className="text-xs text-muted-foreground">It will stay in your trash for 7 days before permanent deletion.</p>
-        <Button variant="destructive" className="w-full" onClick={() => trash.mutate()} data-testid="button-trash-confirm">
-          <Trash2 className="w-4 h-4 mr-1" /> Trash It
-        </Button>
-      </div>
     </div>
   );
 }

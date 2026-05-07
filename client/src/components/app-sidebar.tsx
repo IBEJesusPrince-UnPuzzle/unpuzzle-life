@@ -7,15 +7,14 @@ import { Link } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { useState, useEffect } from "react";
 import {
-  LayoutDashboard, Layers, Puzzle, RotateCcw, Database, Sun, Moon, Shield, LogOut,
+  Inbox, FolderKanban, RotateCcw, Database, Sun, Moon, Shield, LogOut,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 const navItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Clarity", url: "/horizons", icon: Layers },
-  { title: "UnPuzzle", url: "/unpuzzle", icon: Puzzle },
-  { title: "Weekly Review", url: "/review", icon: RotateCcw },
+  { title: "Inbox", url: "/inbox", icon: Inbox },
+  { title: "Projects", url: "/projects", icon: FolderKanban },
+  { title: "Review", url: "/review", icon: RotateCcw },
   { title: "Data", url: "/data", icon: Database },
 ];
 
@@ -46,7 +45,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4 group-data-[collapsible=icon]:p-2">
         <Link
-          href="/"
+          href="/inbox"
           className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center"
         >
           <img
@@ -71,10 +70,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
-                const isActive =
-                  item.url === "/"
-                    ? location === "/"
-                    : location.startsWith(item.url);
+                const isActive = location === item.url || location.startsWith(item.url + "/");
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
