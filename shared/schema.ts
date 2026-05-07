@@ -32,11 +32,17 @@ export const invitations = sqliteTable("invitations", {
 // PROJECTS (Phase 0: identity/area/puzzle_piece columns dropped)
 // ============================================================
 
+// Phase 1 (§2): trigger / start_date / end_date added.
+// trigger values: 'missing_support' | 'repeated_friction' | 'major_life_change' | 'new_identity_shift'
+// start_date / end_date are nullable ISO date strings (YYYY-MM-DD); consumed by Phase 2 calendar + Phase 5 Project v2 UI.
 export const projects = sqliteTable("projects", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().default(1),
   title: text("title").notNull(),
   description: text("description"),
+  trigger: text("trigger"),
+  startDate: text("start_date"),
+  endDate: text("end_date"),
   createdAt: text("created_at").notNull(),
   archived: integer("archived").notNull().default(0),
   archivedAt: text("archived_at"),
@@ -77,14 +83,17 @@ export const weeklyReviews = sqliteTable("weekly_reviews", {
 });
 
 // ============================================================
-// V2: SHARED ENVIRONMENT (People, Places, Things)
+// V2: SUPPORT TAXONOMY (§1) — People, Places, Things, Providers, Conditions
 // ============================================================
+// Phase 1 (§3): every support record carries a `state` column.
+// state values: 'available' | 'at_risk' | 'unavailable' | 'archived' (default 'available')
 
 export const environmentPeople = sqliteTable("environment_people", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().default(1),
   name: text("name").notNull(),
   relationship: text("relationship"),
+  state: text("state").notNull().default("available"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -93,6 +102,7 @@ export const environmentPlaces = sqliteTable("environment_places", {
   userId: integer("user_id").notNull().default(1),
   name: text("name").notNull(),
   type: text("type"),
+  state: text("state").notNull().default("available"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -101,6 +111,27 @@ export const environmentThings = sqliteTable("environment_things", {
   userId: integer("user_id").notNull().default(1),
   name: text("name").notNull(),
   category: text("category"),
+  state: text("state").notNull().default("available"),
+  createdAt: text("created_at").notNull(),
+});
+
+// New in Phase 1 — Providers (§1): who supplies/maintains it.
+export const environmentProviders = sqliteTable("environment_providers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
+  name: text("name").notNull(),
+  type: text("type"), // free-form: 'subscription', 'service', 'institution', etc.
+  state: text("state").notNull().default("available"),
+  createdAt: text("created_at").notNull(),
+});
+
+// New in Phase 1 — Conditions (§1): what must be true.
+export const environmentConditions = sqliteTable("environment_conditions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
+  name: text("name").notNull(),
+  description: text("description"),
+  state: text("state").notNull().default("available"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -137,11 +168,77 @@ export const roles = sqliteTable("roles", {
   createdAt: text("created_at").notNull(),
 });
 
-// Junction: links roles to people (supports groups)
+// Junction: links roles to people (supports groups). Pre-existing; Phase 5 will revisit.
 export const rolePeople = sqliteTable("role_people", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   roleId: integer("role_id").notNull(),
   personId: integer("person_id").notNull(),
+});
+
+// ============================================================
+// V2: JUNCTIONS (§2, §3, §3a, §3b)
+// ============================================================
+// Universal 4-option relationship rule (§3a): every responsibility-support link
+// carries a relationship_type and an importance.
+//   relationship_type: 'primary' | 'secondary' | 'optional' | 'temporary_workaround'
+//   importance:        'critical' | 'important' | 'helpful'
+// Stored as text columns; validated in app code at the API boundary.
+
+// Responsibilities can belong to multiple Roles (§5).
+export const responsibilityRole = sqliteTable("responsibility_role", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  responsibilityId: integer("responsibility_id").notNull().references(() => responsibilities.id),
+  roleId: integer("role_id").notNull().references(() => roles.id),
+});
+
+// Five separate junction tables (one per support category) so foreign keys
+// enforce integrity at the DB level. Same shape across all five.
+export const responsibilityPeople = sqliteTable("responsibility_people", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  responsibilityId: integer("responsibility_id").notNull().references(() => responsibilities.id),
+  personId: integer("person_id").notNull().references(() => environmentPeople.id),
+  relationshipType: text("relationship_type").notNull().default("primary"),
+  importance: text("importance").notNull().default("important"),
+});
+
+export const responsibilityPlaces = sqliteTable("responsibility_places", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  responsibilityId: integer("responsibility_id").notNull().references(() => responsibilities.id),
+  placeId: integer("place_id").notNull().references(() => environmentPlaces.id),
+  relationshipType: text("relationship_type").notNull().default("primary"),
+  importance: text("importance").notNull().default("important"),
+});
+
+export const responsibilityThings = sqliteTable("responsibility_things", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  responsibilityId: integer("responsibility_id").notNull().references(() => responsibilities.id),
+  thingId: integer("thing_id").notNull().references(() => environmentThings.id),
+  relationshipType: text("relationship_type").notNull().default("primary"),
+  importance: text("importance").notNull().default("important"),
+});
+
+export const responsibilityProviders = sqliteTable("responsibility_providers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  responsibilityId: integer("responsibility_id").notNull().references(() => responsibilities.id),
+  providerId: integer("provider_id").notNull().references(() => environmentProviders.id),
+  relationshipType: text("relationship_type").notNull().default("primary"),
+  importance: text("importance").notNull().default("important"),
+});
+
+export const responsibilityConditions = sqliteTable("responsibility_conditions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  responsibilityId: integer("responsibility_id").notNull().references(() => responsibilities.id),
+  conditionId: integer("condition_id").notNull().references(() => environmentConditions.id),
+  relationshipType: text("relationship_type").notNull().default("primary"),
+  importance: text("importance").notNull().default("important"),
+});
+
+// Projects can stand alone OR link to one primary responsibility plus optional more (§2).
+export const projectResponsibility = sqliteTable("project_responsibility", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  responsibilityId: integer("responsibility_id").notNull().references(() => responsibilities.id),
+  isPrimary: integer("is_primary").notNull().default(0),
 });
 
 // ============================================================
@@ -187,10 +284,19 @@ export const insertWeeklyReviewSchema = createInsertSchema(weeklyReviews).omit({
 export const insertEnvironmentPersonSchema = createInsertSchema(environmentPeople).omit({ id: true });
 export const insertEnvironmentPlaceSchema = createInsertSchema(environmentPlaces).omit({ id: true });
 export const insertEnvironmentThingSchema = createInsertSchema(environmentThings).omit({ id: true });
+export const insertEnvironmentProviderSchema = createInsertSchema(environmentProviders).omit({ id: true });
+export const insertEnvironmentConditionSchema = createInsertSchema(environmentConditions).omit({ id: true });
 export const insertProjectEnvironmentSchema = createInsertSchema(projectEnvironment).omit({ id: true });
 export const insertResponsibilitySchema = createInsertSchema(responsibilities).omit({ id: true });
 export const insertRoleSchema = createInsertSchema(roles).omit({ id: true });
 export const insertRolePeopleSchema = createInsertSchema(rolePeople).omit({ id: true });
+export const insertResponsibilityRoleSchema = createInsertSchema(responsibilityRole).omit({ id: true });
+export const insertResponsibilityPeopleSchema = createInsertSchema(responsibilityPeople).omit({ id: true });
+export const insertResponsibilityPlaceSchema = createInsertSchema(responsibilityPlaces).omit({ id: true });
+export const insertResponsibilityThingSchema = createInsertSchema(responsibilityThings).omit({ id: true });
+export const insertResponsibilityProviderSchema = createInsertSchema(responsibilityProviders).omit({ id: true });
+export const insertResponsibilityConditionSchema = createInsertSchema(responsibilityConditions).omit({ id: true });
+export const insertProjectResponsibilitySchema = createInsertSchema(projectResponsibility).omit({ id: true });
 
 export const insertPreferencesSchema = createInsertSchema(preferences).omit({ id: true });
 export const insertSupportRequestSchema = createInsertSchema(supportRequests).omit({ id: true });
@@ -213,6 +319,10 @@ export type EnvironmentPlace = typeof environmentPlaces.$inferSelect;
 export type InsertEnvironmentPlace = z.infer<typeof insertEnvironmentPlaceSchema>;
 export type EnvironmentThing = typeof environmentThings.$inferSelect;
 export type InsertEnvironmentThing = z.infer<typeof insertEnvironmentThingSchema>;
+export type EnvironmentProvider = typeof environmentProviders.$inferSelect;
+export type InsertEnvironmentProvider = z.infer<typeof insertEnvironmentProviderSchema>;
+export type EnvironmentCondition = typeof environmentConditions.$inferSelect;
+export type InsertEnvironmentCondition = z.infer<typeof insertEnvironmentConditionSchema>;
 export type ProjectEnvironment = typeof projectEnvironment.$inferSelect;
 export type InsertProjectEnvironment = z.infer<typeof insertProjectEnvironmentSchema>;
 export type Responsibility = typeof responsibilities.$inferSelect;
@@ -221,6 +331,30 @@ export type Role = typeof roles.$inferSelect;
 export type InsertRole = z.infer<typeof insertRoleSchema>;
 export type RolePeople = typeof rolePeople.$inferSelect;
 export type InsertRolePeople = z.infer<typeof insertRolePeopleSchema>;
+export type ResponsibilityRole = typeof responsibilityRole.$inferSelect;
+export type InsertResponsibilityRole = z.infer<typeof insertResponsibilityRoleSchema>;
+export type ResponsibilityPeople = typeof responsibilityPeople.$inferSelect;
+export type InsertResponsibilityPeople = z.infer<typeof insertResponsibilityPeopleSchema>;
+export type ResponsibilityPlace = typeof responsibilityPlaces.$inferSelect;
+export type InsertResponsibilityPlace = z.infer<typeof insertResponsibilityPlaceSchema>;
+export type ResponsibilityThing = typeof responsibilityThings.$inferSelect;
+export type InsertResponsibilityThing = z.infer<typeof insertResponsibilityThingSchema>;
+export type ResponsibilityProvider = typeof responsibilityProviders.$inferSelect;
+export type InsertResponsibilityProvider = z.infer<typeof insertResponsibilityProviderSchema>;
+export type ResponsibilityCondition = typeof responsibilityConditions.$inferSelect;
+export type InsertResponsibilityCondition = z.infer<typeof insertResponsibilityConditionSchema>;
+export type ProjectResponsibility = typeof projectResponsibility.$inferSelect;
+export type InsertProjectResponsibility = z.infer<typeof insertProjectResponsibilitySchema>;
+
+// Phase 1 enum constants — single source of truth for validators.
+export const SUPPORT_STATES = ["available", "at_risk", "unavailable", "archived"] as const;
+export const RELATIONSHIP_TYPES = ["primary", "secondary", "optional", "temporary_workaround"] as const;
+export const IMPORTANCE_LEVELS = ["critical", "important", "helpful"] as const;
+export const PROJECT_TRIGGERS = ["missing_support", "repeated_friction", "major_life_change", "new_identity_shift"] as const;
+export type SupportState = typeof SUPPORT_STATES[number];
+export type RelationshipType = typeof RELATIONSHIP_TYPES[number];
+export type ImportanceLevel = typeof IMPORTANCE_LEVELS[number];
+export type ProjectTrigger = typeof PROJECT_TRIGGERS[number];
 
 export type Preferences = typeof preferences.$inferSelect;
 export type InsertPreferences = z.infer<typeof insertPreferencesSchema>;
