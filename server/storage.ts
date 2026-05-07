@@ -29,58 +29,73 @@ const sqlite = new Database(dbPath);
 sqlite.pragma("journal_mode = WAL");
 
 // ============================================================
-// PHASE 0 DEMOLITION — Drop deprecated tables
+// PHASE 0 — NUKE-ON-BOOT (TEMPORARY — remove in Phase 3)
 // ============================================================
-// These tables are removed in v8. Dropping IF EXISTS is idempotent —
-// safe on fresh DBs (no-op) and on existing DBs (clears legacy schema).
-const droppedTables = [
+// While the v8 schema is still in flux (Phases 0-2), every boot drops
+// every table and recreates from scratch. This is safe ONLY because
+// there is no real user data yet — the single admin user is recreated
+// by seedSuperAdmin() on every boot from ADMIN_EMAIL/ADMIN_PASSWORD.
+//
+// Once Phase 3 ships, real data starts accumulating; replace this
+// block with proper additive migrations (ALTER TABLE ADD COLUMN, etc.).
+//
+// Foreign keys must be OFF for the drops because legacy and surviving
+// tables hold FKs at each other and SQLite refuses to drop a parent
+// while a child references it.
+sqlite.pragma("foreign_keys = OFF");
+
+const tablesToNuke = [
+  // Legacy (Atomic Habits stack) — removed in v8
+  "identity_votes",
   "identities",
-  "areas",
   "area_vision_snapshots",
+  "areas",
   "purposes",
   "routine_items",
   "routine_logs",
   "planner_tasks",
   "wizard_state",
+  "wizard_drafts",
+  "draft_reviews",
+  "daily_reflections",
   "environment_entities",
   "beliefs",
   "anti_habits",
   "immutable_law_logs",
   "immutable_laws",
   "non_negotiables",
-  // Pre-Phase-0 dead tables from older schemas
+  "horizon_items",
   "habit_logs",
   "habits",
   "actions",
   "goals",
   "visions",
+  "tasks",
+  // Surviving tables (recreated below) — nuked because schema is in flux
+  "role_people",
+  "roles",
+  "responsibilities",
+  "project_environment",
+  "environment_things",
+  "environment_places",
+  "environment_people",
+  "weekly_reviews",
+  "inbox_items",
+  "projects",
+  "preferences",
+  "support_requests",
+  "invitations",
+  "users",
 ];
-for (const t of droppedTables) {
+for (const t of tablesToNuke) {
   sqlite.exec(`DROP TABLE IF EXISTS ${t}`);
 }
-
-// Drop deprecated columns from surviving tables (SQLite >= 3.35 supports DROP COLUMN)
-function dropColumnIfExists(table: string, column: string) {
-  try {
-    const cols = sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-    if (cols.find(c => c.name === column)) {
-      sqlite.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
-    }
-  } catch (_) { /* ignore — column or table doesn't exist */ }
-}
-dropColumnIfExists("projects", "identity_id");
-dropColumnIfExists("projects", "area_id");
-dropColumnIfExists("projects", "puzzle_piece");
-dropColumnIfExists("inbox_items", "linked_planner_task_id");
-dropColumnIfExists("inbox_items", "area_id");
-dropColumnIfExists("responsibilities", "place_id");
-dropColumnIfExists("responsibilities", "thing_id");
 
 // ============================================================
 // TABLE CREATION (surviving tables only)
 // ============================================================
 sqlite.exec(`
-  CREATE TABLE IF NOT EXISTS users (
+  CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT,
@@ -92,7 +107,7 @@ sqlite.exec(`
     last_login_at TEXT
   );
 
-  CREATE TABLE IF NOT EXISTS invitations (
+  CREATE TABLE invitations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL,
     token TEXT NOT NULL UNIQUE,
@@ -102,7 +117,7 @@ sqlite.exec(`
     expires_at TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS projects (
+  CREATE TABLE projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     title TEXT NOT NULL,
@@ -112,7 +127,7 @@ sqlite.exec(`
     archived_at TEXT
   );
 
-  CREATE TABLE IF NOT EXISTS inbox_items (
+  CREATE TABLE inbox_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     content TEXT NOT NULL,
@@ -124,7 +139,7 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS weekly_reviews (
+  CREATE TABLE weekly_reviews (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     week_of TEXT NOT NULL,
@@ -138,7 +153,7 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS preferences (
+  CREATE TABLE preferences (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     display_name TEXT NOT NULL DEFAULT '',
@@ -146,7 +161,7 @@ sqlite.exec(`
     clarity_skip_ritual INTEGER NOT NULL DEFAULT 0
   );
 
-  CREATE TABLE IF NOT EXISTS environment_people (
+  CREATE TABLE environment_people (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
@@ -154,7 +169,7 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS environment_places (
+  CREATE TABLE environment_places (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
@@ -162,7 +177,7 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS environment_things (
+  CREATE TABLE environment_things (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
@@ -170,14 +185,14 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS project_environment (
+  CREATE TABLE project_environment (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL,
     entity_type TEXT NOT NULL,
     entity_id INTEGER NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS responsibilities (
+  CREATE TABLE responsibilities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
@@ -188,7 +203,7 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS roles (
+  CREATE TABLE roles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
@@ -198,13 +213,13 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS role_people (
+  CREATE TABLE role_people (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     role_id INTEGER NOT NULL,
     person_id INTEGER NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS support_requests (
+  CREATE TABLE support_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     description TEXT NOT NULL,
@@ -225,6 +240,9 @@ try {
     sqlite.exec("INSERT INTO preferences (user_id, display_name, time_format) VALUES (1, '', '12h')");
   }
 } catch (_) { /* table will be handled above */ }
+
+// Schema migration complete — re-enable foreign key enforcement for runtime queries.
+sqlite.pragma("foreign_keys = ON");
 
 export { sqlite };
 export const db = drizzle(sqlite);
