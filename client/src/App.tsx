@@ -10,24 +10,13 @@ import { AuthContext, useAuthProvider } from "@/hooks/use-auth";
 import { useAuth } from "@/hooks/use-auth";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { ReportIssueButton } from "@/components/report-issue-button";
-import Dashboard from "@/pages/dashboard";
 import InboxPage from "@/pages/inbox";
-import HorizonsPage from "@/pages/horizons";
 import ReviewPage from "@/pages/review";
-import PlannerPage from "@/pages/planner";
-import RoutinePage from "@/pages/routine";
-import IdentityVotePage from "@/pages/identity-vote";
 import DataPage from "@/pages/data";
-import UnPuzzlePage from "@/pages/unpuzzle";
 import ProjectDetailPage from "@/pages/project-detail";
 import ProjectsPage from "@/pages/projects";
 import AuthPage, { RegisterPage } from "@/pages/auth-page";
 import AdminPage from "@/pages/admin";
-import SomedayPage from "@/pages/someday";
-import WizardPage from "@/pages/wizard";
-import DraftReviewPage from "@/pages/draft-review";
-import ProjectBuilderPage from "@/pages/project-builder";
-import MorningBriefingPage from "@/pages/morning-briefing";
 import AgendaPage from "@/pages/agenda";
 import NotFound from "@/pages/not-found";
 
@@ -37,33 +26,18 @@ function ProjectDetailRoute({ params }: { params: { id?: string } }) {
   return <ProjectDetailPage id={id} />;
 }
 
-function ProjectBuilderRoute({ params }: { params: { id?: string } }) {
-  const id = Number(params?.id);
-  if (!id || isNaN(id)) return <NotFound />;
-  return <ProjectBuilderPage id={String(id)} />;
-}
-
 function AppRouter() {
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
+      <Route path="/">
+        <Redirect to="/inbox" />
+      </Route>
       <Route path="/inbox" component={InboxPage} />
-      <Route path="/horizons" component={HorizonsPage} />
-      <Route path="/unpuzzle" component={UnPuzzlePage} />
-      <Route path="/routine">{() => <RoutinePage />}</Route>
-      <Route path="/routine/:id">{(params) => <RoutinePage filterIdentityId={Number(params.id)} />}</Route>
-      <Route path="/planner" component={PlannerPage} />
       <Route path="/review" component={ReviewPage} />
-      <Route path="/identity-vote" component={IdentityVotePage} />
       <Route path="/data" component={DataPage} />
       <Route path="/projects" component={ProjectsPage} />
-      <Route path="/projects/:id/build" component={ProjectBuilderRoute} />
       <Route path="/projects/:id" component={ProjectDetailRoute} />
-      <Route path="/drafts" component={DraftReviewPage} />
-      <Route path="/briefing" component={MorningBriefingPage} />
       <Route path="/agenda" component={AgendaPage} />
-      <Route path="/someday" component={SomedayPage} />
-      <Route path="/wizard" component={WizardPage} />
       <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />
     </Switch>
@@ -85,7 +59,7 @@ function ReportButtonGate() {
   const { user } = useAuth();
   const [location] = useLocation();
   if (user?.role === "super_admin") return null;
-  if (location === "/admin" || location === "/login" || location === "/wizard") return null;
+  if (location === "/admin" || location === "/login") return null;
   return <ReportIssueButton />;
 }
 
