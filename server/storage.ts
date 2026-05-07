@@ -14,6 +14,8 @@ import {
   responsibilityPeople, responsibilityPlaces, responsibilityThings,
   responsibilityProviders, responsibilityConditions,
   projectResponsibility,
+  // Phase 2 calendar
+  projectTasks, agendaTasks,
   type User, type InsertUser,
   type Invitation, type InsertInvitation,
   type Project, type InsertProject,
@@ -36,7 +38,10 @@ import {
   type ResponsibilityProvider, type InsertResponsibilityProvider,
   type ResponsibilityCondition, type InsertResponsibilityCondition,
   type ProjectResponsibility, type InsertProjectResponsibility,
+  type ProjectTask, type InsertProjectTask,
+  type AgendaTask, type InsertAgendaTask,
 } from "@shared/schema";
+import { expandMaster, type MasterRow } from "./recurrence";
 
 const dbPath = process.env.DATABASE_PATH || "data.db";
 const sqlite = new Database(dbPath);
@@ -87,6 +92,8 @@ const tablesToNuke = [
   "tasks",
   // Surviving tables (recreated below) — nuked because schema is in flux.
   // Order: junctions/children first (they reference parents), then parents.
+  "agenda_tasks",
+  "project_tasks",
   "project_responsibility",
   "responsibility_conditions",
   "responsibility_providers",
@@ -127,6 +134,7 @@ sqlite.exec(`
     role TEXT NOT NULL DEFAULT 'user',
     status TEXT NOT NULL DEFAULT 'active',
     invited_by INTEGER,
+    agenda_default_view TEXT NOT NULL DEFAULT 'day',
     created_at TEXT NOT NULL,
     last_login_at TEXT
   );
@@ -248,6 +256,8 @@ sqlite.exec(`
     day_of_week TEXT,
     custom_cron_expr TEXT,
     is_preset INTEGER NOT NULL DEFAULT 0,
+    color TEXT,
+    recurrence_rule TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -318,6 +328,40 @@ sqlite.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id),
     responsibility_id INTEGER NOT NULL REFERENCES responsibilities(id),
     is_primary INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE project_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    title TEXT NOT NULL,
+    notes TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    recurrence_rule TEXT,
+    recurrence_end_date TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE agenda_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    origin TEXT NOT NULL,
+    origin_id INTEGER,
+    date TEXT NOT NULL,
+    time TEXT,
+    duration_minutes INTEGER,
+    is_all_day INTEGER NOT NULL DEFAULT 0,
+    role_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'ready',
+    color TEXT,
+    recurrence_rule TEXT,
+    recurrence_end_date TEXT,
+    series_id INTEGER,
+    is_override INTEGER NOT NULL DEFAULT 0,
+    original_date TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
   );
 
   CREATE TABLE support_requests (
@@ -457,6 +501,30 @@ export interface IStorage {
   getProjectResponsibilities(projectId: number): ProjectResponsibility[];
   linkProjectResponsibility(data: InsertProjectResponsibility): ProjectResponsibility;
   unlinkProjectResponsibility(id: number): void;
+
+  // Phase 2: Project tasks
+  getProjectTasks(userId: number, projectId?: number): ProjectTask[];
+  getProjectTask(userId: number, id: number): ProjectTask | undefined;
+  createProjectTask(userId: number, data: InsertProjectTask): ProjectTask;
+  updateProjectTask(userId: number, id: number, data: Partial<InsertProjectTask>): ProjectTask | undefined;
+  deleteProjectTask(userId: number, id: number): void;
+
+  // Phase 2: Agenda tasks (raw rows; no expansion)
+  getAgendaTask(userId: number, id: number): AgendaTask | undefined;
+  createAgendaTask(userId: number, data: InsertAgendaTask): AgendaTask;
+  updateAgendaTask(userId: number, id: number, data: Partial<InsertAgendaTask>): AgendaTask | undefined;
+  deleteAgendaTask(userId: number, id: number): void;
+
+  // Phase 2: Agenda window query (hybrid expansion)
+  getAgendaWindow(userId: number, windowStart: string, windowEnd: string): Array<AgendaTask & {
+    isVirtual: boolean;
+    masterId: number;
+    originalDate: string | null;
+  }>;
+
+  // Phase 2: agenda default view
+  getAgendaDefaultView(userId: number): string;
+  setAgendaDefaultView(userId: number, view: string): void;
 
   // Reset
   resetDatabase(userId: number): void;
@@ -809,6 +877,189 @@ export class DatabaseStorage implements IStorage {
     db.delete(projectResponsibility).where(eq(projectResponsibility.id, id)).run();
   }
 
+  // ============================================================
+  // PHASE 2: PROJECT TASKS
+  // ============================================================
+  getProjectTasks(userId: number, projectId?: number): ProjectTask[] {
+    if (projectId !== undefined) {
+      return db.select().from(projectTasks)
+        .where(and(eq(projectTasks.userId, userId), eq(projectTasks.projectId, projectId)))
+        .orderBy(asc(projectTasks.id))
+        .all();
+    }
+    return db.select().from(projectTasks).where(eq(projectTasks.userId, userId)).orderBy(asc(projectTasks.id)).all();
+  }
+  getProjectTask(userId: number, id: number): ProjectTask | undefined {
+    return db.select().from(projectTasks)
+      .where(and(eq(projectTasks.id, id), eq(projectTasks.userId, userId))).get();
+  }
+  createProjectTask(userId: number, data: InsertProjectTask): ProjectTask {
+    return db.insert(projectTasks).values({ ...data, userId }).returning().get();
+  }
+  updateProjectTask(userId: number, id: number, data: Partial<InsertProjectTask>): ProjectTask | undefined {
+    return db.update(projectTasks).set(data)
+      .where(and(eq(projectTasks.id, id), eq(projectTasks.userId, userId)))
+      .returning().get();
+  }
+  deleteProjectTask(userId: number, id: number): void {
+    db.delete(projectTasks).where(and(eq(projectTasks.id, id), eq(projectTasks.userId, userId))).run();
+  }
+
+  // ============================================================
+  // PHASE 2: AGENDA TASKS (raw rows)
+  // ============================================================
+  getAgendaTask(userId: number, id: number): AgendaTask | undefined {
+    return db.select().from(agendaTasks)
+      .where(and(eq(agendaTasks.id, id), eq(agendaTasks.userId, userId))).get();
+  }
+  createAgendaTask(userId: number, data: InsertAgendaTask): AgendaTask {
+    const now = new Date().toISOString();
+    const row = db.insert(agendaTasks).values({
+      ...data,
+      userId,
+      createdAt: data.createdAt || now,
+      updatedAt: data.updatedAt || now,
+    }).returning().get();
+    // If this row is a master series (recurrence_rule set, no series_id yet, not an override),
+    // assign series_id = id so future overrides have something to point at.
+    if (row.recurrenceRule && !row.seriesId && !row.isOverride) {
+      const updated = db.update(agendaTasks).set({ seriesId: row.id })
+        .where(eq(agendaTasks.id, row.id)).returning().get();
+      return updated || row;
+    }
+    return row;
+  }
+  updateAgendaTask(userId: number, id: number, data: Partial<InsertAgendaTask>): AgendaTask | undefined {
+    const updates = { ...data, updatedAt: new Date().toISOString() };
+    return db.update(agendaTasks).set(updates)
+      .where(and(eq(agendaTasks.id, id), eq(agendaTasks.userId, userId)))
+      .returning().get();
+  }
+  deleteAgendaTask(userId: number, id: number): void {
+    db.delete(agendaTasks).where(and(eq(agendaTasks.id, id), eq(agendaTasks.userId, userId))).run();
+  }
+
+  // ============================================================
+  // PHASE 2: AGENDA WINDOW QUERY (hybrid expansion)
+  // ============================================================
+  // Returns every "thing on the calendar" for this user between
+  // windowStart and windowEnd (inclusive, YYYY-MM-DD).
+  //
+  // Strategy:
+  //   1. Pull all agenda_tasks rows for this user. Three classes:
+  //      a. masters (recurrence_rule set, is_override=0)
+  //      b. overrides (is_override=1, original_date set)
+  //      c. standalones (no recurrence_rule, is_override=0)
+  //   2. Expand each master into virtual instances inside the window.
+  //   3. For each virtual instance, look up an override row keyed by
+  //      (seriesId, originalDate). If found, the override REPLACES the
+  //      virtual instance (and the override may have moved to a different date,
+  //      possibly outside the window — we still drop the virtual one).
+  //   4. Standalones whose `date` falls in the window are returned as-is.
+  //   5. Overrides whose `date` falls in the window are returned as-is
+  //      (they replace their virtual counterpart).
+  //
+  // Each returned item has `isVirtual: true` if it came from rule expansion
+  // (so callers know mutations need to materialize an override row),
+  // or `isVirtual: false` for real rows.
+  getAgendaWindow(
+    userId: number,
+    windowStart: string,
+    windowEnd: string,
+  ): Array<AgendaTask & { isVirtual: boolean; masterId: number; originalDate: string | null }> {
+    const rows = db.select().from(agendaTasks).where(eq(agendaTasks.userId, userId)).all();
+    const masters: AgendaTask[] = [];
+    const overrides: AgendaTask[] = [];
+    const standalones: AgendaTask[] = [];
+    for (const r of rows) {
+      if (r.isOverride) overrides.push(r);
+      else if (r.recurrenceRule) masters.push(r);
+      else standalones.push(r);
+    }
+
+    // Index overrides by (seriesId, originalDate) for O(1) lookup during expansion.
+    const overrideKey = (seriesId: number | null, originalDate: string | null) =>
+      `${seriesId ?? "x"}|${originalDate ?? "x"}`;
+    const overrideBySeriesAndDate = new Map<string, AgendaTask>();
+    for (const o of overrides) {
+      overrideBySeriesAndDate.set(overrideKey(o.seriesId, o.originalDate), o);
+    }
+
+    const out: Array<AgendaTask & { isVirtual: boolean; masterId: number; originalDate: string | null }> = [];
+
+    // 1. Expand masters; skip virtual instances that have an override (regardless of where the override moved to).
+    for (const m of masters) {
+      const expanded = expandMaster(
+        {
+          id: m.id,
+          seriesId: m.seriesId,
+          recurrenceRule: m.recurrenceRule,
+          recurrenceEndDate: m.recurrenceEndDate,
+          date: m.date,
+        } satisfies MasterRow,
+        windowStart,
+        windowEnd,
+      );
+      for (const inst of expanded) {
+        const ov = overrideBySeriesAndDate.get(overrideKey(inst.seriesId, inst.date));
+        if (ov) continue; // override will be added below if it falls in the window
+        out.push({
+          ...m,
+          id: m.id, // virtual instance keeps the master id; clients use originalDate to disambiguate
+          date: inst.date,
+          isVirtual: true,
+          masterId: m.id,
+          originalDate: null,
+        });
+      }
+    }
+
+    // 2. Add overrides that land in the window (their `date` is the rendered date).
+    for (const o of overrides) {
+      if (o.date >= windowStart && o.date <= windowEnd) {
+        out.push({
+          ...o,
+          isVirtual: false,
+          masterId: o.seriesId ?? o.id,
+          originalDate: o.originalDate,
+        });
+      }
+    }
+
+    // 3. Add standalones that land in the window.
+    for (const s of standalones) {
+      if (s.date >= windowStart && s.date <= windowEnd) {
+        out.push({
+          ...s,
+          isVirtual: false,
+          masterId: s.id,
+          originalDate: null,
+        });
+      }
+    }
+
+    // Stable sort: date asc, then time asc (nulls last), then id asc.
+    out.sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      const at = a.time ?? "99:99";
+      const bt = b.time ?? "99:99";
+      if (at !== bt) return at < bt ? -1 : 1;
+      return a.id - b.id;
+    });
+    return out;
+  }
+
+  // ============================================================
+  // PHASE 2: AGENDA DEFAULT VIEW (per-user)
+  // ============================================================
+  getAgendaDefaultView(userId: number): string {
+    const u = db.select().from(users).where(eq(users.id, userId)).get();
+    return u?.agendaDefaultView || "day";
+  }
+  setAgendaDefaultView(userId: number, view: string): void {
+    db.update(users).set({ agendaDefaultView: view }).where(eq(users.id, userId)).run();
+  }
+
   // Reset (clears the surviving v8-relevant tables for this user)
   resetDatabase(userId: number): void {
     const tables = [
@@ -830,6 +1081,9 @@ export class DatabaseStorage implements IStorage {
     sqlite.exec(`DELETE FROM responsibility_providers WHERE responsibility_id NOT IN (SELECT id FROM responsibilities)`);
     sqlite.exec(`DELETE FROM responsibility_conditions WHERE responsibility_id NOT IN (SELECT id FROM responsibilities)`);
     sqlite.exec(`DELETE FROM project_responsibility WHERE project_id NOT IN (SELECT id FROM projects)`);
+    // Phase 2 calendar tables — user-scoped via user_id column.
+    sqlite.exec(`DELETE FROM agenda_tasks WHERE user_id = ${userId}`);
+    sqlite.exec(`DELETE FROM project_tasks WHERE user_id = ${userId}`);
     // Reset preferences to defaults for this user
     sqlite.exec(`UPDATE preferences SET display_name = '', time_format = '12h', clarity_skip_ritual = 0 WHERE user_id = ${userId}`);
   }

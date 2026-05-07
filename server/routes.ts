@@ -17,10 +17,17 @@ import {
   insertRolePeopleSchema,
   insertResponsibilityRoleSchema,
   insertProjectResponsibilitySchema,
+  insertProjectTaskSchema,
+  insertAgendaTaskSchema,
   SUPPORT_STATES,
   RELATIONSHIP_TYPES,
   IMPORTANCE_LEVELS,
+  AGENDA_ORIGINS,
+  AGENDA_STATUSES,
+  AGENDA_VIEWS,
+  PROJECT_TASK_STATUSES,
 } from "@shared/schema";
+import { validateRecurrenceRule } from "./recurrence";
 
 // Phase 1 helper: support type whitelist for /api/environment/{type} dispatch.
 const SUPPORT_TYPES = ["people", "places", "things", "providers", "conditions"] as const;
@@ -546,6 +553,145 @@ export function registerRoutes(server: Server, app: Express) {
     } catch (err: any) {
       res.status(500).json({ error: err?.message || "Internal server error" });
     }
+  });
+
+  // ============================================================
+  // PHASE 2 §22 — PROJECT TASKS
+  // ============================================================
+  app.get("/api/project-tasks", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const projectIdRaw = req.query.projectId;
+    const projectId = projectIdRaw !== undefined ? Number(projectIdRaw) : undefined;
+    if (projectIdRaw !== undefined && Number.isNaN(projectId)) {
+      return res.status(400).json({ error: "projectId must be a number" });
+    }
+    res.json(storage.getProjectTasks(userId, projectId));
+  });
+  app.get("/api/project-tasks/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const result = storage.getProjectTask(userId, Number(req.params.id));
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.post("/api/project-tasks", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const data = { ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
+    if (data.status !== undefined && !(PROJECT_TASK_STATUSES as readonly string[]).includes(data.status)) {
+      return res.status(400).json({ error: `status must be one of: ${PROJECT_TASK_STATUSES.join(", ")}` });
+    }
+    if (data.recurrenceRule) {
+      const err = validateRecurrenceRule(data.recurrenceRule);
+      if (err) return res.status(400).json({ error: `recurrenceRule invalid: ${err}` });
+    }
+    const parsed = insertProjectTaskSchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createProjectTask(userId, parsed.data));
+  });
+  app.patch("/api/project-tasks/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const body = req.body || {};
+    if (body.status !== undefined && !(PROJECT_TASK_STATUSES as readonly string[]).includes(body.status)) {
+      return res.status(400).json({ error: `status must be one of: ${PROJECT_TASK_STATUSES.join(", ")}` });
+    }
+    if (body.recurrenceRule) {
+      const err = validateRecurrenceRule(body.recurrenceRule);
+      if (err) return res.status(400).json({ error: `recurrenceRule invalid: ${err}` });
+    }
+    const result = storage.updateProjectTask(userId, Number(req.params.id), body);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/project-tasks/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    storage.deleteProjectTask(userId, Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // PHASE 2 §22a — AGENDA TASKS (calendar, with hybrid recurrence)
+  // ============================================================
+  app.get("/api/agenda-tasks/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const result = storage.getAgendaTask(userId, Number(req.params.id));
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.post("/api/agenda-tasks", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const nowIso = new Date().toISOString();
+    const data = {
+      ...req.body,
+      createdAt: req.body.createdAt || nowIso,
+      updatedAt: req.body.updatedAt || nowIso,
+    };
+    if (data.origin !== undefined && !(AGENDA_ORIGINS as readonly string[]).includes(data.origin)) {
+      return res.status(400).json({ error: `origin must be one of: ${AGENDA_ORIGINS.join(", ")}` });
+    }
+    if (data.status !== undefined && !(AGENDA_STATUSES as readonly string[]).includes(data.status)) {
+      return res.status(400).json({ error: `status must be one of: ${AGENDA_STATUSES.join(", ")}` });
+    }
+    if (data.recurrenceRule) {
+      const err = validateRecurrenceRule(data.recurrenceRule);
+      if (err) return res.status(400).json({ error: `recurrenceRule invalid: ${err}` });
+    }
+    const parsed = insertAgendaTaskSchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createAgendaTask(userId, parsed.data));
+  });
+  app.patch("/api/agenda-tasks/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const body = { ...(req.body || {}) };
+    if (body.origin !== undefined && !(AGENDA_ORIGINS as readonly string[]).includes(body.origin)) {
+      return res.status(400).json({ error: `origin must be one of: ${AGENDA_ORIGINS.join(", ")}` });
+    }
+    if (body.status !== undefined && !(AGENDA_STATUSES as readonly string[]).includes(body.status)) {
+      return res.status(400).json({ error: `status must be one of: ${AGENDA_STATUSES.join(", ")}` });
+    }
+    if (body.recurrenceRule) {
+      const err = validateRecurrenceRule(body.recurrenceRule);
+      if (err) return res.status(400).json({ error: `recurrenceRule invalid: ${err}` });
+    }
+    // Auto-bump updatedAt for any mutation.
+    body.updatedAt = new Date().toISOString();
+    const result = storage.updateAgendaTask(userId, Number(req.params.id), body);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/agenda-tasks/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    storage.deleteAgendaTask(userId, Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // Window query — expands recurring masters and merges overrides + standalones.
+  // GET /api/agenda?from=YYYY-MM-DD&to=YYYY-MM-DD
+  app.get("/api/agenda", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const from = String(req.query.from || "");
+    const to = String(req.query.to || "");
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRe.test(from) || !dateRe.test(to)) {
+      return res.status(400).json({ error: "from and to are required as YYYY-MM-DD" });
+    }
+    if (from > to) {
+      return res.status(400).json({ error: "from must be <= to" });
+    }
+    res.json(storage.getAgendaWindow(userId, from, to));
+  });
+
+  // Default agenda view preference (per §23).
+  app.get("/api/agenda-default-view", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json({ view: storage.getAgendaDefaultView(userId) });
+  });
+  app.patch("/api/agenda-default-view", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const { view } = req.body || {};
+    if (!view || !(AGENDA_VIEWS as readonly string[]).includes(view)) {
+      return res.status(400).json({ error: `view must be one of: ${AGENDA_VIEWS.join(", ")}` });
+    }
+    storage.setAgendaDefaultView(userId, view);
+    res.json({ view });
   });
 
   // ============================================================

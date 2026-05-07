@@ -14,6 +14,9 @@ export const users = sqliteTable("users", {
   role: text("role").notNull().default("user"), // 'super_admin' | 'admin' | 'user'
   status: text("status").notNull().default("active"), // 'active' | 'suspended' | 'pending_approval'
   invitedBy: integer("invited_by"),
+  // Phase 2 (§23): per-user last selected Agenda view, follows them across devices.
+  // 'day' | '3day' | 'week' | 'month'
+  agendaDefaultView: text("agenda_default_view").notNull().default("day"),
   createdAt: text("created_at").notNull(),
   lastLoginAt: text("last_login_at"),
 });
@@ -147,6 +150,9 @@ export const projectEnvironment = sqliteTable("project_environment", {
 // V2: RESPONSIBILITIES & ROLES (Phase 0: placeId/thingId dropped from responsibilities)
 // ============================================================
 
+// Phase 2 (§23) added two new fields:
+//   color           — persists across all instances of this responsibility (chip color on Agenda)
+//   recurrence_rule — RRULE-style string; responsibilities are recurring by nature
 export const responsibilities = sqliteTable("responsibilities", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().default(1),
@@ -155,6 +161,8 @@ export const responsibilities = sqliteTable("responsibilities", {
   dayOfWeek: text("day_of_week"),
   customCronExpr: text("custom_cron_expr"),
   isPreset: integer("is_preset").notNull().default(0),
+  color: text("color"),
+  recurrenceRule: text("recurrence_rule"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -242,6 +250,75 @@ export const projectResponsibility = sqliteTable("project_responsibility", {
 });
 
 // ============================================================
+// PHASE 2 — PROJECT TASKS (§23)
+// ============================================================
+// Minimum-viable shape; Phase 5 (Project v2) will extend.
+// Project tasks become visible on Agenda by acquiring an agenda_tasks row
+// with origin = 'project' and origin_id pointing here.
+// Recurrence: optional; if set, recurrence_end_date is required and must be
+// ≤ project.end_date (else triggers conversion prompt — enforced in app).
+export const projectTasks = sqliteTable("project_tasks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  title: text("title").notNull(),
+  notes: text("notes"),
+  status: text("status").notNull().default("open"), // 'open' | 'done' | 'cancelled'
+  recurrenceRule: text("recurrence_rule"),
+  recurrenceEndDate: text("recurrence_end_date"), // YYYY-MM-DD; required when recurrenceRule set
+  createdAt: text("created_at").notNull(),
+});
+
+// ============================================================
+// PHASE 2 — AGENDA TASKS (§23)
+// ============================================================
+// Canonical scheduled-thing table. Every scheduled item appears here:
+//   responsibility instance, scheduled project task, or standalone task.
+//
+// origin / origin_id is polymorphic by design (per spec). App-level
+// integrity: when origin='responsibility', origin_id → responsibilities.id;
+// when origin='project', origin_id → project_tasks.id; when
+// origin='standalone', origin_id is NULL.
+//
+// Hybrid recurrence model:
+//   * MASTER row     — recurrence_rule IS NOT NULL, is_override = 0.
+//                      Persists once; instances are expanded on read by
+//                      the recurrence engine (server/recurrence.ts).
+//   * OVERRIDE row   — is_override = 1, series_id = master.series_id,
+//                      original_date = the virtual instance date this row
+//                      replaces. date = the new actual date (== original_date
+//                      for in-place edits like color/time/state changes,
+//                      != original_date when the user moved the instance).
+//   * STANDALONE row — recurrence_rule IS NULL, series_id IS NULL,
+//                      is_override = 0. A one-off scheduled task.
+//
+// Read rule for chip color: COALESCE(agenda_tasks.color, responsibilities.color)
+// when joined; agenda_tasks.color is NULL for origin='responsibility', set otherwise.
+export const agendaTasks = sqliteTable("agenda_tasks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
+  origin: text("origin").notNull(), // 'responsibility' | 'project' | 'standalone'
+  originId: integer("origin_id"), // null when origin='standalone'
+  date: text("date").notNull(), // YYYY-MM-DD
+  time: text("time"), // HH:MM, null when isAllDay = 1
+  durationMinutes: integer("duration_minutes"), // null when isAllDay = 1
+  isAllDay: integer("is_all_day").notNull().default(0),
+  roleId: integer("role_id"), // nullable; standalone tasks may have no role
+  status: text("status").notNull().default("ready"), // 'ready' | 'note' | 'unavailable'
+  color: text("color"), // null when origin='responsibility' (joins to responsibilities.color)
+  recurrenceRule: text("recurrence_rule"),
+  recurrenceEndDate: text("recurrence_end_date"), // required when recurrenceRule IS NOT NULL
+  seriesId: integer("series_id"), // groups all instances + overrides of one series
+  isOverride: integer("is_override").notNull().default(0),
+  // Hybrid model bookkeeping (one column beyond §23; necessary to map
+  // an override row back to the virtual instance it replaces).
+  originalDate: text("original_date"), // YYYY-MM-DD; null unless isOverride=1
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+// ============================================================
 // SUPPORT REQUESTS
 // ============================================================
 
@@ -297,6 +374,8 @@ export const insertResponsibilityThingSchema = createInsertSchema(responsibility
 export const insertResponsibilityProviderSchema = createInsertSchema(responsibilityProviders).omit({ id: true });
 export const insertResponsibilityConditionSchema = createInsertSchema(responsibilityConditions).omit({ id: true });
 export const insertProjectResponsibilitySchema = createInsertSchema(projectResponsibility).omit({ id: true });
+export const insertProjectTaskSchema = createInsertSchema(projectTasks).omit({ id: true });
+export const insertAgendaTaskSchema = createInsertSchema(agendaTasks).omit({ id: true });
 
 export const insertPreferencesSchema = createInsertSchema(preferences).omit({ id: true });
 export const insertSupportRequestSchema = createInsertSchema(supportRequests).omit({ id: true });
@@ -345,6 +424,10 @@ export type ResponsibilityCondition = typeof responsibilityConditions.$inferSele
 export type InsertResponsibilityCondition = z.infer<typeof insertResponsibilityConditionSchema>;
 export type ProjectResponsibility = typeof projectResponsibility.$inferSelect;
 export type InsertProjectResponsibility = z.infer<typeof insertProjectResponsibilitySchema>;
+export type ProjectTask = typeof projectTasks.$inferSelect;
+export type InsertProjectTask = z.infer<typeof insertProjectTaskSchema>;
+export type AgendaTask = typeof agendaTasks.$inferSelect;
+export type InsertAgendaTask = z.infer<typeof insertAgendaTaskSchema>;
 
 // Phase 1 enum constants — single source of truth for validators.
 export const SUPPORT_STATES = ["available", "at_risk", "unavailable", "archived"] as const;
@@ -355,6 +438,16 @@ export type SupportState = typeof SUPPORT_STATES[number];
 export type RelationshipType = typeof RELATIONSHIP_TYPES[number];
 export type ImportanceLevel = typeof IMPORTANCE_LEVELS[number];
 export type ProjectTrigger = typeof PROJECT_TRIGGERS[number];
+
+// Phase 2 enum constants.
+export const AGENDA_ORIGINS = ["responsibility", "project", "standalone"] as const;
+export const AGENDA_STATUSES = ["ready", "note", "unavailable"] as const;
+export const AGENDA_VIEWS = ["day", "3day", "week", "month"] as const;
+export const PROJECT_TASK_STATUSES = ["open", "done", "cancelled"] as const;
+export type AgendaOrigin = typeof AGENDA_ORIGINS[number];
+export type AgendaStatus = typeof AGENDA_STATUSES[number];
+export type AgendaView = typeof AGENDA_VIEWS[number];
+export type ProjectTaskStatus = typeof PROJECT_TASK_STATUSES[number];
 
 export type Preferences = typeof preferences.$inferSelect;
 export type InsertPreferences = z.infer<typeof insertPreferencesSchema>;
