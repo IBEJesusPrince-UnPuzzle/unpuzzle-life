@@ -9,11 +9,25 @@ import {
   insertEnvironmentPersonSchema,
   insertEnvironmentPlaceSchema,
   insertEnvironmentThingSchema,
+  insertEnvironmentProviderSchema,
+  insertEnvironmentConditionSchema,
   insertProjectEnvironmentSchema,
   insertResponsibilitySchema,
   insertRoleSchema,
   insertRolePeopleSchema,
+  insertResponsibilityRoleSchema,
+  insertProjectResponsibilitySchema,
+  SUPPORT_STATES,
+  RELATIONSHIP_TYPES,
+  IMPORTANCE_LEVELS,
 } from "@shared/schema";
+
+// Phase 1 helper: support type whitelist for /api/environment/{type} dispatch.
+const SUPPORT_TYPES = ["people", "places", "things", "providers", "conditions"] as const;
+type SupportTypeParam = typeof SUPPORT_TYPES[number];
+function isSupportType(s: string): s is SupportTypeParam {
+  return (SUPPORT_TYPES as readonly string[]).includes(s);
+}
 
 export function registerRoutes(server: Server, app: Express) {
   // Apply requireAuth to all /api/* routes EXCEPT auth endpoints
@@ -289,6 +303,174 @@ export function registerRoutes(server: Server, app: Express) {
   });
   app.delete("/api/roles/:roleId/people/:id", (req, res) => {
     storage.removeRolePerson(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // PHASE 1 §§1-3 — PROVIDERS, CONDITIONS, STATE, JUNCTIONS
+  // ============================================================
+
+  // ----- Environment Providers -----
+  app.get("/api/environment/providers", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getEnvironmentProviders(userId));
+  });
+  app.post("/api/environment/providers", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const data = { ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
+    const parsed = insertEnvironmentProviderSchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createEnvironmentProvider(userId, parsed.data));
+  });
+  app.patch("/api/environment/providers/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateEnvironmentProvider(userId, Number(req.params.id), req.body);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/environment/providers/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    storage.deleteEnvironmentProvider(userId, Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ----- Environment Conditions -----
+  app.get("/api/environment/conditions", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getEnvironmentConditions(userId));
+  });
+  app.post("/api/environment/conditions", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const data = { ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
+    const parsed = insertEnvironmentConditionSchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createEnvironmentCondition(userId, parsed.data));
+  });
+  app.patch("/api/environment/conditions/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const result = storage.updateEnvironmentCondition(userId, Number(req.params.id), req.body);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/environment/conditions/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    storage.deleteEnvironmentCondition(userId, Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ----- Support state setter (works for all 5 categories) -----
+  // PATCH /api/environment/{type}/:id/state  body: { state: '...' }
+  app.patch("/api/environment/:type/:id/state", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const { type, id } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    const { state } = req.body || {};
+    if (!state || !(SUPPORT_STATES as readonly string[]).includes(state)) {
+      return res.status(400).json({ error: `state must be one of: ${SUPPORT_STATES.join(", ")}` });
+    }
+    const result = storage.setSupportState(type, userId, Number(id), state);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+
+  // ----- Responsibility ↔ Role junction -----
+  app.get("/api/responsibilities/:id/roles", (req, res) => {
+    res.json(storage.getResponsibilityRoles(Number(req.params.id)));
+  });
+  app.post("/api/responsibilities/:id/roles", (req, res) => {
+    const data = { ...req.body, responsibilityId: Number(req.params.id) };
+    const parsed = insertResponsibilityRoleSchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.linkResponsibilityRole(parsed.data));
+  });
+  app.delete("/api/responsibilities/:respId/roles/:id", (req, res) => {
+    storage.unlinkResponsibilityRole(Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ----- Responsibility ↔ Support junctions (5 categories) -----
+  // GET    /api/responsibilities/:id/support/:type
+  // POST   /api/responsibilities/:id/support/:type   body: { <fkField>, relationshipType?, importance? }
+  // PATCH  /api/responsibilities/:respId/support/:type/:linkId   body: { relationshipType?, importance? }
+  // DELETE /api/responsibilities/:respId/support/:type/:linkId
+  function validateRelImp(body: any): string | null {
+    if (body.relationshipType !== undefined && !(RELATIONSHIP_TYPES as readonly string[]).includes(body.relationshipType)) {
+      return `relationshipType must be one of: ${RELATIONSHIP_TYPES.join(", ")}`;
+    }
+    if (body.importance !== undefined && !(IMPORTANCE_LEVELS as readonly string[]).includes(body.importance)) {
+      return `importance must be one of: ${IMPORTANCE_LEVELS.join(", ")}`;
+    }
+    return null;
+  }
+  // Map support type → the FK column name in its junction table.
+  const supportFkField: Record<SupportTypeParam, string> = {
+    people: "personId",
+    places: "placeId",
+    things: "thingId",
+    providers: "providerId",
+    conditions: "conditionId",
+  };
+
+  app.get("/api/responsibilities/:id/support/:type", (req, res) => {
+    const { type, id } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    res.json(storage.getResponsibilitySupports(Number(id), type));
+  });
+  app.post("/api/responsibilities/:id/support/:type", (req, res) => {
+    const { type, id } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    const fkField = supportFkField[type];
+    const fkValue = req.body?.[fkField];
+    if (typeof fkValue !== "number") {
+      return res.status(400).json({ error: `${fkField} (number) is required` });
+    }
+    const validationErr = validateRelImp(req.body);
+    if (validationErr) return res.status(400).json({ error: validationErr });
+    const data: any = {
+      responsibilityId: Number(id),
+      [fkField]: fkValue,
+    };
+    if (req.body.relationshipType !== undefined) data.relationshipType = req.body.relationshipType;
+    if (req.body.importance !== undefined) data.importance = req.body.importance;
+    res.json(storage.linkResponsibilitySupport(type, data));
+  });
+  app.patch("/api/responsibilities/:respId/support/:type/:linkId", (req, res) => {
+    const { type, linkId } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    const validationErr = validateRelImp(req.body);
+    if (validationErr) return res.status(400).json({ error: validationErr });
+    const result = storage.updateResponsibilitySupportLink(type, Number(linkId), {
+      relationshipType: req.body.relationshipType,
+      importance: req.body.importance,
+    });
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/responsibilities/:respId/support/:type/:linkId", (req, res) => {
+    const { type, linkId } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    storage.unlinkResponsibilitySupport(type, Number(linkId));
+    res.json({ ok: true });
+  });
+
+  // ----- Project ↔ Responsibility junction -----
+  app.get("/api/projects/:id/responsibilities", (req, res) => {
+    res.json(storage.getProjectResponsibilities(Number(req.params.id)));
+  });
+  app.post("/api/projects/:id/responsibilities", (req, res) => {
+    const body = req.body || {};
+    const isPrimary = body.isPrimary === true || body.isPrimary === 1 ? 1 : 0;
+    const data = {
+      projectId: Number(req.params.id),
+      responsibilityId: Number(body.responsibilityId),
+      isPrimary,
+    };
+    const parsed = insertProjectResponsibilitySchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.linkProjectResponsibility(parsed.data));
+  });
+  app.delete("/api/projects/:projectId/responsibilities/:id", (req, res) => {
+    storage.unlinkProjectResponsibility(Number(req.params.id));
     res.json({ ok: true });
   });
 

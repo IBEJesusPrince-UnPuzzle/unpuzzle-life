@@ -5,23 +5,37 @@ import {
   users, invitations,
   projects, inboxItems, weeklyReviews,
   preferences,
-  // V2 tables
+  // V2 support taxonomy
   environmentPeople, environmentPlaces, environmentThings,
+  environmentProviders, environmentConditions,
   projectEnvironment, responsibilities, roles, rolePeople,
+  // Phase 1 junctions
+  responsibilityRole,
+  responsibilityPeople, responsibilityPlaces, responsibilityThings,
+  responsibilityProviders, responsibilityConditions,
+  projectResponsibility,
   type User, type InsertUser,
   type Invitation, type InsertInvitation,
   type Project, type InsertProject,
   type InboxItem, type InsertInboxItem,
   type WeeklyReview, type InsertWeeklyReview,
   type Preferences,
-  // V2 types
   type EnvironmentPerson, type InsertEnvironmentPerson,
   type EnvironmentPlace, type InsertEnvironmentPlace,
   type EnvironmentThing, type InsertEnvironmentThing,
+  type EnvironmentProvider, type InsertEnvironmentProvider,
+  type EnvironmentCondition, type InsertEnvironmentCondition,
   type ProjectEnvironment, type InsertProjectEnvironment,
   type Responsibility, type InsertResponsibility,
   type Role, type InsertRole,
   type RolePeople, type InsertRolePeople,
+  type ResponsibilityRole, type InsertResponsibilityRole,
+  type ResponsibilityPeople, type InsertResponsibilityPeople,
+  type ResponsibilityPlace, type InsertResponsibilityPlace,
+  type ResponsibilityThing, type InsertResponsibilityThing,
+  type ResponsibilityProvider, type InsertResponsibilityProvider,
+  type ResponsibilityCondition, type InsertResponsibilityCondition,
+  type ProjectResponsibility, type InsertProjectResponsibility,
 } from "@shared/schema";
 
 const dbPath = process.env.DATABASE_PATH || "data.db";
@@ -71,11 +85,21 @@ const tablesToNuke = [
   "goals",
   "visions",
   "tasks",
-  // Surviving tables (recreated below) — nuked because schema is in flux
+  // Surviving tables (recreated below) — nuked because schema is in flux.
+  // Order: junctions/children first (they reference parents), then parents.
+  "project_responsibility",
+  "responsibility_conditions",
+  "responsibility_providers",
+  "responsibility_things",
+  "responsibility_places",
+  "responsibility_people",
+  "responsibility_role",
   "role_people",
   "roles",
   "responsibilities",
   "project_environment",
+  "environment_conditions",
+  "environment_providers",
   "environment_things",
   "environment_places",
   "environment_people",
@@ -122,6 +146,9 @@ sqlite.exec(`
     user_id INTEGER NOT NULL DEFAULT 1,
     title TEXT NOT NULL,
     description TEXT,
+    trigger TEXT,
+    start_date TEXT,
+    end_date TEXT,
     created_at TEXT NOT NULL,
     archived INTEGER NOT NULL DEFAULT 0,
     archived_at TEXT
@@ -166,6 +193,7 @@ sqlite.exec(`
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
     relationship TEXT,
+    state TEXT NOT NULL DEFAULT 'available',
     created_at TEXT NOT NULL
   );
 
@@ -174,6 +202,7 @@ sqlite.exec(`
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
     type TEXT,
+    state TEXT NOT NULL DEFAULT 'available',
     created_at TEXT NOT NULL
   );
 
@@ -182,6 +211,25 @@ sqlite.exec(`
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
     category TEXT,
+    state TEXT NOT NULL DEFAULT 'available',
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE environment_providers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    name TEXT NOT NULL,
+    type TEXT,
+    state TEXT NOT NULL DEFAULT 'available',
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE environment_conditions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    name TEXT NOT NULL,
+    description TEXT,
+    state TEXT NOT NULL DEFAULT 'available',
     created_at TEXT NOT NULL
   );
 
@@ -217,6 +265,59 @@ sqlite.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     role_id INTEGER NOT NULL,
     person_id INTEGER NOT NULL
+  );
+
+  CREATE TABLE responsibility_role (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    responsibility_id INTEGER NOT NULL REFERENCES responsibilities(id),
+    role_id INTEGER NOT NULL REFERENCES roles(id)
+  );
+
+  CREATE TABLE responsibility_people (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    responsibility_id INTEGER NOT NULL REFERENCES responsibilities(id),
+    person_id INTEGER NOT NULL REFERENCES environment_people(id),
+    relationship_type TEXT NOT NULL DEFAULT 'primary',
+    importance TEXT NOT NULL DEFAULT 'important'
+  );
+
+  CREATE TABLE responsibility_places (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    responsibility_id INTEGER NOT NULL REFERENCES responsibilities(id),
+    place_id INTEGER NOT NULL REFERENCES environment_places(id),
+    relationship_type TEXT NOT NULL DEFAULT 'primary',
+    importance TEXT NOT NULL DEFAULT 'important'
+  );
+
+  CREATE TABLE responsibility_things (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    responsibility_id INTEGER NOT NULL REFERENCES responsibilities(id),
+    thing_id INTEGER NOT NULL REFERENCES environment_things(id),
+    relationship_type TEXT NOT NULL DEFAULT 'primary',
+    importance TEXT NOT NULL DEFAULT 'important'
+  );
+
+  CREATE TABLE responsibility_providers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    responsibility_id INTEGER NOT NULL REFERENCES responsibilities(id),
+    provider_id INTEGER NOT NULL REFERENCES environment_providers(id),
+    relationship_type TEXT NOT NULL DEFAULT 'primary',
+    importance TEXT NOT NULL DEFAULT 'important'
+  );
+
+  CREATE TABLE responsibility_conditions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    responsibility_id INTEGER NOT NULL REFERENCES responsibilities(id),
+    condition_id INTEGER NOT NULL REFERENCES environment_conditions(id),
+    relationship_type TEXT NOT NULL DEFAULT 'primary',
+    importance TEXT NOT NULL DEFAULT 'important'
+  );
+
+  CREATE TABLE project_responsibility (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    responsibility_id INTEGER NOT NULL REFERENCES responsibilities(id),
+    is_primary INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE support_requests (
@@ -325,6 +426,37 @@ export interface IStorage {
   getRolePeople(roleId: number): RolePeople[];
   addRolePerson(data: InsertRolePeople): RolePeople;
   removeRolePerson(id: number): void;
+
+  // Phase 1: Environment Providers
+  getEnvironmentProviders(userId: number): EnvironmentProvider[];
+  createEnvironmentProvider(userId: number, data: InsertEnvironmentProvider): EnvironmentProvider;
+  updateEnvironmentProvider(userId: number, id: number, data: Partial<InsertEnvironmentProvider>): EnvironmentProvider | undefined;
+  deleteEnvironmentProvider(userId: number, id: number): void;
+
+  // Phase 1: Environment Conditions
+  getEnvironmentConditions(userId: number): EnvironmentCondition[];
+  createEnvironmentCondition(userId: number, data: InsertEnvironmentCondition): EnvironmentCondition;
+  updateEnvironmentCondition(userId: number, id: number, data: Partial<InsertEnvironmentCondition>): EnvironmentCondition | undefined;
+  deleteEnvironmentCondition(userId: number, id: number): void;
+
+  // Phase 1: Support state setter (works for all 5 support categories)
+  setSupportState(supportType: "people" | "places" | "things" | "providers" | "conditions", userId: number, id: number, state: string): any;
+
+  // Phase 1: Responsibility ↔ Role junction
+  getResponsibilityRoles(responsibilityId: number): ResponsibilityRole[];
+  linkResponsibilityRole(data: InsertResponsibilityRole): ResponsibilityRole;
+  unlinkResponsibilityRole(id: number): void;
+
+  // Phase 1: Responsibility ↔ Support junctions (one method set, dispatches by type)
+  getResponsibilitySupports(responsibilityId: number, supportType: "people" | "places" | "things" | "providers" | "conditions"): any[];
+  linkResponsibilitySupport(supportType: "people" | "places" | "things" | "providers" | "conditions", data: any): any;
+  updateResponsibilitySupportLink(supportType: "people" | "places" | "things" | "providers" | "conditions", id: number, data: { relationshipType?: string; importance?: string }): any;
+  unlinkResponsibilitySupport(supportType: "people" | "places" | "things" | "providers" | "conditions", id: number): void;
+
+  // Phase 1: Project ↔ Responsibility junction
+  getProjectResponsibilities(projectId: number): ProjectResponsibility[];
+  linkProjectResponsibility(data: InsertProjectResponsibility): ProjectResponsibility;
+  unlinkProjectResponsibility(id: number): void;
 
   // Reset
   resetDatabase(userId: number): void;
@@ -553,11 +685,136 @@ export class DatabaseStorage implements IStorage {
     db.delete(rolePeople).where(eq(rolePeople.id, id)).run();
   }
 
+  // ============================================================
+  // PHASE 1: ENVIRONMENT PROVIDERS
+  // ============================================================
+  getEnvironmentProviders(userId: number): EnvironmentProvider[] {
+    return db.select().from(environmentProviders).where(eq(environmentProviders.userId, userId)).all();
+  }
+  createEnvironmentProvider(userId: number, data: InsertEnvironmentProvider): EnvironmentProvider {
+    return db.insert(environmentProviders).values({ ...data, userId }).returning().get();
+  }
+  updateEnvironmentProvider(userId: number, id: number, data: Partial<InsertEnvironmentProvider>): EnvironmentProvider | undefined {
+    return db.update(environmentProviders).set(data).where(and(eq(environmentProviders.id, id), eq(environmentProviders.userId, userId))).returning().get();
+  }
+  deleteEnvironmentProvider(userId: number, id: number): void {
+    db.delete(environmentProviders).where(and(eq(environmentProviders.id, id), eq(environmentProviders.userId, userId))).run();
+  }
+
+  // ============================================================
+  // PHASE 1: ENVIRONMENT CONDITIONS
+  // ============================================================
+  getEnvironmentConditions(userId: number): EnvironmentCondition[] {
+    return db.select().from(environmentConditions).where(eq(environmentConditions.userId, userId)).all();
+  }
+  createEnvironmentCondition(userId: number, data: InsertEnvironmentCondition): EnvironmentCondition {
+    return db.insert(environmentConditions).values({ ...data, userId }).returning().get();
+  }
+  updateEnvironmentCondition(userId: number, id: number, data: Partial<InsertEnvironmentCondition>): EnvironmentCondition | undefined {
+    return db.update(environmentConditions).set(data).where(and(eq(environmentConditions.id, id), eq(environmentConditions.userId, userId))).returning().get();
+  }
+  deleteEnvironmentCondition(userId: number, id: number): void {
+    db.delete(environmentConditions).where(and(eq(environmentConditions.id, id), eq(environmentConditions.userId, userId))).run();
+  }
+
+  // ============================================================
+  // PHASE 1: SUPPORT STATE SETTER (works for all 5 categories)
+  // ============================================================
+  setSupportState(
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+    userId: number,
+    id: number,
+    state: string,
+  ): any {
+    const tableMap = {
+      people: { table: environmentPeople },
+      places: { table: environmentPlaces },
+      things: { table: environmentThings },
+      providers: { table: environmentProviders },
+      conditions: { table: environmentConditions },
+    } as const;
+    const t = tableMap[supportType].table as any;
+    return db.update(t).set({ state }).where(and(eq(t.id, id), eq(t.userId, userId))).returning().get();
+  }
+
+  // ============================================================
+  // PHASE 1: RESPONSIBILITY ↔ ROLE JUNCTION
+  // ============================================================
+  getResponsibilityRoles(responsibilityId: number): ResponsibilityRole[] {
+    return db.select().from(responsibilityRole).where(eq(responsibilityRole.responsibilityId, responsibilityId)).all();
+  }
+  linkResponsibilityRole(data: InsertResponsibilityRole): ResponsibilityRole {
+    return db.insert(responsibilityRole).values(data).returning().get();
+  }
+  unlinkResponsibilityRole(id: number): void {
+    db.delete(responsibilityRole).where(eq(responsibilityRole.id, id)).run();
+  }
+
+  // ============================================================
+  // PHASE 1: RESPONSIBILITY ↔ SUPPORT JUNCTIONS
+  // ============================================================
+  // Helper to get the right Drizzle table for a support type.
+  private respSupportTable(supportType: "people" | "places" | "things" | "providers" | "conditions"): any {
+    switch (supportType) {
+      case "people":     return responsibilityPeople;
+      case "places":     return responsibilityPlaces;
+      case "things":     return responsibilityThings;
+      case "providers":  return responsibilityProviders;
+      case "conditions": return responsibilityConditions;
+    }
+  }
+  getResponsibilitySupports(
+    responsibilityId: number,
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+  ): any[] {
+    const t = this.respSupportTable(supportType);
+    return db.select().from(t).where(eq(t.responsibilityId, responsibilityId)).all();
+  }
+  linkResponsibilitySupport(
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+    data: any,
+  ): any {
+    const t = this.respSupportTable(supportType);
+    return db.insert(t).values(data).returning().get();
+  }
+  updateResponsibilitySupportLink(
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+    id: number,
+    data: { relationshipType?: string; importance?: string },
+  ): any {
+    const t = this.respSupportTable(supportType);
+    const updates: any = {};
+    if (data.relationshipType !== undefined) updates.relationshipType = data.relationshipType;
+    if (data.importance !== undefined) updates.importance = data.importance;
+    return db.update(t).set(updates).where(eq(t.id, id)).returning().get();
+  }
+  unlinkResponsibilitySupport(
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+    id: number,
+  ): void {
+    const t = this.respSupportTable(supportType);
+    db.delete(t).where(eq(t.id, id)).run();
+  }
+
+  // ============================================================
+  // PHASE 1: PROJECT ↔ RESPONSIBILITY JUNCTION
+  // ============================================================
+  getProjectResponsibilities(projectId: number): ProjectResponsibility[] {
+    return db.select().from(projectResponsibility).where(eq(projectResponsibility.projectId, projectId)).all();
+  }
+  linkProjectResponsibility(data: InsertProjectResponsibility): ProjectResponsibility {
+    return db.insert(projectResponsibility).values(data).returning().get();
+  }
+  unlinkProjectResponsibility(id: number): void {
+    db.delete(projectResponsibility).where(eq(projectResponsibility.id, id)).run();
+  }
+
   // Reset (clears the surviving v8-relevant tables for this user)
   resetDatabase(userId: number): void {
     const tables = [
       "projects", "inbox_items", "weekly_reviews",
       "environment_people", "environment_places", "environment_things",
+      "environment_providers", "environment_conditions",
       "responsibilities", "roles",
     ];
     for (const table of tables) {
@@ -566,6 +823,13 @@ export class DatabaseStorage implements IStorage {
     // Clean orphans in junction tables (no user_id column)
     sqlite.exec(`DELETE FROM project_environment WHERE project_id NOT IN (SELECT id FROM projects)`);
     sqlite.exec(`DELETE FROM role_people WHERE role_id NOT IN (SELECT id FROM roles)`);
+    sqlite.exec(`DELETE FROM responsibility_role WHERE responsibility_id NOT IN (SELECT id FROM responsibilities)`);
+    sqlite.exec(`DELETE FROM responsibility_people WHERE responsibility_id NOT IN (SELECT id FROM responsibilities)`);
+    sqlite.exec(`DELETE FROM responsibility_places WHERE responsibility_id NOT IN (SELECT id FROM responsibilities)`);
+    sqlite.exec(`DELETE FROM responsibility_things WHERE responsibility_id NOT IN (SELECT id FROM responsibilities)`);
+    sqlite.exec(`DELETE FROM responsibility_providers WHERE responsibility_id NOT IN (SELECT id FROM responsibilities)`);
+    sqlite.exec(`DELETE FROM responsibility_conditions WHERE responsibility_id NOT IN (SELECT id FROM responsibilities)`);
+    sqlite.exec(`DELETE FROM project_responsibility WHERE project_id NOT IN (SELECT id FROM projects)`);
     // Reset preferences to defaults for this user
     sqlite.exec(`UPDATE preferences SET display_name = '', time_format = '12h', clarity_skip_ritual = 0 WHERE user_id = ${userId}`);
   }
