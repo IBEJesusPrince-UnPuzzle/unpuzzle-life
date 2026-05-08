@@ -1,5 +1,5 @@
 // =============================================================================
-// AgendaWeekView — Phase 3b (§20b)
+// AgendaWeekView — Phase 3b (§20b) + Phase 3c
 // =============================================================================
 // 7-day week grid. Sunday-start (locked May 7, 2026 — per-user setting deferred).
 //
@@ -15,6 +15,13 @@
 //   AgendaWeekStickyShell. The page mounts that shell INSIDE its own sticky
 //   header so the chrome stays pinned while the timed grid scrolls.
 //   This view component now renders ONLY the time grid body.
+//
+// Phase 3c additions:
+//   - Day-of-week header keeps two-line stack but today now uses an
+//     OUTLINED ring around the day number (replaces solid color text)
+//   - Shared AgendaAllDayStrip with multi-day spans + 3-row cap +
+//     per-column +N more + clean clip at off-screen edges
+//   - Timed chips: vertical text wrap (whitespace-normal, line-clamp-3)
 // =============================================================================
 
 import { useMemo } from "react";
@@ -29,10 +36,18 @@ import {
 import { findColor } from "@/lib/agenda-colors";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 import { CurrentTimeLine, HOUR_HEIGHT_PX } from "@/components/agenda-time-grid-shared";
+import { AgendaAllDayStrip } from "@/components/agenda-all-day-strip";
+
+const LEFT_GUTTER_PX = 48;
 
 type Props = {
   date: string; // any date in the week to show
   onSelect: (item: AgendaWindowItem) => void;
+};
+
+type StickyShellProps = Props & {
+  // +N more pill in the all-day strip opens the day overlay for that column.
+  onMoreTap: (iso: string) => void;
 };
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -41,7 +56,11 @@ const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // Sticky shell — column header + all-day strip
 // -----------------------------------------------------------------------------
 // Shared TanStack Query key with the body, so the page only fetches once.
-export function AgendaWeekStickyShell({ date, onSelect }: Props) {
+export function AgendaWeekStickyShell({
+  date,
+  onSelect,
+  onMoreTap,
+}: StickyShellProps) {
   const { from, to } = weekRange(date);
 
   const { data: items = [] } = useQuery<AgendaWindowItem[]>({
@@ -60,10 +79,12 @@ export function AgendaWeekStickyShell({ date, onSelect }: Props) {
 
   return (
     <div className="border-t" data-testid="week-sticky-shell">
-      {/* Column header — short labels (Sun4, Mon5, ...) */}
+      {/* Column header — two-line stack: Sun / 4. Today's day number sits
+          inside an outlined ring (NOT solid color) for full Google parity
+          across views. */}
       <div
         className="grid"
-        style={{ gridTemplateColumns: `48px repeat(7, 1fr)` }}
+        style={{ gridTemplateColumns: `${LEFT_GUTTER_PX}px repeat(7, minmax(0, 1fr))` }}
         data-testid="week-column-header"
       >
         <div />
@@ -75,19 +96,37 @@ export function AgendaWeekStickyShell({ date, onSelect }: Props) {
               key={d}
               className={
                 "px-1 py-2 text-center text-[10px] border-l " +
-                (isToday ? "font-semibold text-chart-1" : "text-muted-foreground")
+                (isToday ? "text-chart-1" : "text-muted-foreground")
               }
               data-testid={`week-col-header-${d}`}
             >
-              <div>{DAY_LABELS[i]}</div>
-              <div className="tabular-nums">{dayNum}</div>
+              <div className="leading-tight">{DAY_LABELS[i]}</div>
+              <div
+                className={
+                  "tabular-nums mt-0.5 inline-flex items-center justify-center " +
+                  (isToday
+                    ? "w-5 h-5 rounded-full ring-1 ring-chart-1 font-semibold"
+                    : "")
+                }
+              >
+                {dayNum}
+              </div>
             </div>
           );
         })}
       </div>
 
-      {/* All-day strip */}
-      <WeekAllDayStrip items={items} days={days} onSelect={onSelect} />
+      {/* All-day strip — shared component, multi-day events render as
+          spans across columns with clean clip on off-screen edges. */}
+      <AgendaAllDayStrip
+        items={items}
+        days={days}
+        leftGutterPx={LEFT_GUTTER_PX}
+        density="compact"
+        testIdPrefix="week"
+        onSelect={onSelect}
+        onMoreTap={onMoreTap}
+      />
     </div>
   );
 }
@@ -120,7 +159,7 @@ export function AgendaWeekView({ date, onSelect }: Props) {
       <div
         className="grid"
         style={{
-          gridTemplateColumns: `48px repeat(7, 1fr)`,
+          gridTemplateColumns: `${LEFT_GUTTER_PX}px repeat(7, minmax(0, 1fr))`,
           height: `${totalHeight}px`,
         }}
         data-testid="week-time-grid"
@@ -149,63 +188,6 @@ export function AgendaWeekView({ date, onSelect }: Props) {
           />
         ))}
       </div>
-    </div>
-  );
-}
-
-function WeekAllDayStrip({
-  items,
-  days,
-  onSelect,
-}: {
-  items: AgendaWindowItem[];
-  days: string[];
-  onSelect: (item: AgendaWindowItem) => void;
-}) {
-  const byDay = useMemo(() => {
-    const m = new Map<string, AgendaWindowItem[]>();
-    for (const d of days) m.set(d, []);
-    for (const it of items) {
-      if (it.isAllDay !== 1) continue;
-      const list = m.get(it.date);
-      if (list) list.push(it);
-    }
-    return m;
-  }, [items, days]);
-
-  const anyAllDay = days.some((d) => (byDay.get(d) ?? []).length > 0);
-  if (!anyAllDay) return null;
-
-  return (
-    <div
-      className="grid border-t bg-muted/30"
-      style={{ gridTemplateColumns: `48px repeat(7, 1fr)` }}
-      data-testid="week-allday-strip"
-    >
-      <div className="text-[9px] text-muted-foreground text-right pr-1 py-1">
-        all-day
-      </div>
-      {days.map((d) => {
-        const list = byDay.get(d) ?? [];
-        return (
-          <div key={d} className="border-l px-0.5 py-0.5 space-y-0.5 min-h-[24px]">
-            {list.map((it) => {
-              const c = findColor(it.color);
-              return (
-                <button
-                  key={`ad-${it.id}-${it.date}`}
-                  onClick={() => onSelect(it)}
-                  className="w-full text-left px-1 py-0.5 rounded text-[9px] truncate hover:opacity-95"
-                  style={{ backgroundColor: c.softHex, color: c.hex }}
-                  data-testid={`week-allday-${it.id}-${it.date}`}
-                >
-                  {it.title || "(untitled)"}
-                </button>
-              );
-            })}
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -278,8 +260,13 @@ function WeekColumn({
             data-testid={`week-chip-${it.id}-${it.date}`}
           >
             <div className="px-1">
+              {/* Vertical text wrap (Phase 3c): titles wrap onto multiple
+                  lines so narrow Week columns can still show useful text
+                  ("TK-Pic", "Connect with Benn", "Wix Bill Due $34") at
+                  ~50px column width. Capped at 3 lines so a very long
+                  title doesn't push past the chip's height. */}
               <div
-                className="text-[9px] font-medium truncate leading-tight"
+                className="text-[9px] font-medium leading-tight whitespace-normal break-words line-clamp-3"
                 style={{ color: c.hex }}
               >
                 {it.title || "(untitled)"}

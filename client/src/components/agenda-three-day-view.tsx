@@ -1,5 +1,5 @@
 // =============================================================================
-// AgendaThreeDayView — Phase 3b (§20a)
+// AgendaThreeDayView — Phase 3b (§20a) + Phase 3c
 // =============================================================================
 // 3-column comparison layout. Anchor day + the two days following.
 //
@@ -14,6 +14,13 @@
 //   AgendaThreeDayStickyShell. The page mounts that shell INSIDE its own
 //   sticky header so the chrome stays pinned while the timed grid scrolls.
 //   This view component now renders ONLY the time grid body.
+//
+// Phase 3c additions:
+//   - Day-of-week header: two-line stack (abbrev / day number) with an
+//     OUTLINED ring around the day number on today (replaces solid color)
+//   - Shared AgendaAllDayStrip with multi-day spans + 3-row cap +
+//     per-column +N more + clean clip at off-screen edges
+//   - Timed chips: vertical text wrap (whitespace-normal, line-clamp-3)
 // =============================================================================
 
 import { useMemo } from "react";
@@ -22,24 +29,36 @@ import { packLanes } from "@/lib/lane-pack";
 import {
   addDays,
   formatTimeLabel,
-  formatDateContextLabel,
   threeDayRange,
   toIsoDate,
 } from "@/lib/agenda-utils";
 import { findColor } from "@/lib/agenda-colors";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 import { CurrentTimeLine, HOUR_HEIGHT_PX } from "@/components/agenda-time-grid-shared";
+import { AgendaAllDayStrip } from "@/components/agenda-all-day-strip";
+
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const LEFT_GUTTER_PX = 60;
 
 type Props = {
   date: string; // anchor day; columns are date, date+1, date+2
   onSelect: (item: AgendaWindowItem) => void;
 };
 
+type StickyShellProps = Props & {
+  // +N more pill in the all-day strip opens the day overlay for that column.
+  onMoreTap: (iso: string) => void;
+};
+
 // -----------------------------------------------------------------------------
 // Sticky shell — column header + all-day strip
 // -----------------------------------------------------------------------------
 // Shared TanStack Query key with the body, so the page only fetches once.
-export function AgendaThreeDayStickyShell({ date, onSelect }: Props) {
+export function AgendaThreeDayStickyShell({
+  date,
+  onSelect,
+  onMoreTap,
+}: StickyShellProps) {
   const { from, to } = threeDayRange(date);
 
   const { data: items = [] } = useQuery<AgendaWindowItem[]>({
@@ -58,32 +77,56 @@ export function AgendaThreeDayStickyShell({ date, onSelect }: Props) {
 
   return (
     <div className="border-t" data-testid="threeday-sticky-shell">
-      {/* Column header row — day labels above the grid */}
+      {/* Column header — two-line stack: weekday abbrev on top, day number
+          below. Today's day number sits inside an outlined ring (NOT a
+          solid filled circle) for full Google parity across views. */}
       <div
         className="grid"
-        style={{ gridTemplateColumns: `60px repeat(3, 1fr)` }}
+        style={{ gridTemplateColumns: `${LEFT_GUTTER_PX}px repeat(3, minmax(0, 1fr))` }}
         data-testid="threeday-column-header"
       >
         <div />
         {days.map((d) => {
           const isToday = d === todayIso;
+          const dt = new Date(d + "T00:00:00");
+          const dayLabel = DAY_LABELS[dt.getDay()];
+          const dayNum = Number(d.split("-")[2]);
           return (
             <div
               key={d}
               className={
-                "px-2 py-2 text-center text-xs border-l " +
-                (isToday ? "font-semibold text-chart-1" : "text-muted-foreground")
+                "px-2 py-2 text-center text-[11px] border-l " +
+                (isToday ? "text-chart-1" : "text-muted-foreground")
               }
               data-testid={`threeday-col-header-${d}`}
             >
-              {formatDateContextLabel(d)}
+              <div className="leading-tight">{dayLabel}</div>
+              <div
+                className={
+                  "tabular-nums mt-0.5 inline-flex items-center justify-center " +
+                  (isToday
+                    ? "w-6 h-6 rounded-full ring-1 ring-chart-1 font-semibold"
+                    : "")
+                }
+              >
+                {dayNum}
+              </div>
             </div>
           );
         })}
       </div>
 
-      {/* All-day strip — only renders the row if any column has all-day items */}
-      <ThreeDayAllDayStrip items={items} days={days} onSelect={onSelect} />
+      {/* All-day strip — shared component, multi-day events render as
+          spans across columns. */}
+      <AgendaAllDayStrip
+        items={items}
+        days={days}
+        leftGutterPx={LEFT_GUTTER_PX}
+        density="regular"
+        testIdPrefix="threeday"
+        onSelect={onSelect}
+        onMoreTap={onMoreTap}
+      />
     </div>
   );
 }
@@ -116,7 +159,7 @@ export function AgendaThreeDayView({ date, onSelect }: Props) {
       <div
         className="grid"
         style={{
-          gridTemplateColumns: `60px repeat(3, 1fr)`,
+          gridTemplateColumns: `${LEFT_GUTTER_PX}px repeat(3, minmax(0, 1fr))`,
           height: `${totalHeight}px`,
         }}
         data-testid="threeday-time-grid"
@@ -146,63 +189,6 @@ export function AgendaThreeDayView({ date, onSelect }: Props) {
           />
         ))}
       </div>
-    </div>
-  );
-}
-
-function ThreeDayAllDayStrip({
-  items,
-  days,
-  onSelect,
-}: {
-  items: AgendaWindowItem[];
-  days: string[];
-  onSelect: (item: AgendaWindowItem) => void;
-}) {
-  const byDay = useMemo(() => {
-    const m = new Map<string, AgendaWindowItem[]>();
-    for (const d of days) m.set(d, []);
-    for (const it of items) {
-      if (it.isAllDay !== 1) continue;
-      const list = m.get(it.date);
-      if (list) list.push(it);
-    }
-    return m;
-  }, [items, days]);
-
-  const anyAllDay = days.some((d) => (byDay.get(d) ?? []).length > 0);
-  if (!anyAllDay) return null;
-
-  return (
-    <div
-      className="grid border-t bg-muted/30"
-      style={{ gridTemplateColumns: `60px repeat(3, 1fr)` }}
-      data-testid="threeday-allday-strip"
-    >
-      <div className="text-[10px] text-muted-foreground text-right pr-2 py-1">
-        all-day
-      </div>
-      {days.map((d) => {
-        const list = byDay.get(d) ?? [];
-        return (
-          <div key={d} className="border-l px-1 py-1 space-y-1 min-h-[28px]">
-            {list.map((it) => {
-              const c = findColor(it.color);
-              return (
-                <button
-                  key={`ad-${it.id}-${it.date}`}
-                  onClick={() => onSelect(it)}
-                  className="w-full text-left px-1.5 py-0.5 rounded text-[10px] truncate hover:opacity-95 border border-white/40"
-                  style={{ backgroundColor: c.softHex, color: c.hex }}
-                  data-testid={`threeday-allday-${it.id}-${it.date}`}
-                >
-                  {it.title || "(untitled)"}
-                </button>
-              );
-            })}
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -275,8 +261,11 @@ function ThreeDayColumn({
             data-testid={`threeday-chip-${it.id}-${it.date}`}
           >
             <div className="px-1 py-0.5">
+              {/* Vertical text wrap (Phase 3c): titles wrap onto multiple
+                  lines instead of truncating. Capped at 3 lines via
+                  line-clamp so very long titles still keep tight chip. */}
               <div
-                className="text-[10px] font-medium truncate leading-tight"
+                className="text-[10px] font-medium leading-tight whitespace-normal break-words line-clamp-3"
                 style={{ color: c.hex }}
               >
                 {it.title || "(untitled)"}

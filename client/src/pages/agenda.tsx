@@ -220,11 +220,25 @@ export default function AgendaPage() {
         {view === "day" && (
           <AgendaAllDayBand date={date} onSelect={openEdit} />
         )}
+        {/* 3 Days / Week sticky shells span full width to align with the
+            time grid below; cancel the page header's px-4 with -mx-4. */}
         {view === "3day" && (
-          <AgendaThreeDayStickyShell date={date} onSelect={openEdit} />
+          <div className="-mx-4">
+            <AgendaThreeDayStickyShell
+              date={date}
+              onSelect={openEdit}
+              onMoreTap={openOverlay}
+            />
+          </div>
         )}
         {view === "week" && (
-          <AgendaWeekStickyShell date={date} onSelect={openEdit} />
+          <div className="-mx-4">
+            <AgendaWeekStickyShell
+              date={date}
+              onSelect={openEdit}
+              onMoreTap={openOverlay}
+            />
+          </div>
         )}
       </div>
 
