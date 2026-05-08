@@ -1,32 +1,49 @@
 // =============================================================================
-// AgendaPage — Phase 3a (§22, §22a, §23)
+// AgendaPage — Phase 3b (§22, §22a, §23, §20a–§20d, §21)
 // =============================================================================
-// Phase 3a ships the Day view only. 3 Days / Week / Month land in Phase 3b,
-// but the view selector renders all four buttons today so the locked §22
-// chrome appears correct from the start; non-Day buttons show a "coming
-// soon" placeholder.
+// Phase 3b ships all four views (Day, 3 Days, Week, Month) plus the
+// Month tap-day overlay (§20d). Header chrome is unchanged from Phase 3a;
+// the body switches based on `view`, and a single shared swipe-nav hook
+// drives ±step date changes per view (Day ±1d, 3 Days ±3d, Week ±7d,
+// Month ±1mo) — same step rules Google Calendar uses.
 //
 // Header layout (locked §22):
 //   Row 1: [Agenda title]   [Today]   [+ Task]
 //   Row 2: [<] [date label] [>]                              [view selector]
 //
-// Default view is read once on mount from /api/agenda-default-view (so the
-// user's preference survives reloads), and PATCHed back when they change it.
+// Date label updates per view:
+//   Day:    "Wed, May 7"
+//   3 Days: "May 7 – 9"
+//   Week:   "May 4 – 10"
+//   Month:  "May 2026"
 // =============================================================================
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, ListChecks, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { apiRequest } from "@/lib/queryClient";
-import { addDays, formatDateContextLabel, toIsoDate } from "@/lib/agenda-utils";
+import {
+  addDays,
+  formatDateContextLabel,
+  formatMonthLabel,
+  formatRangeLabel,
+  fromIsoDate,
+  threeDayRange,
+  toIsoDate,
+  weekRange,
+} from "@/lib/agenda-utils";
 import { AgendaDayView } from "@/components/agenda-day-view";
+import { AgendaThreeDayView } from "@/components/agenda-three-day-view";
+import { AgendaWeekView } from "@/components/agenda-week-view";
+import { AgendaMonthView } from "@/components/agenda-month-view";
+import { AgendaMonthDayOverlay } from "@/components/agenda-month-day-overlay";
 import { AgendaAllDayBand } from "@/components/agenda-all-day-band";
 import {
   AgendaTaskModal,
   type AgendaWindowItem,
 } from "@/components/agenda-task-modal";
+import { useSwipeNav } from "@/hooks/use-swipe-nav";
 
 type AgendaView = "day" | "3day" | "week" | "month";
 
@@ -37,6 +54,10 @@ export default function AgendaPage() {
   // Modal state.
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<AgendaWindowItem | null>(null);
+
+  // Month-day overlay state.
+  const [overlayDate, setOverlayDate] = useState<string | null>(null);
+  const [overlayOpen, setOverlayOpen] = useState(false);
 
   // Read the persisted default view once on mount.
   const { data: defaultViewResp } = useQuery<{ view: AgendaView }>({
@@ -54,15 +75,26 @@ export default function AgendaPage() {
     });
   }
 
-  function goPrev() {
-    setDate((d) => addDays(d, -1));
+  // Per-view step. Locked May 7, 2026:
+  //   Day ±1d, 3 Days ±3d, Week ±7d, Month ±1mo.
+  function step(direction: -1 | 1) {
+    if (view === "month") {
+      const d = fromIsoDate(date);
+      const next = new Date(d.getFullYear(), d.getMonth() + direction, d.getDate());
+      // Clamp the day if we cross to a shorter month (e.g. May 31 → Jun 30)
+      const lastOfNext = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+      if (next.getDate() !== d.getDate()) {
+        next.setDate(Math.min(d.getDate(), lastOfNext));
+      }
+      setDate(toIsoDate(next));
+      return;
+    }
+    const stepDays = view === "day" ? 1 : view === "3day" ? 3 : 7;
+    setDate((d) => addDays(d, direction * stepDays));
   }
-  function goNext() {
-    setDate((d) => addDays(d, 1));
-  }
-  function goToday() {
-    setDate(toIsoDate(new Date()));
-  }
+  const goPrev = () => step(-1);
+  const goNext = () => step(1);
+  const goToday = () => setDate(toIsoDate(new Date()));
 
   function openCreate() {
     setEditing(null);
@@ -73,10 +105,31 @@ export default function AgendaPage() {
     setModalOpen(true);
   }
 
+  function openOverlay(iso: string) {
+    setOverlayDate(iso);
+    setOverlayOpen(true);
+  }
+
+  // Header date label per view.
+  const dateLabel = useMemo(() => {
+    if (view === "day") return formatDateContextLabel(date);
+    if (view === "month") return formatMonthLabel(date);
+    const range = view === "3day" ? threeDayRange(date) : weekRange(date);
+    return formatRangeLabel(range.from, range.to);
+  }, [view, date]);
+
+  // Swipe gesture — disabled while modal/overlay is open so it doesn't
+  // hijack interactions inside them.
+  const swipeHandlers = useSwipeNav({
+    onPrev: goPrev,
+    onNext: goNext,
+    disabled: modalOpen || overlayOpen,
+  });
+
   return (
     <div>
       {/* Header — locked §22 chrome. Sticky so it stays visible while the
-          day grid scrolls underneath in the page's main scroll container. */}
+          body scrolls underneath in the page's main scroll container. */}
       <div className="sticky top-0 z-20 border-b px-4 py-3 space-y-2 bg-background">
         {/* Row 1 */}
         <div className="flex items-center gap-2">
@@ -117,7 +170,7 @@ export default function AgendaPage() {
             className="text-sm font-medium tabular-nums px-2 text-center whitespace-nowrap"
             data-testid="text-date-context"
           >
-            {formatDateContextLabel(date)}
+            {dateLabel}
           </div>
           <Button
             variant="ghost"
@@ -153,36 +206,35 @@ export default function AgendaPage() {
           </div>
         </div>
 
-        {/* All-day band — part of the sticky header, renders nothing when
-            the day has no all-day events. */}
+        {/* All-day band — Day view only. Other views render their own
+            inline all-day strips, and Month has none. */}
         {view === "day" && (
           <AgendaAllDayBand date={date} onSelect={openEdit} />
         )}
       </div>
 
-      {/* Body */}
-      {view === "day" ? (
-        <AgendaDayView date={date} onSelect={openEdit} />
-      ) : (
-        <div className="p-6">
-          <Card>
-            <CardContent className="p-8 text-center space-y-2">
-              <p className="text-sm font-medium">
-                {view === "3day" ? "3 Days" : view[0].toUpperCase() + view.slice(1)} view
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Arriving in Phase 3b. Day view is fully wired in the meantime.
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      {/* Body — wrapped in the swipe-nav container so all four views
+          share the gesture. Swipe is horizontal-only and won't fire when
+          a modal or overlay is open. */}
+      <div {...swipeHandlers} data-testid="agenda-body">
+        {view === "day" && <AgendaDayView date={date} onSelect={openEdit} />}
+        {view === "3day" && <AgendaThreeDayView date={date} onSelect={openEdit} />}
+        {view === "week" && <AgendaWeekView date={date} onSelect={openEdit} />}
+        {view === "month" && <AgendaMonthView date={date} onDayTap={openOverlay} />}
+      </div>
 
       <AgendaTaskModal
         open={modalOpen}
         onOpenChange={setModalOpen}
         defaultDate={date}
         editing={editing}
+      />
+
+      <AgendaMonthDayOverlay
+        open={overlayOpen}
+        onOpenChange={setOverlayOpen}
+        date={overlayDate}
+        onSelect={openEdit}
       />
     </div>
   );
