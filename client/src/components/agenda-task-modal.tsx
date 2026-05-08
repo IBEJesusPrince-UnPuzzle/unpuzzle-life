@@ -478,15 +478,10 @@ export function AgendaTaskModal({
             </div>
           )}
 
-          {/* Color */}
-          <div className="space-y-1.5">
-            <Label>Color</Label>
-            <ColorPicker value={color} onChange={setColor} />
-          </div>
-
           {/* Recurrence (PR #14) — hidden in edit-virtual mode (Google parity:
               "Only this event" can't change the recurrence rule; that lives on
-              the master series). */}
+              the master series). Placed directly after the date/time block to
+              match Google Calendar's field order. */}
           {mode !== "edit-virtual" && (
             <div className="space-y-1.5">
               <Label htmlFor="task-recurrence">Recurrence</Label>
@@ -526,6 +521,12 @@ export function AgendaTaskModal({
               )}
             </div>
           )}
+
+          {/* Color */}
+          <div className="space-y-1.5">
+            <Label>Color</Label>
+            <ColorPicker value={color} onChange={setColor} />
+          </div>
 
           {/* Notes */}
           <div className="space-y-1.5">
