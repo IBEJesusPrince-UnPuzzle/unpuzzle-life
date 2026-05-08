@@ -41,7 +41,33 @@ import {
   type ProjectTask, type InsertProjectTask,
   type AgendaTask, type InsertAgendaTask,
 } from "@shared/schema";
-import { expandMaster, type MasterRow } from "./recurrence";
+import { expandMaster, isoToUtcDate, utcDateToIso, type MasterRow } from "./recurrence";
+
+// Phase 3c — helpers for the multi-day all-day endDate logic. These keep
+// getAgendaWindow readable when computing per-occurrence span inheritance.
+function daysBetweenIso(fromIso: string, toIso: string): number {
+  const a = isoToUtcDate(fromIso).getTime();
+  const b = isoToUtcDate(toIso).getTime();
+  return Math.round((b - a) / 86400000);
+}
+function addDaysIso(iso: string, days: number): string {
+  const d = isoToUtcDate(iso);
+  d.setUTCDate(d.getUTCDate() + days);
+  return utcDateToIso(d);
+}
+// All-day overlap test: a row whose [date, COALESCE(endDate, date)] interval
+// touches the [windowStart, windowEnd] window in any way is included.
+// This is symmetric — the row's interval and window's interval overlap iff
+// row.start <= window.end AND row.end >= window.start.
+function allDayOverlapsWindow(
+  rowDate: string,
+  rowEndDate: string | null | undefined,
+  windowStart: string,
+  windowEnd: string,
+): boolean {
+  const rowEnd = rowEndDate && rowEndDate >= rowDate ? rowEndDate : rowDate;
+  return rowDate <= windowEnd && rowEnd >= windowStart;
+}
 
 const dbPath = process.env.DATABASE_PATH || "data.db";
 const sqlite = new Database(dbPath);
@@ -91,6 +117,13 @@ function tryMigration(label: string, sql: string) {
 // responsibility or project_task. Linked rows still derive their title
 // from the joined record; this column is the standalone path.
 tryMigration("agenda_tasks.title", `ALTER TABLE agenda_tasks ADD COLUMN title TEXT`);
+
+// Phase 3c — agenda_tasks gains an `end_date` column for multi-day all-day
+// events (e.g. "Teacher Appreciation Week" Tue–Fri). Nullable; only meaningful
+// when is_all_day = 1. When set on an all-day row it must be >= date. Always
+// null on timed rows. Backfill is a no-op — existing all-day rows stay null
+// and render as single-day, identical to before.
+tryMigration("agenda_tasks.end_date", `ALTER TABLE agenda_tasks ADD COLUMN end_date TEXT`);
 
 // ============================================================
 // TABLE CREATION (idempotent — IF NOT EXISTS)
@@ -319,6 +352,7 @@ sqlite.exec(`
     origin_id INTEGER,
     title TEXT,
     date TEXT NOT NULL,
+    end_date TEXT,
     time TEXT,
     duration_minutes INTEGER,
     is_all_day INTEGER NOT NULL DEFAULT 0,
@@ -959,7 +993,16 @@ export class DatabaseStorage implements IStorage {
     const out: Array<AgendaTask & { isVirtual: boolean; masterId: number; originalDate: string | null }> = [];
 
     // 1. Expand masters; skip virtual instances that have an override (regardless of where the override moved to).
+    //    For multi-day all-day masters we expand a widened window so that an
+    //    occurrence starting BEFORE windowStart but ending inside the window
+    //    still appears. The widened window is [windowStart - spanDays, windowEnd].
+    //    Each virtual instance inherits the master's span (Phase 3c).
     for (const m of masters) {
+      const masterSpanDays =
+        m.isAllDay === 1 && m.endDate && m.endDate >= m.date
+          ? daysBetweenIso(m.date, m.endDate)
+          : 0;
+      const expandStart = masterSpanDays > 0 ? addDaysIso(windowStart, -masterSpanDays) : windowStart;
       const expanded = expandMaster(
         {
           id: m.id,
@@ -968,16 +1011,27 @@ export class DatabaseStorage implements IStorage {
           recurrenceEndDate: m.recurrenceEndDate,
           date: m.date,
         } satisfies MasterRow,
-        windowStart,
+        expandStart,
         windowEnd,
       );
       for (const inst of expanded) {
+        // Per-occurrence endDate: same span as the master.
+        const instEndDate = masterSpanDays > 0 ? addDaysIso(inst.date, masterSpanDays) : null;
+        // Skip occurrences whose [inst.date, instEndDate] don't overlap the window.
+        if (!allDayOverlapsWindow(inst.date, instEndDate, windowStart, windowEnd) && masterSpanDays > 0) {
+          continue;
+        }
+        // For non-multi-day masters, the original date-in-window check still applies.
+        if (masterSpanDays === 0 && (inst.date < windowStart || inst.date > windowEnd)) {
+          continue;
+        }
         const ov = overrideBySeriesAndDate.get(overrideKey(inst.seriesId, inst.date));
         if (ov) continue; // override will be added below if it falls in the window
         out.push({
           ...m,
           id: m.id, // virtual instance keeps the master id; clients use originalDate to disambiguate
           date: inst.date,
+          endDate: instEndDate, // per-occurrence span (Phase 3c)
           isVirtual: true,
           masterId: m.id,
           originalDate: null,
@@ -986,8 +1040,13 @@ export class DatabaseStorage implements IStorage {
     }
 
     // 2. Add overrides that land in the window (their `date` is the rendered date).
+    //    All-day overrides use overlap test on [date, endDate] (Phase 3c).
     for (const o of overrides) {
-      if (o.date >= windowStart && o.date <= windowEnd) {
+      const inWindow =
+        o.isAllDay === 1
+          ? allDayOverlapsWindow(o.date, o.endDate, windowStart, windowEnd)
+          : o.date >= windowStart && o.date <= windowEnd;
+      if (inWindow) {
         out.push({
           ...o,
           isVirtual: false,
@@ -998,8 +1057,13 @@ export class DatabaseStorage implements IStorage {
     }
 
     // 3. Add standalones that land in the window.
+    //    All-day standalones use overlap test on [date, endDate] (Phase 3c).
     for (const s of standalones) {
-      if (s.date >= windowStart && s.date <= windowEnd) {
+      const inWindow =
+        s.isAllDay === 1
+          ? allDayOverlapsWindow(s.date, s.endDate, windowStart, windowEnd)
+          : s.date >= windowStart && s.date <= windowEnd;
+      if (inWindow) {
         out.push({
           ...s,
           isVirtual: false,

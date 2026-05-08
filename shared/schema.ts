@@ -305,7 +305,15 @@ export const agendaTasks = sqliteTable("agenda_tasks", {
   //   COALESCE(agenda_tasks.title, responsibilities.name, project_tasks.title)
   // Approved Phase 3a, same pattern as original_date in Phase 2.
   title: text("title"),
-  date: text("date").notNull(), // YYYY-MM-DD
+  date: text("date").notNull(), // YYYY-MM-DD (start date for all-day events)
+  // Phase 3c — multi-day all-day events. Nullable; only meaningful when
+  // isAllDay = 1. When set, must be >= date. NULL means single-day all-day
+  // (date == endDate effectively). Always NULL on timed rows.
+  // Window-merge (§22a) overlap test for all-day rows is:
+  //   date <= windowEnd AND COALESCE(endDate, date) >= windowStart
+  // Recurrence: virtual instances inherit the master's span (same number of
+  // days difference); see expandMasterToWindow in storage.ts.
+  endDate: text("end_date"),
   time: text("time"), // HH:MM, null when isAllDay = 1
   durationMinutes: integer("duration_minutes"), // null when isAllDay = 1
   isAllDay: integer("is_all_day").notNull().default(0),
