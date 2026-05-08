@@ -9,10 +9,11 @@
 //   - Display order: name first, status second
 //   - All-day items: Google-like pill, status icons shown
 //
-// Implementation note: shares the time-grid pattern with AgendaDayView but
-// renders 3 stacked chip columns instead of 1 card column. All-day items
-// render in a small inline strip on top of each column (not in the page-
-// level AgendaAllDayBand, which is Day-only).
+// Phase 3b fixup (sticky shell):
+//   The column header + all-day strip are exported separately as
+//   AgendaThreeDayStickyShell. The page mounts that shell INSIDE its own
+//   sticky header so the chrome stays pinned while the timed grid scrolls.
+//   This view component now renders ONLY the time grid body.
 // =============================================================================
 
 import { useMemo } from "react";
@@ -34,7 +35,11 @@ type Props = {
   onSelect: (item: AgendaWindowItem) => void;
 };
 
-export function AgendaThreeDayView({ date, onSelect }: Props) {
+// -----------------------------------------------------------------------------
+// Sticky shell — column header + all-day strip
+// -----------------------------------------------------------------------------
+// Shared TanStack Query key with the body, so the page only fetches once.
+export function AgendaThreeDayStickyShell({ date, onSelect }: Props) {
   const { from, to } = threeDayRange(date);
 
   const { data: items = [] } = useQuery<AgendaWindowItem[]>({
@@ -51,14 +56,11 @@ export function AgendaThreeDayView({ date, onSelect }: Props) {
   const days = [date, addDays(date, 1), addDays(date, 2)];
   const todayIso = toIsoDate(new Date());
 
-  const totalHeight = HOUR_HEIGHT_PX * 24;
-  const hours = Array.from({ length: 24 }, (_, h) => h);
-
   return (
-    <div className="flex flex-col">
+    <div className="border-t" data-testid="threeday-sticky-shell">
       {/* Column header row — day labels above the grid */}
       <div
-        className="grid border-b sticky top-0 bg-background z-10"
+        className="grid"
         style={{ gridTemplateColumns: `60px repeat(3, 1fr)` }}
         data-testid="threeday-column-header"
       >
@@ -82,7 +84,34 @@ export function AgendaThreeDayView({ date, onSelect }: Props) {
 
       {/* All-day strip — only renders the row if any column has all-day items */}
       <ThreeDayAllDayStrip items={items} days={days} onSelect={onSelect} />
+    </div>
+  );
+}
 
+// -----------------------------------------------------------------------------
+// Body — time grid only (mounted under the sticky shell)
+// -----------------------------------------------------------------------------
+export function AgendaThreeDayView({ date, onSelect }: Props) {
+  const { from, to } = threeDayRange(date);
+
+  const { data: items = [] } = useQuery<AgendaWindowItem[]>({
+    queryKey: ["/api/agenda", { from, to }],
+    queryFn: async () => {
+      const r = await fetch(`/api/agenda?from=${from}&to=${to}`, {
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
+  });
+
+  const days = [date, addDays(date, 1), addDays(date, 2)];
+
+  const totalHeight = HOUR_HEIGHT_PX * 24;
+  const hours = Array.from({ length: 24 }, (_, h) => h);
+
+  return (
+    <div className="flex flex-col">
       {/* Time grid */}
       <div
         className="grid"
@@ -146,7 +175,7 @@ function ThreeDayAllDayStrip({
 
   return (
     <div
-      className="grid border-b bg-muted/30"
+      className="grid border-t bg-muted/30"
       style={{ gridTemplateColumns: `60px repeat(3, 1fr)` }}
       data-testid="threeday-allday-strip"
     >
