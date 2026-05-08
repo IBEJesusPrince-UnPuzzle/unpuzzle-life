@@ -299,6 +299,12 @@ export const agendaTasks = sqliteTable("agenda_tasks", {
   userId: integer("user_id").notNull().default(1),
   origin: text("origin").notNull(), // 'responsibility' | 'project' | 'standalone'
   originId: integer("origin_id"), // null when origin='standalone'
+  // Title goes one column beyond the §23 literal — required because standalone
+  // tasks have nowhere else to put their name (responsibility/project rows can
+  // join their title from the linked record). Read rule:
+  //   COALESCE(agenda_tasks.title, responsibilities.name, project_tasks.title)
+  // Approved Phase 3a, same pattern as original_date in Phase 2.
+  title: text("title"),
   date: text("date").notNull(), // YYYY-MM-DD
   time: text("time"), // HH:MM, null when isAllDay = 1
   durationMinutes: integer("duration_minutes"), // null when isAllDay = 1

@@ -7,15 +7,32 @@ import { Link } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { useState, useEffect } from "react";
 import {
-  Inbox, FolderKanban, RotateCcw, Database, Sun, Moon, Shield, LogOut,
+  ListChecks, Lightbulb, Users, Blocks, UserCheck, DatabaseZap,
+  Inbox, Sun, Moon, Shield, LogOut,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
+// §18 LOCKED: Six-item sidebar in this exact order.
+// Footer: light/dark, Admin (admins only), Log out.
+//
+// Icon notes:
+//   - "UserStar" is specified in the spec but does NOT exist in lucide-react.
+//     Using UserCheck as a placeholder. TODO §18: confirm lucide name and swap.
+//   - Inbox is not part of the §18 six. Per §18 Inbox is reachable from inside
+//     other pages. Until Phase 4 Clarity surfaces an inside-page Inbox entry,
+//     we keep a transitional Inbox link as a separate group below the six.
+//     TODO Phase 4: remove the transitional Inbox link once Clarity ships.
 const navItems = [
+  { title: "Agenda",   url: "/agenda",   icon: ListChecks },
+  { title: "Clarity",  url: "/clarity",  icon: Lightbulb },
+  { title: "Roles",    url: "/roles",    icon: Users },
+  { title: "Projects", url: "/projects", icon: Blocks },
+  { title: "Review",   url: "/review",   icon: UserCheck }, // TODO §18: UserStar
+  { title: "Data",     url: "/data",     icon: DatabaseZap },
+];
+
+const transitionalNavItems = [
   { title: "Inbox", url: "/inbox", icon: Inbox },
-  { title: "Projects", url: "/projects", icon: FolderKanban },
-  { title: "Review", url: "/review", icon: RotateCcw },
-  { title: "Data", url: "/data", icon: Database },
 ];
 
 export function AppSidebar() {
@@ -41,12 +58,16 @@ export function AppSidebar() {
     localStorage.setItem("theme", next ? "dark" : "light");
   };
 
+  const isItemActive = (url: string) =>
+    location === url || location.startsWith(url + "/");
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4 group-data-[collapsible=icon]:p-2">
         <Link
-          href="/inbox"
+          href="/agenda"
           className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center"
+          onClick={closeSidebar}
         >
           <img
             src="/unpuzzle-logo.png"
@@ -65,52 +86,73 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
+        {/* §18 locked six */}
         <SidebarGroup>
           <SidebarGroupLabel>Navigate</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => {
-                const isActive = location === item.url || location.startsWith(item.url + "/");
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                      data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
-                    >
-                      <Link href={item.url} onClick={closeSidebar}>
-                        <item.icon className="w-4 h-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
+              {navItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isItemActive(item.url)}
+                    data-testid={`nav-${item.title.toLowerCase()}`}
+                  >
+                    <Link href={item.url} onClick={closeSidebar}>
+                      <item.icon className="w-4 h-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-      </SidebarContent>
 
-      {user?.role === "super_admin" && (
+        {/* TRANSITIONAL — remove in Phase 4 (see comment above navItems) */}
         <SidebarGroup>
+          <SidebarGroupLabel>More</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={location === "/admin"}
-                  data-testid="nav-admin"
-                >
-                  <Link href="/admin" onClick={closeSidebar}>
-                    <Shield className="w-4 h-4" />
-                    <span>Admin</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {transitionalNavItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isItemActive(item.url)}
+                    data-testid={`nav-${item.title.toLowerCase()}`}
+                  >
+                    <Link href={item.url} onClick={closeSidebar}>
+                      <item.icon className="w-4 h-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-      )}
+
+        {user?.role === "super_admin" && (
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location === "/admin"}
+                    data-testid="nav-admin"
+                  >
+                    <Link href="/admin" onClick={closeSidebar}>
+                      <Shield className="w-4 h-4" />
+                      <span>Admin</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+      </SidebarContent>
 
       <SidebarFooter className="p-3">
         <div className="flex items-center justify-between">

@@ -18,6 +18,8 @@ import ProjectsPage from "@/pages/projects";
 import AuthPage, { RegisterPage } from "@/pages/auth-page";
 import AdminPage from "@/pages/admin";
 import AgendaPage from "@/pages/agenda";
+import ClarityPage from "@/pages/clarity";
+import RolesPage from "@/pages/roles";
 import NotFound from "@/pages/not-found";
 
 function ProjectDetailRoute({ params }: { params: { id?: string } }) {
@@ -30,14 +32,16 @@ function AppRouter() {
   return (
     <Switch>
       <Route path="/">
-        <Redirect to="/inbox" />
+        <Redirect to="/agenda" />
       </Route>
-      <Route path="/inbox" component={InboxPage} />
-      <Route path="/review" component={ReviewPage} />
-      <Route path="/data" component={DataPage} />
+      <Route path="/agenda" component={AgendaPage} />
+      <Route path="/clarity" component={ClarityPage} />
+      <Route path="/roles" component={RolesPage} />
       <Route path="/projects" component={ProjectsPage} />
       <Route path="/projects/:id" component={ProjectDetailRoute} />
-      <Route path="/agenda" component={AgendaPage} />
+      <Route path="/review" component={ReviewPage} />
+      <Route path="/data" component={DataPage} />
+      <Route path="/inbox" component={InboxPage} />
       <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />
     </Switch>
