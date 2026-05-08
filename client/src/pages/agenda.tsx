@@ -49,6 +49,7 @@ import {
   AgendaTaskModal,
   type AgendaWindowItem,
 } from "@/components/agenda-task-modal";
+import { AgendaTaskViewModal } from "@/components/agenda-task-view-modal";
 import { useSwipeNav } from "@/hooks/use-swipe-nav";
 
 type AgendaView = "day" | "3day" | "week" | "month";
@@ -60,6 +61,11 @@ export default function AgendaPage() {
   // Modal state.
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<AgendaWindowItem | null>(null);
+
+  // View-first sheet (PR #13). Tapping a chip/bar opens this sheet; the
+  // pencil inside it then opens the existing edit modal as a clean swap.
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewing, setViewing] = useState<AgendaWindowItem | null>(null);
 
   // Month-day overlay state.
   const [overlayDate, setOverlayDate] = useState<string | null>(null);
@@ -110,6 +116,12 @@ export default function AgendaPage() {
     setEditing(item);
     setModalOpen(true);
   }
+  // View-first entry (PR #13). Every chip/bar tap routes here instead of
+  // jumping straight into edit.
+  function openView(item: AgendaWindowItem) {
+    setViewing(item);
+    setViewOpen(true);
+  }
 
   function openOverlay(iso: string) {
     setOverlayDate(iso);
@@ -124,12 +136,12 @@ export default function AgendaPage() {
     return formatRangeLabel(range.from, range.to);
   }, [view, date]);
 
-  // Swipe gesture — disabled while modal/overlay is open so it doesn't
+  // Swipe gesture — disabled while any modal/overlay is open so it doesn't
   // hijack interactions inside them.
   const swipeHandlers = useSwipeNav({
     onPrev: goPrev,
     onNext: goNext,
-    disabled: modalOpen || overlayOpen,
+    disabled: modalOpen || overlayOpen || viewOpen,
   });
 
   return (
@@ -218,7 +230,7 @@ export default function AgendaPage() {
             3 Days/Week mount their column-header + all-day strip together;
             Month has no inline chrome. */}
         {view === "day" && (
-          <AgendaAllDayBand date={date} onSelect={openEdit} />
+          <AgendaAllDayBand date={date} onSelect={openView} />
         )}
         {/* 3 Days / Week sticky shells span full width to align with the
             time grid below; cancel the page header's px-4 with -mx-4. */}
@@ -226,7 +238,7 @@ export default function AgendaPage() {
           <div className="-mx-4">
             <AgendaThreeDayStickyShell
               date={date}
-              onSelect={openEdit}
+              onSelect={openView}
               onMoreTap={openOverlay}
             />
           </div>
@@ -235,7 +247,7 @@ export default function AgendaPage() {
           <div className="-mx-4">
             <AgendaWeekStickyShell
               date={date}
-              onSelect={openEdit}
+              onSelect={openView}
               onMoreTap={openOverlay}
             />
           </div>
@@ -246,9 +258,9 @@ export default function AgendaPage() {
           share the gesture. Swipe is horizontal-only and won't fire when
           a modal or overlay is open. */}
       <div {...swipeHandlers} data-testid="agenda-body">
-        {view === "day" && <AgendaDayView date={date} onSelect={openEdit} />}
-        {view === "3day" && <AgendaThreeDayView date={date} onSelect={openEdit} />}
-        {view === "week" && <AgendaWeekView date={date} onSelect={openEdit} />}
+        {view === "day" && <AgendaDayView date={date} onSelect={openView} />}
+        {view === "3day" && <AgendaThreeDayView date={date} onSelect={openView} />}
+        {view === "week" && <AgendaWeekView date={date} onSelect={openView} />}
         {view === "month" && <AgendaMonthView date={date} onDayTap={openOverlay} />}
       </div>
 
@@ -259,11 +271,21 @@ export default function AgendaPage() {
         editing={editing}
       />
 
+      {/* View-first sheet (PR #13). Pencil inside this sheet routes back
+          through openEdit, which opens the existing edit modal as a clean
+          swap (Google parity). */}
+      <AgendaTaskViewModal
+        open={viewOpen}
+        onOpenChange={setViewOpen}
+        item={viewing}
+        onEdit={openEdit}
+      />
+
       <AgendaMonthDayOverlay
         open={overlayOpen}
         onOpenChange={setOverlayOpen}
         date={overlayDate}
-        onSelect={openEdit}
+        onSelect={openView}
       />
     </div>
   );
