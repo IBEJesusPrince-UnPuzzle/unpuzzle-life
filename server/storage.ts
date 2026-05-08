@@ -48,85 +48,55 @@ const sqlite = new Database(dbPath);
 sqlite.pragma("journal_mode = WAL");
 
 // ============================================================
-// PHASE 0 — NUKE-ON-BOOT (TEMPORARY — remove in Phase 3)
+// PHASE 3a — MIGRATIONS ON (nuke-on-boot retired)
 // ============================================================
-// While the v8 schema is still in flux (Phases 0-2), every boot drops
-// every table and recreates from scratch. This is safe ONLY because
-// there is no real user data yet — the single admin user is recreated
-// by seedSuperAdmin() on every boot from ADMIN_EMAIL/ADMIN_PASSWORD.
+// Phases 0-2 used a destructive nuke-on-boot strategy: every boot
+// dropped all tables and recreated them. That was safe while there
+// was no real user data, but unsafe once the app starts accumulating
+// agenda items, projects, responsibilities, etc.
 //
-// Once Phase 3 ships, real data starts accumulating; replace this
-// block with proper additive migrations (ALTER TABLE ADD COLUMN, etc.).
+// From Phase 3a forward:
+//   - All CREATE TABLE statements use IF NOT EXISTS (idempotent).
+//   - Schema additions ship as additive ALTER TABLE migrations,
+//     wrapped in try/catch so they're idempotent (re-running is a
+//     no-op when the column already exists).
+//   - Destructive changes need an explicit migration step.
 //
-// Foreign keys must be OFF for the drops because legacy and surviving
-// tables hold FKs at each other and SQLite refuses to drop a parent
-// while a child references it.
+// Foreign keys are turned OFF for the brief migration window (so
+// ALTER TABLE statements don't trip cascade rules), then turned
+// back ON after CREATE TABLE statements run.
 sqlite.pragma("foreign_keys = OFF");
 
-const tablesToNuke = [
-  // Legacy (Atomic Habits stack) — removed in v8
-  "identity_votes",
-  "identities",
-  "area_vision_snapshots",
-  "areas",
-  "purposes",
-  "routine_items",
-  "routine_logs",
-  "planner_tasks",
-  "wizard_state",
-  "wizard_drafts",
-  "draft_reviews",
-  "daily_reflections",
-  "environment_entities",
-  "beliefs",
-  "anti_habits",
-  "immutable_law_logs",
-  "immutable_laws",
-  "non_negotiables",
-  "horizon_items",
-  "habit_logs",
-  "habits",
-  "actions",
-  "goals",
-  "visions",
-  "tasks",
-  // Surviving tables (recreated below) — nuked because schema is in flux.
-  // Order: junctions/children first (they reference parents), then parents.
-  "agenda_tasks",
-  "project_tasks",
-  "project_responsibility",
-  "responsibility_conditions",
-  "responsibility_providers",
-  "responsibility_things",
-  "responsibility_places",
-  "responsibility_people",
-  "responsibility_role",
-  "role_people",
-  "roles",
-  "responsibilities",
-  "project_environment",
-  "environment_conditions",
-  "environment_providers",
-  "environment_things",
-  "environment_places",
-  "environment_people",
-  "weekly_reviews",
-  "inbox_items",
-  "projects",
-  "preferences",
-  "support_requests",
-  "invitations",
-  "users",
-];
-for (const t of tablesToNuke) {
-  sqlite.exec(`DROP TABLE IF EXISTS ${t}`);
+// Additive migrations — each wrapped so re-runs are no-ops.
+// Order: run BEFORE the CREATE TABLE block so columns exist on
+// freshly-created tables AND on tables created by an earlier boot.
+function tryMigration(label: string, sql: string) {
+  try {
+    sqlite.exec(sql);
+  } catch (e: any) {
+    // Expected failures (column already exists, table doesn't exist yet) are fine.
+    // Anything else, surface in the log so it's debuggable.
+    const msg = String(e?.message ?? e);
+    const benign =
+      msg.includes("duplicate column") ||
+      msg.includes("no such table");
+    if (!benign) {
+      console.warn(`[migration:${label}] unexpected:`, msg);
+    }
+  }
 }
 
+// Phase 3a — agenda_tasks gains a `title` column for standalone tasks
+// (created via the Agenda + Task button) that are not linked to a
+// responsibility or project_task. Linked rows still derive their title
+// from the joined record; this column is the standalone path.
+tryMigration("agenda_tasks.title", `ALTER TABLE agenda_tasks ADD COLUMN title TEXT`);
+
 // ============================================================
-// TABLE CREATION (surviving tables only)
+// TABLE CREATION (idempotent — IF NOT EXISTS)
 // ============================================================
 sqlite.exec(`
-  CREATE TABLE users (
+  CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT,
@@ -139,7 +109,7 @@ sqlite.exec(`
     last_login_at TEXT
   );
 
-  CREATE TABLE invitations (
+  CREATE TABLE IF NOT EXISTS invitations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL,
     token TEXT NOT NULL UNIQUE,
@@ -149,7 +119,7 @@ sqlite.exec(`
     expires_at TEXT NOT NULL
   );
 
-  CREATE TABLE projects (
+  CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     title TEXT NOT NULL,
@@ -162,7 +132,7 @@ sqlite.exec(`
     archived_at TEXT
   );
 
-  CREATE TABLE inbox_items (
+  CREATE TABLE IF NOT EXISTS inbox_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     content TEXT NOT NULL,
@@ -174,7 +144,7 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE weekly_reviews (
+  CREATE TABLE IF NOT EXISTS weekly_reviews (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     week_of TEXT NOT NULL,
@@ -188,7 +158,7 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE preferences (
+  CREATE TABLE IF NOT EXISTS preferences (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     display_name TEXT NOT NULL DEFAULT '',
@@ -196,7 +166,7 @@ sqlite.exec(`
     clarity_skip_ritual INTEGER NOT NULL DEFAULT 0
   );
 
-  CREATE TABLE environment_people (
+  CREATE TABLE IF NOT EXISTS environment_people (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
@@ -205,7 +175,7 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE environment_places (
+  CREATE TABLE IF NOT EXISTS environment_places (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
@@ -214,7 +184,7 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE environment_things (
+  CREATE TABLE IF NOT EXISTS environment_things (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
@@ -223,7 +193,7 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE environment_providers (
+  CREATE TABLE IF NOT EXISTS environment_providers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
@@ -232,7 +202,7 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE environment_conditions (
+  CREATE TABLE IF NOT EXISTS environment_conditions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
@@ -241,14 +211,14 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE project_environment (
+  CREATE TABLE IF NOT EXISTS project_environment (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL,
     entity_type TEXT NOT NULL,
     entity_id INTEGER NOT NULL
   );
 
-  CREATE TABLE responsibilities (
+  CREATE TABLE IF NOT EXISTS responsibilities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
@@ -261,7 +231,7 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE roles (
+  CREATE TABLE IF NOT EXISTS roles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
@@ -271,19 +241,19 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE role_people (
+  CREATE TABLE IF NOT EXISTS role_people (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     role_id INTEGER NOT NULL,
     person_id INTEGER NOT NULL
   );
 
-  CREATE TABLE responsibility_role (
+  CREATE TABLE IF NOT EXISTS responsibility_role (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     responsibility_id INTEGER NOT NULL REFERENCES responsibilities(id),
     role_id INTEGER NOT NULL REFERENCES roles(id)
   );
 
-  CREATE TABLE responsibility_people (
+  CREATE TABLE IF NOT EXISTS responsibility_people (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     responsibility_id INTEGER NOT NULL REFERENCES responsibilities(id),
     person_id INTEGER NOT NULL REFERENCES environment_people(id),
@@ -291,7 +261,7 @@ sqlite.exec(`
     importance TEXT NOT NULL DEFAULT 'important'
   );
 
-  CREATE TABLE responsibility_places (
+  CREATE TABLE IF NOT EXISTS responsibility_places (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     responsibility_id INTEGER NOT NULL REFERENCES responsibilities(id),
     place_id INTEGER NOT NULL REFERENCES environment_places(id),
@@ -299,7 +269,7 @@ sqlite.exec(`
     importance TEXT NOT NULL DEFAULT 'important'
   );
 
-  CREATE TABLE responsibility_things (
+  CREATE TABLE IF NOT EXISTS responsibility_things (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     responsibility_id INTEGER NOT NULL REFERENCES responsibilities(id),
     thing_id INTEGER NOT NULL REFERENCES environment_things(id),
@@ -307,7 +277,7 @@ sqlite.exec(`
     importance TEXT NOT NULL DEFAULT 'important'
   );
 
-  CREATE TABLE responsibility_providers (
+  CREATE TABLE IF NOT EXISTS responsibility_providers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     responsibility_id INTEGER NOT NULL REFERENCES responsibilities(id),
     provider_id INTEGER NOT NULL REFERENCES environment_providers(id),
@@ -315,7 +285,7 @@ sqlite.exec(`
     importance TEXT NOT NULL DEFAULT 'important'
   );
 
-  CREATE TABLE responsibility_conditions (
+  CREATE TABLE IF NOT EXISTS responsibility_conditions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     responsibility_id INTEGER NOT NULL REFERENCES responsibilities(id),
     condition_id INTEGER NOT NULL REFERENCES environment_conditions(id),
@@ -323,14 +293,14 @@ sqlite.exec(`
     importance TEXT NOT NULL DEFAULT 'important'
   );
 
-  CREATE TABLE project_responsibility (
+  CREATE TABLE IF NOT EXISTS project_responsibility (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES projects(id),
     responsibility_id INTEGER NOT NULL REFERENCES responsibilities(id),
     is_primary INTEGER NOT NULL DEFAULT 0
   );
 
-  CREATE TABLE project_tasks (
+  CREATE TABLE IF NOT EXISTS project_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     project_id INTEGER NOT NULL REFERENCES projects(id),
@@ -342,11 +312,12 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE agenda_tasks (
+  CREATE TABLE IF NOT EXISTS agenda_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
     origin TEXT NOT NULL,
     origin_id INTEGER,
+    title TEXT,
     date TEXT NOT NULL,
     time TEXT,
     duration_minutes INTEGER,
@@ -364,7 +335,7 @@ sqlite.exec(`
     updated_at TEXT NOT NULL
   );
 
-  CREATE TABLE support_requests (
+  CREATE TABLE IF NOT EXISTS support_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     description TEXT NOT NULL,
