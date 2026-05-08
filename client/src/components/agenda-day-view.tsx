@@ -1,13 +1,18 @@
 // =============================================================================
 // AgendaDayView — Phase 3a (§22, §22a)
 // =============================================================================
-// Renders a single calendar day:
+// Renders a single calendar day's TIMED grid:
 //
-//   • All-day band at the top (one row per all-day item, color-chipped).
-//   • 24-row time grid below it (12am → 11pm), with hour lines.
+//   • 24-row time grid (12am → 11pm), with hour lines.
 //   • Floating event cards positioned by start time; overlapping cards
 //     side-by-side via the Google-style lane packing helper.
 //   • Current-time line (red) that only renders on today.
+//
+// All-day events render in a SEPARATE component (AgendaAllDayBand) that
+// the page mounts inside its sticky header — matches Google Calendar where
+// the all-day strip pins below the date row and only appears when there
+// are all-day events. Both components share the same TanStack Query key
+// so a single fetch backs both.
 //
 // Scroll model (Phase 3a):
 //   The Day view is NOT its own scroll container. It renders as a single
@@ -57,16 +62,12 @@ export function AgendaDayView({ date, onSelect }: Props) {
     },
   });
 
-  // Split into all-day vs timed.
-  const { allDay, timed } = useMemo(() => {
-    const allDay: AgendaWindowItem[] = [];
-    const timed: AgendaWindowItem[] = [];
-    for (const it of items) {
-      if (it.isAllDay === 1 || !it.time) allDay.push(it);
-      else timed.push(it);
-    }
-    return { allDay, timed };
-  }, [items]);
+  // Filter to timed events only — all-day events render in AgendaAllDayBand,
+  // mounted by the page inside its sticky header.
+  const timed = useMemo(
+    () => items.filter((it) => it.isAllDay !== 1 && it.time),
+    [items],
+  );
 
   // Pack timed items into lanes. packLanes uses `id` for bookkeeping;
   // virtual instances of the same series share an id, so we feed a
@@ -104,36 +105,6 @@ export function AgendaDayView({ date, onSelect }: Props) {
 
   return (
     <div className="flex flex-col">
-      {/* All-day band */}
-      {allDay.length > 0 && (
-        <div
-          className="border-b bg-muted/30 px-3 py-2 space-y-1"
-          data-testid="day-all-day-band"
-        >
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            All day
-          </div>
-          {allDay.map((it) => {
-            const c = findColor(it.color);
-            return (
-              <button
-                key={`${it.id}-${it.date}`}
-                onClick={() => onSelect(it)}
-                className="w-full text-left rounded-md px-2 py-1 text-xs font-medium hover:opacity-90 transition-opacity"
-                style={{ backgroundColor: c.softHex, color: "#1f2937" }}
-                data-testid={`button-allday-${it.id}`}
-              >
-                <span
-                  className="inline-block w-2 h-2 rounded-full mr-2 align-middle"
-                  style={{ backgroundColor: c.hex }}
-                />
-                {it.title || "(untitled)"}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       {/* Time grid — CSS grid with a fixed gutter and a flexible card column.
           The whole block sits in normal page flow; <main> handles scroll. */}
       <div
