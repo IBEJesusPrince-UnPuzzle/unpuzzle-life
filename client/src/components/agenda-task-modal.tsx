@@ -92,6 +92,9 @@ export function AgendaTaskModal({
   // Form state.
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(defaultDate);
+  // Phase 3c — multi-day all-day events. Empty string means "single-day"
+  // (sent to the server as null). Only meaningful when isAllDay is true.
+  const [endDate, setEndDate] = useState("");
   const [isAllDay, setIsAllDay] = useState(false);
   const [time, setTime] = useState("09:00");
   const [durValue, setDurValue] = useState("30");
@@ -105,6 +108,10 @@ export function AgendaTaskModal({
     if (editing) {
       setTitle(editing.title ?? "");
       setDate(editing.date);
+      // Seed end-date from the row only when it differs from start (otherwise
+      // leave blank so the UI shows "single-day" by default).
+      const seedEnd = editing.endDate && editing.endDate !== editing.date ? editing.endDate : "";
+      setEndDate(seedEnd);
       setIsAllDay(editing.isAllDay === 1);
       setTime(editing.time ?? "09:00");
       const dur = parseDuration(editing.durationMinutes);
@@ -115,6 +122,7 @@ export function AgendaTaskModal({
     } else {
       setTitle("");
       setDate(defaultDate);
+      setEndDate("");
       setIsAllDay(false);
       setTime("09:00");
       setDurValue("30");
@@ -126,9 +134,15 @@ export function AgendaTaskModal({
 
   function buildPayload() {
     const durationMinutes = isAllDay ? null : durationToMinutes(durValue, durUnit);
+    // Phase 3c — endDate is only sent when isAllDay AND the user picked
+    // an end > start. Otherwise it's null. The server enforces these rules
+    // again as a defense in depth.
+    const payloadEndDate =
+      isAllDay && endDate && endDate > date ? endDate : null;
     return {
       title: title.trim() || null,
       date,
+      endDate: payloadEndDate,
       isAllDay: isAllDay ? 1 : 0,
       time: isAllDay ? null : time,
       durationMinutes,
@@ -197,7 +211,11 @@ export function AgendaTaskModal({
         ? "Edit this occurrence"
         : "Edit task";
 
-  const canSave = title.trim().length > 0 && /^\d{4}-\d{2}-\d{2}$/.test(date);
+  // Phase 3c — disable Save if the user typed an end date that's earlier than
+  // the start date. (Empty endDate means single-day and is always valid.)
+  const endDateValid = !isAllDay || !endDate || endDate >= date;
+  const canSave =
+    title.trim().length > 0 && /^\d{4}-\d{2}-\d{2}$/.test(date) && endDateValid;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -220,9 +238,9 @@ export function AgendaTaskModal({
             />
           </div>
 
-          {/* Date */}
+          {/* Date (becomes "Start date" when all-day with multi-day support) */}
           <div className="space-y-1.5">
-            <Label htmlFor="task-date">Date</Label>
+            <Label htmlFor="task-date">{isAllDay ? "Start date" : "Date"}</Label>
             <Input
               id="task-date"
               type="date"
@@ -244,6 +262,28 @@ export function AgendaTaskModal({
               All-day
             </Label>
           </div>
+
+          {/* End date — only when all-day. Empty means single-day. (Phase 3c) */}
+          {isAllDay && (
+            <div className="space-y-1.5">
+              <Label htmlFor="task-end-date">
+                End date <span className="text-muted-foreground text-xs">— leave blank for single day</span>
+              </Label>
+              <Input
+                id="task-end-date"
+                type="date"
+                value={endDate}
+                min={date}
+                onChange={(e) => setEndDate(e.target.value)}
+                data-testid="input-task-end-date"
+              />
+              {!endDateValid && (
+                <p className="text-xs text-destructive" data-testid="text-end-date-error">
+                  End date must be on or after the start date.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Time + duration (hidden when all-day) */}
           {!isAllDay && (

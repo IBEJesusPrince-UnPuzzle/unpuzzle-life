@@ -32,6 +32,48 @@ import { validateRecurrenceRule } from "./recurrence";
 // Phase 1 helper: support type whitelist for /api/environment/{type} dispatch.
 const SUPPORT_TYPES = ["people", "places", "things", "providers", "conditions"] as const;
 type SupportTypeParam = typeof SUPPORT_TYPES[number];
+// Phase 3c — cross-field validator for the multi-day all-day endDate column.
+// Rules:
+//   - When isAllDay = 1: endDate may be NULL (single-day) or a YYYY-MM-DD
+//     string >= date.
+//   - When isAllDay = 0: endDate must be NULL/undefined (timed events do not
+//     span days at the all-day-pill level; long timed events are still a
+//     single chip in the time grid).
+// Returns an error string when invalid, or null when OK.
+// Accepts a partial body (used by PATCH); fields that aren't present skip
+// their respective checks. When isAllDay is being toggled by the patch we
+// require the caller to also pass the relevant date(s) so we can validate
+// the new shape.
+function validateAgendaEndDate(body: Record<string, unknown>): string | null {
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  const hasIsAllDay = "isAllDay" in body;
+  const hasEndDate = "endDate" in body;
+  if (!hasEndDate && !hasIsAllDay) return null;
+
+  const endDate = body.endDate;
+  const isAllDay = body.isAllDay;
+  const date = body.date;
+
+  // Timed event: endDate must be null/undefined.
+  if (isAllDay === 0 || isAllDay === false) {
+    if (endDate !== undefined && endDate !== null && endDate !== "") {
+      return "endDate must be null when isAllDay = 0";
+    }
+    return null;
+  }
+
+  // All-day event with explicit endDate: must be valid YYYY-MM-DD and >= date.
+  if (endDate !== undefined && endDate !== null && endDate !== "") {
+    if (typeof endDate !== "string" || !dateRe.test(endDate)) {
+      return "endDate must be in YYYY-MM-DD format";
+    }
+    if (typeof date === "string" && dateRe.test(date) && endDate < date) {
+      return "endDate must be >= date";
+    }
+  }
+  return null;
+}
+
 function isSupportType(s: string): s is SupportTypeParam {
   return (SUPPORT_TYPES as readonly string[]).includes(s);
 }
@@ -634,6 +676,8 @@ export function registerRoutes(server: Server, app: Express) {
       const err = validateRecurrenceRule(data.recurrenceRule);
       if (err) return res.status(400).json({ error: `recurrenceRule invalid: ${err}` });
     }
+    const endDateErr = validateAgendaEndDate(data);
+    if (endDateErr) return res.status(400).json({ error: endDateErr });
     const parsed = insertAgendaTaskSchema.safeParse(data);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
     res.json(storage.createAgendaTask(userId, parsed.data));
@@ -651,6 +695,8 @@ export function registerRoutes(server: Server, app: Express) {
       const err = validateRecurrenceRule(body.recurrenceRule);
       if (err) return res.status(400).json({ error: `recurrenceRule invalid: ${err}` });
     }
+    const endDateErr = validateAgendaEndDate(body);
+    if (endDateErr) return res.status(400).json({ error: endDateErr });
     // Auto-bump updatedAt for any mutation.
     body.updatedAt = new Date().toISOString();
     const result = storage.updateAgendaTask(userId, Number(req.params.id), body);
