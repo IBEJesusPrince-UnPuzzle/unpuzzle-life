@@ -73,9 +73,10 @@ export default function AgendaPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header — locked §22 chrome. */}
-      <div className="border-b px-4 py-3 space-y-2 bg-background">
+    <div>
+      {/* Header — locked §22 chrome. Sticky so it stays visible while the
+          day grid scrolls underneath in the page's main scroll container. */}
+      <div className="sticky top-0 z-20 border-b px-4 py-3 space-y-2 bg-background">
         {/* Row 1 */}
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold tracking-tight flex items-center gap-2">
@@ -112,7 +113,7 @@ export default function AgendaPage() {
             <ChevronLeft className="w-4 h-4" />
           </Button>
           <div
-            className="text-sm font-medium tabular-nums min-w-[140px] text-center"
+            className="text-sm font-medium tabular-nums px-2 text-center whitespace-nowrap"
             data-testid="text-date-context"
           >
             {formatDateContextLabel(date)}
@@ -130,7 +131,7 @@ export default function AgendaPage() {
 
           {/* View selector */}
           <div
-            className="inline-flex rounded-md border bg-muted p-0.5"
+            className="inline-flex shrink-0 rounded-md border bg-muted p-0.5"
             data-testid="view-selector"
           >
             {(["day", "3day", "week", "month"] as const).map((v) => (
@@ -138,7 +139,7 @@ export default function AgendaPage() {
                 key={v}
                 onClick={() => changeView(v)}
                 className={
-                  "px-2.5 h-7 text-xs rounded-sm transition-colors " +
+                  "px-2.5 h-7 text-xs rounded-sm transition-colors whitespace-nowrap " +
                   (view === v
                     ? "bg-background shadow-sm font-medium"
                     : "text-muted-foreground hover:text-foreground")
@@ -156,7 +157,7 @@ export default function AgendaPage() {
       {view === "day" ? (
         <AgendaDayView date={date} onSelect={openEdit} />
       ) : (
-        <div className="flex-1 p-6">
+        <div className="p-6">
           <Card>
             <CardContent className="p-8 text-center space-y-2">
               <p className="text-sm font-medium">

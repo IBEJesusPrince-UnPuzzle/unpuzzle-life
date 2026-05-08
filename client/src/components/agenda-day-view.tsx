@@ -9,11 +9,23 @@
 //     side-by-side via the Google-style lane packing helper.
 //   • Current-time line (red) that only renders on today.
 //
-// Source data: GET /api/agenda?from=YYYY-MM-DD&to=YYYY-MM-DD (single day).
-// Tap a card → onSelect(item) so parent can open the edit modal.
+// Scroll model (Phase 3a):
+//   The Day view is NOT its own scroll container. It renders as a single
+//   tall block and lets the page's <main> element handle vertical scroll.
+//   This avoids nested-scroll rendering glitches (label doubling, cut-off
+//   12am, mobile gutter clipping) and matches the rest of the app.
+//
+//   Side benefit: when the user navigates from one day to the next, the
+//   browser keeps main.scrollTop unchanged — so if they were looking at
+//   3pm on Mon, they'll still be looking at 3pm when they flip to Tue.
+//   Same Google Calendar feel, no JS required.
+//
+// Layout: CSS grid — fixed 60px gutter for hour labels + 1fr column for
+// cards. The card column uses `position: relative` so absolute-positioned
+// cards measure inside it, not against the whole page.
 // =============================================================================
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { packLanes } from "@/lib/lane-pack";
 import {
@@ -26,6 +38,7 @@ import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 
 const HOUR_HEIGHT_PX = 56; // 56px / hour, ~14px / 15min — matches mobile Google Calendar density.
 const MIN_CARD_HEIGHT_PX = 22;
+const GUTTER_WIDTH_PX = 60;
 
 type Props = {
   date: string; // YYYY-MM-DD
@@ -55,10 +68,9 @@ export function AgendaDayView({ date, onSelect }: Props) {
     return { allDay, timed };
   }, [items]);
 
-  // Pack timed items into lanes for side-by-side overlap rendering.
-  // packLanes wants startMin/endMin and uses `id` for lane bookkeeping;
-  // since virtual instances of the same series share an id, build a
-  // synthetic numeric key and feed it as the id into the helper.
+  // Pack timed items into lanes. packLanes uses `id` for bookkeeping;
+  // virtual instances of the same series share an id, so we feed a
+  // synthetic numeric key based on array index.
   const packed = useMemo(() => {
     const inputs = timed
       .map((it, idx) => {
@@ -72,7 +84,7 @@ export function AgendaDayView({ date, onSelect }: Props) {
     return packLanes(inputs);
   }, [timed]);
 
-  // Current-time line — only render on today, and only refresh once a minute.
+  // Current-time line — render only on today, refresh once a minute.
   const isToday = date === toIsoDate(new Date());
   const [nowMin, setNowMin] = useState(() => {
     const n = new Date();
@@ -87,17 +99,11 @@ export function AgendaDayView({ date, onSelect }: Props) {
     return () => clearInterval(id);
   }, [isToday]);
 
-  // On mount / date change, scroll to ~7am so morning is visible without a wall of empty hours.
-  const gridRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!gridRef.current) return;
-    gridRef.current.scrollTop = HOUR_HEIGHT_PX * 7;
-  }, [date]);
-
+  const totalHeight = HOUR_HEIGHT_PX * 24;
   const hours = Array.from({ length: 24 }, (_, h) => h);
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col">
       {/* All-day band */}
       {allDay.length > 0 && (
         <div
@@ -128,87 +134,101 @@ export function AgendaDayView({ date, onSelect }: Props) {
         </div>
       )}
 
-      {/* Time grid */}
+      {/* Time grid — CSS grid with a fixed gutter and a flexible card column.
+          The whole block sits in normal page flow; <main> handles scroll. */}
       <div
-        ref={gridRef}
-        className="relative flex-1 overflow-y-auto"
+        className="grid"
+        style={{
+          gridTemplateColumns: `${GUTTER_WIDTH_PX}px 1fr`,
+          height: `${totalHeight}px`,
+        }}
         data-testid="day-time-grid"
       >
-        <div
-          className="relative"
-          style={{ height: `${HOUR_HEIGHT_PX * 24}px` }}
-        >
-          {/* Hour rows */}
+        {/* Gutter — hour labels stacked at exact pixel offsets */}
+        <div className="relative">
+          {hours.map((h) => (
+            <div
+              key={h}
+              className="absolute left-0 right-0 pr-2 text-right text-[10px] text-muted-foreground tabular-nums"
+              style={{
+                top: `${h * HOUR_HEIGHT_PX - 6}px`,
+                // first label clips against the top of the grid; nudge it down so
+                // "12:00 AM" sits below the all-day band edge instead of being half-cut.
+                ...(h === 0 ? { top: "2px" } : null),
+              }}
+            >
+              {formatTimeLabel(h * 60)}
+            </div>
+          ))}
+        </div>
+
+        {/* Card column — relative so cards position inside it */}
+        <div className="relative border-l">
+          {/* Hour gridlines */}
           {hours.map((h) => (
             <div
               key={h}
               className="absolute left-0 right-0 border-t border-border/60"
-              style={{ top: `${h * HOUR_HEIGHT_PX}px`, height: `${HOUR_HEIGHT_PX}px` }}
-            >
-              <div className="absolute -top-2 left-2 text-[10px] text-muted-foreground tabular-nums">
-                {formatTimeLabel(h * 60)}
-              </div>
-            </div>
+              style={{ top: `${h * HOUR_HEIGHT_PX}px` }}
+            />
           ))}
 
-          {/* Card layer — left edge after the time gutter (~52px). */}
-          <div className="absolute left-[52px] right-2 top-0 bottom-0">
-            {packed.map((p) => {
-              const it = p.item;
-              const c = findColor(it.color);
-              const top = (p.startMin / 60) * HOUR_HEIGHT_PX;
-              const height = Math.max(
-                MIN_CARD_HEIGHT_PX,
-                ((p.endMin - p.startMin) / 60) * HOUR_HEIGHT_PX - 2,
-              );
-              const widthPct = 100 / p.laneCount;
-              const leftPct = p.lane * widthPct;
-              return (
-                <button
-                  key={`${it.id}-${it.date}-${p.startMin}`}
-                  onClick={() => onSelect(it)}
-                  className="absolute rounded-md text-left overflow-hidden hover:opacity-95 transition-opacity border border-white/40 shadow-sm"
-                  style={{
-                    top: `${top}px`,
-                    height: `${height}px`,
-                    left: `calc(${leftPct}% + 2px)`,
-                    width: `calc(${widthPct}% - 4px)`,
-                    backgroundColor: c.softHex,
-                  }}
-                  data-testid={`button-card-${it.id}`}
-                >
-                  <div className="px-2 py-1">
-                    <div
-                      className="text-xs font-semibold truncate"
-                      style={{ color: c.hex }}
-                    >
-                      {it.title || "(untitled)"}
-                    </div>
-                    {height >= 36 && (
-                      <div className="text-[10px] text-muted-foreground tabular-nums mt-0.5">
-                        {formatTimeLabel(p.startMin)} ·{" "}
-                        {formatDurationLabel(p.endMin - p.startMin)}
-                      </div>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-
-            {/* Current-time line (today only) */}
-            {isToday && (
-              <div
-                className="absolute left-0 right-0 pointer-events-none z-10"
-                style={{ top: `${(nowMin / 60) * HOUR_HEIGHT_PX}px` }}
-                data-testid="line-current-time"
+          {/* Event cards */}
+          {packed.map((p) => {
+            const it = p.item;
+            const c = findColor(it.color);
+            const top = (p.startMin / 60) * HOUR_HEIGHT_PX;
+            const height = Math.max(
+              MIN_CARD_HEIGHT_PX,
+              ((p.endMin - p.startMin) / 60) * HOUR_HEIGHT_PX - 2,
+            );
+            const widthPct = 100 / p.laneCount;
+            const leftPct = p.lane * widthPct;
+            return (
+              <button
+                key={`${it.id}-${it.date}-${p.startMin}`}
+                onClick={() => onSelect(it)}
+                className="absolute rounded-md text-left overflow-hidden hover:opacity-95 transition-opacity border border-white/40 shadow-sm"
+                style={{
+                  top: `${top}px`,
+                  height: `${height}px`,
+                  left: `calc(${leftPct}% + 2px)`,
+                  width: `calc(${widthPct}% - 4px)`,
+                  backgroundColor: c.softHex,
+                }}
+                data-testid={`button-card-${it.id}`}
               >
-                <div className="relative">
-                  <div className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-red-500" />
-                  <div className="h-px bg-red-500" />
+                <div className="px-2 py-1">
+                  <div
+                    className="text-xs font-semibold truncate"
+                    style={{ color: c.hex }}
+                  >
+                    {it.title || "(untitled)"}
+                  </div>
+                  {height >= 36 && (
+                    <div className="text-[10px] text-muted-foreground tabular-nums mt-0.5">
+                      {formatTimeLabel(p.startMin)} ·{" "}
+                      {formatDurationLabel(p.endMin - p.startMin)}
+                    </div>
+                  )}
                 </div>
+              </button>
+            );
+          })}
+
+          {/* Current-time line (today only) */}
+          {isToday && (
+            <div
+              className="absolute left-0 right-0 pointer-events-none z-10"
+              style={{ top: `${(nowMin / 60) * HOUR_HEIGHT_PX}px` }}
+              data-testid="line-current-time"
+            >
+              <div className="relative">
+                <div className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-red-500" />
+                <div className="h-px bg-red-500" />
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
