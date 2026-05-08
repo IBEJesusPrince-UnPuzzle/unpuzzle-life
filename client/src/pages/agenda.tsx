@@ -34,8 +34,14 @@ import {
   weekRange,
 } from "@/lib/agenda-utils";
 import { AgendaDayView } from "@/components/agenda-day-view";
-import { AgendaThreeDayView } from "@/components/agenda-three-day-view";
-import { AgendaWeekView } from "@/components/agenda-week-view";
+import {
+  AgendaThreeDayView,
+  AgendaThreeDayStickyShell,
+} from "@/components/agenda-three-day-view";
+import {
+  AgendaWeekView,
+  AgendaWeekStickyShell,
+} from "@/components/agenda-week-view";
 import { AgendaMonthView } from "@/components/agenda-month-view";
 import { AgendaMonthDayOverlay } from "@/components/agenda-month-day-overlay";
 import { AgendaAllDayBand } from "@/components/agenda-all-day-band";
@@ -206,10 +212,19 @@ export default function AgendaPage() {
           </div>
         </div>
 
-        {/* All-day band — Day view only. Other views render their own
-            inline all-day strips, and Month has none. */}
+        {/* Per-view sticky chrome. Each lives INSIDE the page-level sticky
+            header so the column header + all-day strip stay pinned while
+            the time grid scrolls underneath. Day uses its own All-Day band;
+            3 Days/Week mount their column-header + all-day strip together;
+            Month has no inline chrome. */}
         {view === "day" && (
           <AgendaAllDayBand date={date} onSelect={openEdit} />
+        )}
+        {view === "3day" && (
+          <AgendaThreeDayStickyShell date={date} onSelect={openEdit} />
+        )}
+        {view === "week" && (
+          <AgendaWeekStickyShell date={date} onSelect={openEdit} />
         )}
       </div>
 

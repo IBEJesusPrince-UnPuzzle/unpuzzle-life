@@ -10,8 +10,11 @@
 //   - Side-by-side overlaps like Day
 //   - All-day items: Google-like pill, status icons shown
 //
-// Same primitives as 3 Days (chip column + lane pack), just narrower columns
-// and 7 of them.
+// Phase 3b fixup (sticky shell):
+//   The column header + all-day strip are exported separately as
+//   AgendaWeekStickyShell. The page mounts that shell INSIDE its own sticky
+//   header so the chrome stays pinned while the timed grid scrolls.
+//   This view component now renders ONLY the time grid body.
 // =============================================================================
 
 import { useMemo } from "react";
@@ -34,7 +37,11 @@ type Props = {
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export function AgendaWeekView({ date, onSelect }: Props) {
+// -----------------------------------------------------------------------------
+// Sticky shell — column header + all-day strip
+// -----------------------------------------------------------------------------
+// Shared TanStack Query key with the body, so the page only fetches once.
+export function AgendaWeekStickyShell({ date, onSelect }: Props) {
   const { from, to } = weekRange(date);
 
   const { data: items = [] } = useQuery<AgendaWindowItem[]>({
@@ -51,14 +58,11 @@ export function AgendaWeekView({ date, onSelect }: Props) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
   const todayIso = toIsoDate(new Date());
 
-  const totalHeight = HOUR_HEIGHT_PX * 24;
-  const hours = Array.from({ length: 24 }, (_, h) => h);
-
   return (
-    <div className="flex flex-col">
+    <div className="border-t" data-testid="week-sticky-shell">
       {/* Column header — short labels (Sun4, Mon5, ...) */}
       <div
-        className="grid border-b sticky top-0 bg-background z-10"
+        className="grid"
         style={{ gridTemplateColumns: `48px repeat(7, 1fr)` }}
         data-testid="week-column-header"
       >
@@ -84,7 +88,34 @@ export function AgendaWeekView({ date, onSelect }: Props) {
 
       {/* All-day strip */}
       <WeekAllDayStrip items={items} days={days} onSelect={onSelect} />
+    </div>
+  );
+}
 
+// -----------------------------------------------------------------------------
+// Body — time grid only (mounted under the sticky shell)
+// -----------------------------------------------------------------------------
+export function AgendaWeekView({ date, onSelect }: Props) {
+  const { from, to } = weekRange(date);
+
+  const { data: items = [] } = useQuery<AgendaWindowItem[]>({
+    queryKey: ["/api/agenda", { from, to }],
+    queryFn: async () => {
+      const r = await fetch(`/api/agenda?from=${from}&to=${to}`, {
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
+  });
+
+  const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
+
+  const totalHeight = HOUR_HEIGHT_PX * 24;
+  const hours = Array.from({ length: 24 }, (_, h) => h);
+
+  return (
+    <div className="flex flex-col">
       {/* Time grid */}
       <div
         className="grid"
@@ -147,8 +178,8 @@ function WeekAllDayStrip({
 
   return (
     <div
-      className="grid border-b bg-muted/30"
-      style={{ gridTemplateColumns: `40px repeat(7, 1fr)` }}
+      className="grid border-t bg-muted/30"
+      style={{ gridTemplateColumns: `48px repeat(7, 1fr)` }}
       data-testid="week-allday-strip"
     >
       <div className="text-[9px] text-muted-foreground text-right pr-1 py-1">
