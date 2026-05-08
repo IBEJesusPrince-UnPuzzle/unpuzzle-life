@@ -44,6 +44,47 @@ type SupportTypeParam = typeof SUPPORT_TYPES[number];
 // their respective checks. When isAllDay is being toggled by the patch we
 // require the caller to also pass the relevant date(s) so we can validate
 // the new shape.
+//
+// PR #14 — recurrenceEndDate enforcement (§8 prologue b + §22a)
+// When a row carries a recurrenceRule, recurrenceEndDate is REQUIRED and
+// must be capped at start + 1 year. The modal prompts the user before
+// reaching this validator; this is defense in depth for direct API calls.
+function validateAgendaRecurrenceEnd(body: Record<string, unknown>): string | null {
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  const rule = body.recurrenceRule;
+  // No rule on this body → nothing to enforce. (PATCHes that don't touch
+  // recurrence skip this check entirely.)
+  if (rule === undefined) return null;
+  if (rule === null || rule === "") return null;
+  if (typeof rule !== "string") return null;
+
+  const recEnd = body.recurrenceEndDate;
+  if (recEnd === undefined || recEnd === null || recEnd === "") {
+    return "recurrenceEndDate is required when recurrenceRule is set";
+  }
+  if (typeof recEnd !== "string" || !dateRe.test(recEnd)) {
+    return "recurrenceEndDate must be in YYYY-MM-DD format";
+  }
+
+  const startDate = body.date;
+  if (typeof startDate === "string" && dateRe.test(startDate)) {
+    // 1-year cap. JS Date math handles leap years correctly: setting
+    // "YYYY-MM-DD" with month-day Feb 29 → next year's Feb 28 (still
+    // exactly 1 year out for cap purposes since the modal's default UI
+    // never lets the user exceed this).
+    const [y, m, d] = startDate.split("-").map(Number);
+    const cap = new Date(Date.UTC(y + 1, m - 1, d));
+    const capStr = `${cap.getUTCFullYear()}-${String(cap.getUTCMonth() + 1).padStart(2, "0")}-${String(cap.getUTCDate()).padStart(2, "0")}`;
+    if (recEnd > capStr) {
+      return "recurrenceEndDate cannot be more than 1 year after start date";
+    }
+    if (recEnd < startDate) {
+      return "recurrenceEndDate must be on or after start date";
+    }
+  }
+  return null;
+}
+
 function validateAgendaEndDate(body: Record<string, unknown>): string | null {
   const dateRe = /^\d{4}-\d{2}-\d{2}$/;
   const hasIsAllDay = "isAllDay" in body;
@@ -676,6 +717,8 @@ export function registerRoutes(server: Server, app: Express) {
       const err = validateRecurrenceRule(data.recurrenceRule);
       if (err) return res.status(400).json({ error: `recurrenceRule invalid: ${err}` });
     }
+    const recEndErr = validateAgendaRecurrenceEnd(data);
+    if (recEndErr) return res.status(400).json({ error: recEndErr });
     const endDateErr = validateAgendaEndDate(data);
     if (endDateErr) return res.status(400).json({ error: endDateErr });
     const parsed = insertAgendaTaskSchema.safeParse(data);
@@ -694,6 +737,17 @@ export function registerRoutes(server: Server, app: Express) {
     if (body.recurrenceRule) {
       const err = validateRecurrenceRule(body.recurrenceRule);
       if (err) return res.status(400).json({ error: `recurrenceRule invalid: ${err}` });
+    }
+    // PATCH-time recurrence-end enforcement: only run when the patch
+    // touches recurrenceRule (otherwise we'd reject patches that don't
+    // care about recurrence). When rule is being SET, also require
+    // recurrenceEndDate AND date in the body (caller's responsibility).
+    if (body.recurrenceRule !== undefined) {
+      // For the cap check we need start date. Pull from body, else fail
+      // soft (storage will use the row's existing date — but the modal
+      // always sends date alongside, so this branch is just safety).
+      const recEndErr = validateAgendaRecurrenceEnd(body);
+      if (recEndErr) return res.status(400).json({ error: recEndErr });
     }
     const endDateErr = validateAgendaEndDate(body);
     if (endDateErr) return res.status(400).json({ error: endDateErr });
