@@ -22,6 +22,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { apiRequest } from "@/lib/queryClient";
 import { addDays, formatDateContextLabel, toIsoDate } from "@/lib/agenda-utils";
 import { AgendaDayView } from "@/components/agenda-day-view";
+import { AgendaAllDayBand } from "@/components/agenda-all-day-band";
 import {
   AgendaTaskModal,
   type AgendaWindowItem,
@@ -151,6 +152,12 @@ export default function AgendaPage() {
             ))}
           </div>
         </div>
+
+        {/* All-day band — part of the sticky header, renders nothing when
+            the day has no all-day events. */}
+        {view === "day" && (
+          <AgendaAllDayBand date={date} onSelect={openEdit} />
+        )}
       </div>
 
       {/* Body */}
