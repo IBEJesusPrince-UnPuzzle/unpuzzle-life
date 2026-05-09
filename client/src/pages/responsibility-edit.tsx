@@ -203,7 +203,7 @@ export default function ResponsibilityEditPage({
   }
 
   // ============================================================
-  // Calendar settings (color + recurrence) — PR #18c, refined in PR #18d
+  // Schedule (color + recurrence) — PR #18c, refined in PR #18d, relabeled in PR #18e
   // ============================================================
   // Persist color + recurrenceRule via the same PATCH endpoint the name
   // autosave uses. Per Google's calendar-level pattern, changes here cascade
@@ -365,7 +365,7 @@ export default function ResponsibilityEditPage({
                 Responsibility
               </Label>
               <p className="text-[11px] italic text-muted-foreground -mt-0.5">
-                -name the ongoing duty, not a one-time task
+                -name the recurring duty, not a one-time task
               </p>
             </div>
             <Input
@@ -379,6 +379,22 @@ export default function ResponsibilityEditPage({
             />
           </CardContent>
         </Card>
+
+        {/* Schedule (§11, PR #18c — refined in PR #18d, relabeled in PR #18e)
+            — sits directly under the Responsibility name so the language
+            flows: "recurring duty" → "how often you complete this duty".
+            Only shown after the responsibility row exists, since we need an
+            id to PATCH against. Saves cascade to all instances per Google's
+            calendar-level pattern; no scope prompt at this level. */}
+        {!isCreate && responsibility && (
+          <CalendarSettingsCard
+            initial={{
+              color: responsibility.color ?? null,
+              recurrenceRule: responsibility.recurrenceRule ?? null,
+            }}
+            onSave={(next) => saveCalendarSettings.mutate(next)}
+          />
+        )}
 
         {/* Role multi-add + Linked Roles (§11) */}
         <Card>
@@ -496,20 +512,6 @@ export default function ResponsibilityEditPage({
             )}
           </CardContent>
         </Card>
-
-        {/* Calendar settings (§11, PR #18c — refined in PR #18d) — only
-            shown after the responsibility row exists, so we have an id to
-            PATCH against. Saves cascade to all instances per Google's
-            calendar-level pattern; no scope prompt at this level. */}
-        {!isCreate && responsibility && (
-          <CalendarSettingsCard
-            initial={{
-              color: responsibility.color ?? null,
-              recurrenceRule: responsibility.recurrenceRule ?? null,
-            }}
-            onSave={(next) => saveCalendarSettings.mutate(next)}
-          />
-        )}
 
         {/* 5 Support sections (§11) — only shown after the responsibility row
             exists, since they all need an id to link against. */}

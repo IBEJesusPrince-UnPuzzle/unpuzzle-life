@@ -1,11 +1,18 @@
 // =============================================================================
-// CalendarSettingsCard — PR #18c (revised in PR #18d)
+// CalendarSettingsCard — PR #18c (revised in PR #18d, relabeled in PR #18e)
 // =============================================================================
-// Single card on the Responsibility edit screen that owns the two fields a
-// responsibility contributes to its calendar instances:
+// Single "Schedule" card on the Responsibility edit screen. Owns the two
+// fields a responsibility contributes to its calendar instances:
 //
-//   1. Recurrence (RRULE)  — required; defaults to "Every week"
-//   2. Color (hex)         — defaults to Peacock
+//   1. Frequency (RRULE)  — required; defaults to "Every week"
+//   2. Color (hex)        — defaults to Peacock
+//
+// PR #18e note — the section is titled "Schedule" and the dropdown is labeled
+// "Frequency" so the language flows from the Responsibility helper line
+// ("recurring duty") into "how often you complete this duty". The internal
+// component, prop, and type names keep "CalendarSettings" since they describe
+// the underlying concept (calendar-level fields per Google's pattern), not
+// the visible label.
 //
 // Order mirrors Google Calendar mobile: the repeat row sits ABOVE the calendar
 // color row, so we keep the same vertical sequence.
@@ -78,19 +85,20 @@ export function CalendarSettingsCard({
   }
 
   return (
-    <Card data-testid="card-calendar-settings">
+    <Card data-testid="card-schedule">
       <CardContent className="p-4 space-y-4">
         <div className="space-y-0.5">
-          <Label className="text-xs">Calendar settings</Label>
+          <Label className="text-xs">Schedule</Label>
           <p className="text-[11px] italic text-muted-foreground -mt-0.5">
-            -how this responsibility shows up on your calendar
+            -how often you complete this duty, and how it shows on your
+            calendar
           </p>
         </div>
 
-        {/* Recurrence first (Google order: repeat row above calendar color). */}
+        {/* Frequency first (Google order: repeat row above calendar color). */}
         <div className="space-y-1.5">
           <Label className="text-xs" htmlFor="responsibility-recurrence">
-            Recurrence
+            Frequency
           </Label>
           <RecurrenceEditor
             fieldId="responsibility-recurrence"
