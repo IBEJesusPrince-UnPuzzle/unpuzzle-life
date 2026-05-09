@@ -131,6 +131,21 @@ tryMigration("agenda_tasks.end_date", `ALTER TABLE agenda_tasks ADD COLUMN end_d
 // status=cancelled exception event).
 tryMigration("agenda_tasks.is_cancelled", `ALTER TABLE agenda_tasks ADD COLUMN is_cancelled INTEGER NOT NULL DEFAULT 0`);
 
+// PR #21 — Project v2 schema (§10). All additions are nullable so existing
+// project rows backfill as NULL. UI lands in PR #22; this PR is schema + API only.
+tryMigration("projects.outcome_done",     `ALTER TABLE projects ADD COLUMN outcome_done TEXT`);
+tryMigration("projects.status",           `ALTER TABLE projects ADD COLUMN status TEXT`);
+tryMigration("projects.priority",         `ALTER TABLE projects ADD COLUMN priority TEXT`);
+tryMigration("projects.target_date",      `ALTER TABLE projects ADD COLUMN target_date TEXT`);
+tryMigration("projects.next_action",      `ALTER TABLE projects ADD COLUMN next_action TEXT`);
+tryMigration("projects.blockers",         `ALTER TABLE projects ADD COLUMN blockers TEXT`);
+tryMigration("projects.risks_watchouts",  `ALTER TABLE projects ADD COLUMN risks_watchouts TEXT`);
+tryMigration("projects.notes",            `ALTER TABLE projects ADD COLUMN notes TEXT`);
+tryMigration("projects.last_touched_at",  `ALTER TABLE projects ADD COLUMN last_touched_at TEXT`);
+tryMigration("projects.stalled_at",       `ALTER TABLE projects ADD COLUMN stalled_at TEXT`);
+// PR #21 — project_tasks gains a sortOrder for linear ordering inside a project.
+tryMigration("project_tasks.sort_order",  `ALTER TABLE project_tasks ADD COLUMN sort_order INTEGER`);
+
 // ============================================================
 // TABLE CREATION (idempotent — IF NOT EXISTS)
 // ============================================================
@@ -166,6 +181,17 @@ sqlite.exec(`
     trigger TEXT,
     start_date TEXT,
     end_date TEXT,
+    -- PR #21 (§10) Project v2 fields. All nullable; UI in PR #22.
+    outcome_done TEXT,
+    status TEXT,
+    priority TEXT,
+    target_date TEXT,
+    next_action TEXT,
+    blockers TEXT,
+    risks_watchouts TEXT,
+    notes TEXT,
+    last_touched_at TEXT,
+    stalled_at TEXT,
     created_at TEXT NOT NULL,
     archived INTEGER NOT NULL DEFAULT 0,
     archived_at TEXT
@@ -348,6 +374,17 @@ sqlite.exec(`
     status TEXT NOT NULL DEFAULT 'open',
     recurrence_rule TEXT,
     recurrence_end_date TEXT,
+    sort_order INTEGER,
+    created_at TEXT NOT NULL
+  );
+
+  -- PR #21 — Related links / files attached to a project (§10 "Add link" rows).
+  CREATE TABLE IF NOT EXISTS project_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    label TEXT NOT NULL,
+    url TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
 
