@@ -43,12 +43,13 @@ import { parseDuration, durationToMinutes } from "@/lib/duration";
 
 // CalendarSettings — the full snapshot the card emits. The parent maps this
 // to the API shape: color/recurrenceRule onto the responsibility row,
-// date/time/durationMinutes/isAllDay/endDate onto the master agenda_tasks
+// startDate/time/durationMinutes/isAllDay/endDate onto the master agenda_tasks
 // row (storage.ts splits the payload accordingly).
 export type CalendarSettings = {
   color: string;
   recurrenceRule: string;
-  date: string;                     // YYYY-MM-DD
+  // PR #24 — renamed from `date` to mirror agenda_tasks.start_date.
+  startDate: string;                // YYYY-MM-DD
   isAllDay: boolean;
   time: string | null;              // HH:MM, null when isAllDay
   durationMinutes: number | null;   // null when isAllDay
@@ -64,7 +65,8 @@ export type CalendarSettingsCardProps = {
     color: string | null;
     recurrenceRule: string | null;
     schedule: {
-      date: string;
+      // PR #24 — renamed from `date` to mirror agenda_tasks.start_date.
+      startDate: string;
       time: string | null;
       durationMinutes: number | null;
       isAllDay: boolean;
@@ -92,7 +94,7 @@ export function CalendarSettingsCard({
   // Display values: fall back to defaults when the server has no value yet.
   const initialColor = initial.color ?? DEFAULT_AGENDA_COLOR_HEX;
   const initialRule = initial.recurrenceRule ?? "FREQ=WEEKLY";
-  const initialDate = initial.schedule?.date ?? todayLocal();
+  const initialDate = initial.schedule?.startDate ?? todayLocal();
   const initialIsAllDay = initial.schedule?.isAllDay ?? false;
   const initialTime = initial.schedule?.time ?? "";
   const initialEndDate = initial.schedule?.endDate ?? "";
@@ -115,7 +117,7 @@ export function CalendarSettingsCard({
     setColor(initial.color ?? DEFAULT_AGENDA_COLOR_HEX);
     setRecurrenceRule(initial.recurrenceRule ?? "FREQ=WEEKLY");
     if (initial.schedule) {
-      setDate(initial.schedule.date);
+      setDate(initial.schedule.startDate);
       setIsAllDay(initial.schedule.isAllDay);
       setTime(initial.schedule.time ?? "");
       setEndDate(initial.schedule.endDate ?? "");
@@ -126,7 +128,7 @@ export function CalendarSettingsCard({
   }, [
     initial.color,
     initial.recurrenceRule,
-    initial.schedule?.date,
+    initial.schedule?.startDate,
     initial.schedule?.time,
     initial.schedule?.durationMinutes,
     initial.schedule?.isAllDay,
@@ -174,7 +176,7 @@ export function CalendarSettingsCard({
     onSave({
       color: next.color,
       recurrenceRule: next.recurrenceRule,
-      date: next.date,
+      startDate: next.date,
       isAllDay: next.isAllDay,
       time: next.isAllDay ? null : next.time,
       durationMinutes: next.isAllDay ? null : durationToMinutes(next.durValue, next.durUnit),

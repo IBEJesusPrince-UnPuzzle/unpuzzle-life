@@ -148,10 +148,10 @@ export function AgendaTaskModal({
     if (!open) return;
     if (editing) {
       setTitle(editing.title ?? "");
-      setDate(editing.date);
+      setDate(editing.startDate);
       // Seed end-date from the row only when it differs from start (otherwise
       // leave blank so the UI shows "single-day" by default).
-      const seedEnd = editing.endDate && editing.endDate !== editing.date ? editing.endDate : "";
+      const seedEnd = editing.endDate && editing.endDate !== editing.startDate ? editing.endDate : "";
       setEndDate(seedEnd);
       setIsAllDay(editing.isAllDay === 1);
       setTime(editing.time ?? "09:00");
@@ -161,7 +161,7 @@ export function AgendaTaskModal({
       setColor(editing.color ?? DEFAULT_AGENDA_COLOR_HEX);
       setNotes(editing.notes ?? "");
       // PR #14 — recurrence seeding.
-      const matched = ruleToOption(editing.recurrenceRule ?? null, editing.date);
+      const matched = ruleToOption(editing.recurrenceRule ?? null, editing.startDate);
       if (matched === null) {
         // Existing rule doesn't match any standard → hold it in a snapshot
         // and surface a read-only "Custom (…)" dropdown item.
@@ -210,7 +210,7 @@ export function AgendaTaskModal({
     const rule = activeRule();
     return {
       title: title.trim() || null,
-      date,
+      startDate: date,
       endDate: payloadEndDate,
       isAllDay: isAllDay ? 1 : 0,
       time: isAllDay ? null : time,
@@ -264,7 +264,7 @@ export function AgendaTaskModal({
       // Recurring branches — scope is required by the time we get here.
       if (!editing || !scope) return;
       const masterId = editing.masterId ?? editing.id;
-      const occurrenceDate = editing.date;
+      const occurrenceDate = editing.startDate;
 
       if (scope === "this") {
         // Override creation: a NEW row, seriesId points back to the master,
@@ -291,16 +291,16 @@ export function AgendaTaskModal({
         // field is seeded from the virtual occurrence (e.g. May 25), NOT the
         // master's start date (May 11). If the user didn't change the date,
         // forwarding it would shift the entire series. So in scope=all on a
-        // virtual instance, we strip `date` (and the dependent `endDate`)
+        // virtual instance, we strip startDate (and the dependent endDate)
         // from the patch when the user hasn't modified them — detected by
         // comparing current form state to the editing target's seed.
         // Google Calendar disables the date field outright in this scenario;
         // this preserves intent without locking the user out.
         const payload = buildPayload();
         const stripDateFields =
-          mode === "edit-virtual" && date === editing.date;
+          mode === "edit-virtual" && date === editing.startDate;
         if (stripDateFields) {
-          delete (payload as any).date;
+          delete (payload as any).startDate;
           delete (payload as any).endDate;
         }
         const r = await apiRequest("PATCH", `/api/agenda-tasks/${masterId}`, payload);
@@ -354,7 +354,7 @@ export function AgendaTaskModal({
 
       if (!scope) return;
       const masterId = editing.masterId ?? editing.id;
-      const occurrenceDate = editing.date;
+      const occurrenceDate = editing.startDate;
 
       if (scope === "this") {
         // Cancellation override row — hides this single virtual instance.
@@ -362,7 +362,7 @@ export function AgendaTaskModal({
         const payload = {
           origin: "standalone" as const,
           title: null,
-          date: occurrenceDate,
+          startDate: occurrenceDate,
           isAllDay: 0,
           color: DEFAULT_AGENDA_COLOR_HEX,
           seriesId: masterId,
@@ -576,7 +576,7 @@ export function AgendaTaskModal({
         title: title.trim(),
         color: base.color ?? null,
         recurrenceRule: rule,
-        date: base.date,
+        startDate: base.startDate,
         time: base.time,
         durationMinutes: base.durationMinutes,
         isAllDay: base.isAllDay === 1,

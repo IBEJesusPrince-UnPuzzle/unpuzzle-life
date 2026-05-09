@@ -122,13 +122,13 @@ function OverlayBody({
         const c = findColor(it.color);
         const isAD = it.isAllDay === 1;
         return (
-          <li key={`o-${it.id}-${it.date}-${it.time ?? "ad"}`}>
+          <li key={`o-${it.id}-${it.startDate}-${it.time ?? "ad"}`}>
             <button
               type="button"
               onClick={() => onSelect(it)}
               className="w-full text-left rounded-md px-3 py-2 hover:opacity-95 transition-opacity"
               style={{ backgroundColor: c.softHex }}
-              data-testid={`month-day-overlay-row-${it.id}-${it.date}`}
+              data-testid={`month-day-overlay-row-${it.id}-${it.startDate}`}
             >
               <div className="flex items-center gap-2">
                 {!isAD && it.time && (

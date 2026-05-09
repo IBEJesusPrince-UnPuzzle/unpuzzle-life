@@ -67,7 +67,7 @@ export function packAllDay(
   for (let i = 0; i < days.length; i++) dayIndex.set(days[i], i);
 
   // Step 1 — keep only all-day events that overlap the window. Compute their
-  // logical start/end ISO (using endDate when present, else date).
+  // logical start/end ISO (using endDate when present, else startDate).
   const overlapping: {
     item: Item;
     startIso: string;
@@ -76,8 +76,8 @@ export function packAllDay(
 
   for (const it of items) {
     if (it.isAllDay !== 1) continue;
-    const startIso = it.date;
-    const endIso = it.endDate && it.endDate >= it.date ? it.endDate : it.date;
+    const startIso = it.startDate;
+    const endIso = it.endDate && it.endDate >= it.startDate ? it.endDate : it.startDate;
     // Skip anything fully outside the window.
     if (endIso < winStart) continue;
     if (startIso > winEnd) continue;

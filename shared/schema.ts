@@ -412,12 +412,17 @@ export const agendaTasks = sqliteTable("agenda_tasks", {
   //   COALESCE(agenda_tasks.title, responsibilities.name, project_tasks.title)
   // Approved Phase 3a, same pattern as original_date in Phase 2.
   title: text("title"),
-  date: text("date").notNull(), // YYYY-MM-DD (start date for all-day events)
+  // PR #24 — Renamed from `date` to `startDate` (SQL column `start_date`).
+  // The legacy SQL column `date` still exists on the row and is dual-written
+  // by all insert/update sites for one-PR rollback safety. A follow-up PR will
+  // drop it once readers are confirmed migrated. Drizzle does not bind to it.
+  // YYYY-MM-DD (start date for all-day events).
+  startDate: text("start_date").notNull(),
   // Phase 3c — multi-day all-day events. Nullable; only meaningful when
-  // isAllDay = 1. When set, must be >= date. NULL means single-day all-day
-  // (date == endDate effectively). Always NULL on timed rows.
+  // isAllDay = 1. When set, must be >= startDate. NULL means single-day all-day
+  // (startDate == endDate effectively). Always NULL on timed rows.
   // Window-merge (§22a) overlap test for all-day rows is:
-  //   date <= windowEnd AND COALESCE(endDate, date) >= windowStart
+  //   startDate <= windowEnd AND COALESCE(endDate, startDate) >= windowStart
   // Recurrence: virtual instances inherit the master's span (same number of
   // days difference); see expandMasterToWindow in storage.ts.
   endDate: text("end_date"),
@@ -508,7 +513,8 @@ export const insertResponsibilitySchema = createInsertSchema(responsibilities).o
 //   endDate           YYYY-MM-DD | null   only honored when isAllDay
 //   recurrenceRule    RRULE fragment      required on create
 export const responsibilityScheduleSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
+  // PR #24 — renamed from `date` to mirror agenda_tasks.start_date.
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Start date must be YYYY-MM-DD"),
   isAllDay: z.boolean().default(false),
   time: z.string().regex(/^\d{2}:\d{2}$/, "Time must be HH:MM").nullable(),
   durationMinutes: z.number().int().positive().nullable(),
@@ -534,7 +540,8 @@ export const convertTaskToResponsibilitySchema = z.object({
     title: z.string().trim().min(1, "Task name is required"),
     color: z.string().nullable(),
     recurrenceRule: z.string().min(1, "Recurrence rule is required"),
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
+    // PR #24 — renamed from `date` to mirror agenda_tasks.start_date.
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Start date must be YYYY-MM-DD"),
     time: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
     durationMinutes: z.number().int().positive().nullable(),
     isAllDay: z.boolean(),
@@ -553,7 +560,8 @@ export const convertTaskToResponsibilitySchema = z.object({
 // PATCH variant — every field optional, no cross-field requirement.
 // The server will only patch fields that are actually present.
 export const responsibilitySchedulePatchSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  // PR #24 — renamed from `date` to mirror agenda_tasks.start_date.
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   isAllDay: z.boolean().optional(),
   time: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
   durationMinutes: z.number().int().positive().nullable().optional(),

@@ -21,13 +21,17 @@ export interface MasterRow {
   seriesId: number | null;
   recurrenceRule: string | null;
   recurrenceEndDate: string | null; // YYYY-MM-DD, exclusive upper bound for instance generation
-  date: string; // YYYY-MM-DD — anchor (DTSTART) for the series
+  // PR #24 — renamed from `date` to mirror agenda_tasks.start_date.
+  startDate: string; // YYYY-MM-DD — anchor (DTSTART) for the series
 }
 
 export interface ExpandedInstance {
   masterId: number;
   seriesId: number | null;
-  date: IsoDate; // the virtual instance date (also serves as original_date for any override)
+  // PR #24 — renamed from `date` for consistency with the agenda task
+  // shape callers materialize from this. Semantically it's the virtual
+  // instance's start date (also serves as original_date for any override).
+  startDate: IsoDate;
 }
 
 // Convert YYYY-MM-DD → midnight UTC Date (so we never roll a day across timezones).
@@ -79,13 +83,13 @@ export function expandMaster(
   windowEnd: IsoDate,
 ): ExpandedInstance[] {
   if (!master.recurrenceRule) {
-    // Non-recurring master = a single instance on master.date.
-    if (master.date >= windowStart && master.date <= windowEnd) {
-      return [{ masterId: master.id, seriesId: master.seriesId, date: master.date }];
+    // Non-recurring master = a single instance on master.startDate.
+    if (master.startDate >= windowStart && master.startDate <= windowEnd) {
+      return [{ masterId: master.id, seriesId: master.seriesId, startDate: master.startDate }];
     }
     return [];
   }
-  const rule = buildRule(master.date, master.recurrenceRule, master.recurrenceEndDate);
+  const rule = buildRule(master.startDate, master.recurrenceRule, master.recurrenceEndDate);
   const start = isoToUtcDate(windowStart);
   const end = isoToUtcDate(windowEnd);
   end.setUTCHours(23, 59, 59, 999);
@@ -93,7 +97,7 @@ export function expandMaster(
   return dates.map((d) => ({
     masterId: master.id,
     seriesId: master.seriesId,
-    date: utcDateToIso(d),
+    startDate: utcDateToIso(d),
   }));
 }
 

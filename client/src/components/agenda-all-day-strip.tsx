@@ -137,7 +137,7 @@ export function AgendaAllDayStrip({
             return (
               <button
                 type="button"
-                key={`ad-${p.item.id}-${p.item.date}-${p.row}-${p.startCol}`}
+                key={`ad-${p.item.id}-${p.item.startDate}-${p.row}-${p.startCol}`}
                 onClick={() => onSelect(p.item)}
                 className={`text-left ${radius} ${leftRadius} ${rightRadius} px-1 truncate hover:opacity-95 ${textSize} font-medium`}
                 style={{
@@ -150,7 +150,7 @@ export function AgendaAllDayStrip({
                   marginLeft: p.clipLeft ? 0 : 1,
                   marginRight: p.clipRight ? 0 : 1,
                 }}
-                data-testid={`${testIdPrefix}-allday-bar-${p.item.id}-${p.item.date}`}
+                data-testid={`${testIdPrefix}-allday-bar-${p.item.id}-${p.item.startDate}`}
               >
                 {p.item.title || "(untitled)"}
               </button>

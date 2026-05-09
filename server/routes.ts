@@ -74,7 +74,7 @@ function validateAgendaRecurrenceEnd(body: Record<string, unknown>): string | nu
     return "recurrenceEndDate must be in YYYY-MM-DD format";
   }
 
-  const startDate = body.date;
+  const startDate = body.startDate;
   if (typeof startDate === "string" && dateRe.test(startDate)) {
     // 1-year cap. JS Date math handles leap years correctly: setting
     // "YYYY-MM-DD" with month-day Feb 29 → next year's Feb 28 (still
@@ -101,7 +101,8 @@ function validateAgendaEndDate(body: Record<string, unknown>): string | null {
 
   const endDate = body.endDate;
   const isAllDay = body.isAllDay;
-  const date = body.date;
+  // PR #24 — reads `startDate` (renamed from `date`).
+  const startDate = body.startDate;
 
   // Timed event: endDate must be null/undefined.
   if (isAllDay === 0 || isAllDay === false) {
@@ -111,13 +112,13 @@ function validateAgendaEndDate(body: Record<string, unknown>): string | null {
     return null;
   }
 
-  // All-day event with explicit endDate: must be valid YYYY-MM-DD and >= date.
+  // All-day event with explicit endDate: must be valid YYYY-MM-DD and >= startDate.
   if (endDate !== undefined && endDate !== null && endDate !== "") {
     if (typeof endDate !== "string" || !dateRe.test(endDate)) {
       return "endDate must be in YYYY-MM-DD format";
     }
-    if (typeof date === "string" && dateRe.test(date) && endDate < date) {
-      return "endDate must be >= date";
+    if (typeof startDate === "string" && dateRe.test(startDate) && endDate < startDate) {
+      return "endDate must be >= startDate";
     }
   }
   return null;
@@ -1230,11 +1231,11 @@ export function registerRoutes(server: Server, app: Express) {
     // PATCH-time recurrence-end enforcement: only run when the patch
     // touches recurrenceRule (otherwise we'd reject patches that don't
     // care about recurrence). When rule is being SET, also require
-    // recurrenceEndDate AND date in the body (caller's responsibility).
+    // recurrenceEndDate AND startDate in the body (caller's responsibility).
     if (body.recurrenceRule !== undefined) {
       // For the cap check we need start date. Pull from body, else fail
-      // soft (storage will use the row's existing date — but the modal
-      // always sends date alongside, so this branch is just safety).
+      // soft (storage will use the row's existing startDate — but the modal
+      // always sends startDate alongside, so this branch is just safety).
       const recEndErr = validateAgendaRecurrenceEnd(body);
       if (recEndErr) return res.status(400).json({ error: recEndErr });
     }

@@ -184,7 +184,7 @@ export function AgendaThreeDayView({ date, onSelect }: Props) {
           <ThreeDayColumn
             key={d}
             iso={d}
-            items={items.filter((it) => it.date === d)}
+            items={items.filter((it) => it.startDate === d)}
             onSelect={onSelect}
           />
         ))}
@@ -248,7 +248,7 @@ function ThreeDayColumn({
         const leftPct = p.lane * widthPct;
         return (
           <button
-            key={`${it.id}-${it.date}-${p.startMin}`}
+            key={`${it.id}-${it.startDate}-${p.startMin}`}
             onClick={() => onSelect(it)}
             className="absolute rounded-sm text-left overflow-hidden hover:opacity-95 transition-opacity border border-white/40"
             style={{
@@ -258,7 +258,7 @@ function ThreeDayColumn({
               width: `calc(${widthPct}% - 2px)`,
               backgroundColor: c.softHex,
             }}
-            data-testid={`threeday-chip-${it.id}-${it.date}`}
+            data-testid={`threeday-chip-${it.id}-${it.startDate}`}
           >
             <div className="px-1 py-0.5">
               {/* Vertical text wrap (Phase 3c): titles wrap onto multiple
