@@ -181,10 +181,22 @@ export function SupportSection({
         name: string;
         relationshipType: RelationshipType;
       } => !!x)
+      // PR #25 lock: marked-for-removal items DISAPPEAR from the bundle and
+      // surface in MarkedForRemovalSection. Single source of truth.
+      .filter(r => !markedForRemoval.has(`${keyPrefix}:${supportType}:${r.linkId}`))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [links, envItems, fkField]);
+  }, [links, envItems, fkField, markedForRemoval, keyPrefix, supportType]);
 
-  const linkedEnvIds = linkedRows.map(r => r.envId);
+  // Exclude env ids that have ANY existing junction row (marked or not), so
+  // the picker can't add a duplicate while a row is in the removal pen.
+  const linkedEnvIds = useMemo(() => {
+    const out: number[] = [];
+    for (const link of links) {
+      const id = link[fkField] as number | undefined;
+      if (typeof id === "number") out.push(id);
+    }
+    return out;
+  }, [links, fkField]);
 
   const updateRelationship = useMutation({
     mutationFn: async (input: { linkId: number; relationshipType: RelationshipType }) => {
@@ -230,9 +242,11 @@ export function SupportSection({
   function handleMarkRemove(linkId: number) {
     markForRemoval(`${keyPrefix}:${supportType}:${linkId}`);
   }
-  function handleUndoRemove(linkId: number) {
-    undoRemoval(`${keyPrefix}:${supportType}:${linkId}`);
-  }
+  // PR #25: undo for marked rows lives in MarkedForRemovalSection, which
+  // calls undoRemoval(key) directly. SupportSection no longer needs a
+  // local undo handler; `undoRemoval` prop is kept on the interface for
+  // backwards compatibility (other callers may still pass it).
+  void undoRemoval;
 
   return (
     <Card data-testid={`card-support-${supportType}`}>
@@ -276,8 +290,9 @@ export function SupportSection({
             </p>
           )}
           {linkedRows.map(row => {
-            const key = `${keyPrefix}:${supportType}:${row.linkId}`;
-            const marked = markedForRemoval.has(key);
+            // PR #25: marked rows are filtered out of linkedRows entirely
+            // (single source of truth = MarkedForRemovalSection). Anything
+            // we reach here is a live, un-marked row.
             // Test ids stay parent-aware so existing resp-edit selectors keep working.
             const rowTestId =
               parentType === "project"
@@ -286,57 +301,32 @@ export function SupportSection({
             return (
               <div
                 key={row.linkId}
-                className={`flex items-center gap-2 text-sm py-1.5 px-2 rounded border ${
-                  marked
-                    ? "bg-muted text-muted-foreground"
-                    : "bg-background"
-                }`}
+                className="flex items-center gap-2 text-sm py-1.5 px-2 rounded border bg-background"
                 data-testid={rowTestId}
               >
-                <span className={`flex-1 truncate ${marked ? "line-through" : ""}`}>
-                  {row.name}
-                </span>
-                {marked ? (
-                  <>
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      marked
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-2 text-xs"
-                      onClick={() => handleUndoRemove(row.linkId)}
-                      data-testid={`button-undo-remove-support-${supportType}-${row.linkId}`}
-                    >
-                      Undo
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <RelationshipDropdown
-                      value={row.relationshipType}
-                      disabled={updateRelationship.isPending}
-                      onChange={next => {
-                        if (next === row.relationshipType) return;
-                        updateRelationship.mutate({
-                          linkId: row.linkId,
-                          relationshipType: next,
-                        });
-                      }}
-                      testId={`select-relationship-${supportType}-${row.linkId}`}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => handleMarkRemove(row.linkId)}
-                      data-testid={`button-remove-support-${supportType}-${row.linkId}`}
-                      aria-label={`Remove ${row.name}`}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </Button>
-                  </>
-                )}
+                <span className="flex-1 truncate">{row.name}</span>
+                <RelationshipDropdown
+                  value={row.relationshipType}
+                  disabled={updateRelationship.isPending}
+                  onChange={next => {
+                    if (next === row.relationshipType) return;
+                    updateRelationship.mutate({
+                      linkId: row.linkId,
+                      relationshipType: next,
+                    });
+                  }}
+                  testId={`select-relationship-${supportType}-${row.linkId}`}
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => handleMarkRemove(row.linkId)}
+                  data-testid={`button-remove-support-${supportType}-${row.linkId}`}
+                  aria-label={`Remove ${row.name}`}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </Button>
               </div>
             );
           })}

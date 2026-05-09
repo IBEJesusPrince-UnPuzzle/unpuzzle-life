@@ -44,6 +44,7 @@ import { Label } from "@/components/ui/label";
 import { Plus, Users as UsersIcon, X, Lock } from "lucide-react";
 import { EditPageHeader } from "@/components/edit-page-header";
 import { EditPageUndoBar } from "@/components/edit-page-undo-bar";
+import { MarkedForRemovalSection } from "@/components/marked-for-removal-section";
 import { useAutosaveDraft } from "@/lib/use-autosave-draft";
 import { RolePicker } from "@/components/role-picker";
 import { SupportSection } from "@/components/support-section";
@@ -672,6 +673,20 @@ export default function ResponsibilityEditPage({
               </p>
             </CardContent>
           </Card>
+        )}
+
+        {/* Marked-for-removal — single source of truth for marked support
+            rows (PR #25). SupportSection now hides marked rows from its
+            bundle; users see + undo them here. Role rows keep their
+            existing inline-marked behavior since roles aren't part of the
+            shared MarkedForRemovalSection contract. */}
+        {!isCreate && id != null && (
+          <MarkedForRemovalSection
+            parentType="responsibility"
+            parentId={id}
+            markedForRemoval={markedForRemoval}
+            undoRemoval={undoRemoval}
+          />
         )}
       </div>
 
