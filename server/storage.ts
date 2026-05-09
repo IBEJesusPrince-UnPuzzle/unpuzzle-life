@@ -13,9 +13,11 @@ import {
   responsibilityRole,
   responsibilityPeople, responsibilityPlaces, responsibilityThings,
   responsibilityProviders, responsibilityConditions,
+  // PR #23 — project↔support junctions (mirror of the responsibility ones).
+  projectPeople, projectPlaces, projectThings, projectProviders, projectConditions,
   projectResponsibility,
   // Phase 2 calendar
-  projectTasks, agendaTasks,
+  projectTasks, projectLinks, agendaTasks,
   type User, type InsertUser,
   type Invitation, type InsertInvitation,
   type Project, type InsertProject,
@@ -37,8 +39,15 @@ import {
   type ResponsibilityThing, type InsertResponsibilityThing,
   type ResponsibilityProvider, type InsertResponsibilityProvider,
   type ResponsibilityCondition, type InsertResponsibilityCondition,
+  // PR #23 project↔support types
+  type ProjectPeople, type InsertProjectPeople,
+  type ProjectPlace, type InsertProjectPlace,
+  type ProjectThing, type InsertProjectThing,
+  type ProjectProvider, type InsertProjectProvider,
+  type ProjectCondition, type InsertProjectCondition,
   type ProjectResponsibility, type InsertProjectResponsibility,
   type ProjectTask, type InsertProjectTask,
+  type ProjectLink, type InsertProjectLink,
   type AgendaTask, type InsertAgendaTask,
 } from "@shared/schema";
 import { expandMaster, isoToUtcDate, utcDateToIso, type MasterRow } from "./recurrence";
@@ -382,6 +391,43 @@ sqlite.exec(`
     is_primary INTEGER NOT NULL DEFAULT 0
   );
 
+  -- PR #23 — project↔support junctions, mirroring responsibility_<type>.
+  CREATE TABLE IF NOT EXISTS project_people (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    person_id INTEGER NOT NULL REFERENCES environment_people(id),
+    relationship_type TEXT NOT NULL DEFAULT 'primary',
+    importance TEXT NOT NULL DEFAULT 'important'
+  );
+  CREATE TABLE IF NOT EXISTS project_places (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    place_id INTEGER NOT NULL REFERENCES environment_places(id),
+    relationship_type TEXT NOT NULL DEFAULT 'primary',
+    importance TEXT NOT NULL DEFAULT 'important'
+  );
+  CREATE TABLE IF NOT EXISTS project_things (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    thing_id INTEGER NOT NULL REFERENCES environment_things(id),
+    relationship_type TEXT NOT NULL DEFAULT 'primary',
+    importance TEXT NOT NULL DEFAULT 'important'
+  );
+  CREATE TABLE IF NOT EXISTS project_providers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    provider_id INTEGER NOT NULL REFERENCES environment_providers(id),
+    relationship_type TEXT NOT NULL DEFAULT 'primary',
+    importance TEXT NOT NULL DEFAULT 'important'
+  );
+  CREATE TABLE IF NOT EXISTS project_conditions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    condition_id INTEGER NOT NULL REFERENCES environment_conditions(id),
+    relationship_type TEXT NOT NULL DEFAULT 'primary',
+    importance TEXT NOT NULL DEFAULT 'important'
+  );
+
   CREATE TABLE IF NOT EXISTS project_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL DEFAULT 1,
@@ -677,6 +723,11 @@ export interface IStorage {
   createProjectTask(userId: number, data: InsertProjectTask): ProjectTask;
   updateProjectTask(userId: number, id: number, data: Partial<InsertProjectTask>): ProjectTask | undefined;
   deleteProjectTask(userId: number, id: number): void;
+
+  // PR #23 — Project related links/files (§10 "Add link" rows)
+  getProjectLinks(userId: number, projectId: number): ProjectLink[];
+  createProjectLink(userId: number, data: InsertProjectLink): ProjectLink;
+  deleteProjectLink(userId: number, id: number): void;
 
   // Phase 2: Agenda tasks (raw rows; no expansion)
   getAgendaTask(userId: number, id: number): AgendaTask | undefined;
@@ -1412,6 +1463,51 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ============================================================
+  // PR #23: PROJECT ↔ SUPPORT JUNCTIONS (mirror of responsibility side)
+  // ============================================================
+  private projSupportTable(supportType: "people" | "places" | "things" | "providers" | "conditions"): any {
+    switch (supportType) {
+      case "people":     return projectPeople;
+      case "places":     return projectPlaces;
+      case "things":     return projectThings;
+      case "providers":  return projectProviders;
+      case "conditions": return projectConditions;
+    }
+  }
+  getProjectSupports(
+    projectId: number,
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+  ): any[] {
+    const t = this.projSupportTable(supportType);
+    return db.select().from(t).where(eq(t.projectId, projectId)).all();
+  }
+  linkProjectSupport(
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+    data: any,
+  ): any {
+    const t = this.projSupportTable(supportType);
+    return db.insert(t).values(data).returning().get();
+  }
+  updateProjectSupportLink(
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+    id: number,
+    data: { relationshipType?: string; importance?: string },
+  ): any {
+    const t = this.projSupportTable(supportType);
+    const updates: any = {};
+    if (data.relationshipType !== undefined) updates.relationshipType = data.relationshipType;
+    if (data.importance !== undefined) updates.importance = data.importance;
+    return db.update(t).set(updates).where(eq(t.id, id)).returning().get();
+  }
+  unlinkProjectSupport(
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+    id: number,
+  ): void {
+    const t = this.projSupportTable(supportType);
+    db.delete(t).where(eq(t.id, id)).run();
+  }
+
+  // ============================================================
   // PHASE 1: PROJECT ↔ RESPONSIBILITY JUNCTION
   // ============================================================
   getProjectResponsibilities(projectId: number): ProjectResponsibility[] {
@@ -1450,6 +1546,20 @@ export class DatabaseStorage implements IStorage {
   }
   deleteProjectTask(userId: number, id: number): void {
     db.delete(projectTasks).where(and(eq(projectTasks.id, id), eq(projectTasks.userId, userId))).run();
+  }
+
+  // PR #23 — Project related links/files
+  getProjectLinks(userId: number, projectId: number): ProjectLink[] {
+    return db.select().from(projectLinks)
+      .where(and(eq(projectLinks.userId, userId), eq(projectLinks.projectId, projectId)))
+      .orderBy(asc(projectLinks.id))
+      .all();
+  }
+  createProjectLink(userId: number, data: InsertProjectLink): ProjectLink {
+    return db.insert(projectLinks).values({ ...data, userId }).returning().get();
+  }
+  deleteProjectLink(userId: number, id: number): void {
+    db.delete(projectLinks).where(and(eq(projectLinks.id, id), eq(projectLinks.userId, userId))).run();
   }
 
   // ============================================================

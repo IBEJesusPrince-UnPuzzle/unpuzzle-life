@@ -15,6 +15,7 @@ import {
   insertEnvironmentProviderSchema,
   insertEnvironmentConditionSchema,
   insertProjectEnvironmentSchema,
+  insertProjectLinkSchema,
   insertResponsibilitySchema,
   responsibilityScheduleSchema,
   responsibilitySchedulePatchSchema,
@@ -183,6 +184,68 @@ function validateProjectTaskDates(body: Record<string, unknown>): string | null 
   return null;
 }
 
+// PR #23 — Project required-dates validator (Date-handling.docx lock).
+// Rules:
+//   - startDate: required at create, must be YYYY-MM-DD
+//   - targetDate: required at create, must be YYYY-MM-DD, ≥ startDate
+//   - endDate: required when status === 'done'; must be YYYY-MM-DD; ≥ startDate;
+//             must be NULL/absent when status !== 'done'
+//
+// `mode` lets callers signal whether they're creating (full body) or patching
+// (subset). On PATCH we only validate the fields actually being changed, plus
+// the status→endDate dependency when status is being transitioned.
+function validateProjectDates(
+  body: Record<string, unknown>,
+  mode: "create" | "patch",
+  existing?: { startDate?: string | null; endDate?: string | null; targetDate?: string | null; status?: string | null },
+): string | null {
+  const startDate = body.startDate ?? existing?.startDate ?? null;
+  const targetDate = body.targetDate ?? existing?.targetDate ?? null;
+  const endDate = body.endDate ?? existing?.endDate ?? null;
+  const status = body.status ?? existing?.status ?? null;
+
+  if (mode === "create") {
+    if (typeof startDate !== "string" || !dateRe22.test(startDate)) {
+      return "startDate is required (YYYY-MM-DD)";
+    }
+    if (typeof targetDate !== "string" || !dateRe22.test(targetDate)) {
+      return "targetDate is required (YYYY-MM-DD)";
+    }
+  } else {
+    if (body.startDate !== undefined && body.startDate !== null && body.startDate !== "") {
+      if (typeof body.startDate !== "string" || !dateRe22.test(body.startDate)) {
+        return "startDate must be in YYYY-MM-DD format";
+      }
+    }
+    if (body.targetDate !== undefined && body.targetDate !== null && body.targetDate !== "") {
+      if (typeof body.targetDate !== "string" || !dateRe22.test(body.targetDate)) {
+        return "targetDate must be in YYYY-MM-DD format";
+      }
+    }
+  }
+  // targetDate must be ≥ startDate when both known.
+  if (typeof startDate === "string" && dateRe22.test(startDate)
+      && typeof targetDate === "string" && dateRe22.test(targetDate)
+      && targetDate < startDate) {
+    return "targetDate must be ≥ startDate";
+  }
+  // endDate: required iff status === 'done'.
+  if (status === "done") {
+    if (typeof endDate !== "string" || !dateRe22.test(endDate)) {
+      return "endDate is required when status is 'done' (YYYY-MM-DD)";
+    }
+    if (typeof startDate === "string" && dateRe22.test(startDate) && endDate < startDate) {
+      return "endDate must be ≥ startDate";
+    }
+  } else {
+    // endDate must not be set unless status === 'done'.
+    if (body.endDate !== undefined && body.endDate !== null && body.endDate !== "") {
+      return "endDate may only be set when status is 'done'";
+    }
+  }
+  return null;
+}
+
 function isSupportType(s: string): s is SupportTypeParam {
   return (SUPPORT_TYPES as readonly string[]).includes(s);
 }
@@ -207,6 +270,9 @@ export function registerRoutes(server: Server, app: Express) {
     const data = { ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
     const parsed = insertProjectSchema.safeParse(data);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    // PR #23 — enforce Date-handling.docx required-dates lock at create.
+    const dateErr = validateProjectDates(parsed.data as Record<string, unknown>, "create");
+    if (dateErr) return res.status(400).json({ error: dateErr });
     res.json(storage.createProject(userId, parsed.data));
   });
   // PR #21 — PATCH validator. Accepts any subset of project columns. Enum-valued
@@ -242,6 +308,11 @@ export function registerRoutes(server: Server, app: Express) {
       if (!existing) return res.status(404).json({ error: "Not found" });
       return res.json(existing);
     }
+    // PR #23 — enforce Date-handling.docx required-dates lock on patch.
+    const existing = storage.getProjects(userId).find(p => p.id === Number(req.params.id));
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    const dateErr = validateProjectDates(parsed.data as Record<string, unknown>, "patch", existing);
+    if (dateErr) return res.status(400).json({ error: dateErr });
     const result = storage.updateProject(userId, Number(req.params.id), parsed.data);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
@@ -249,6 +320,33 @@ export function registerRoutes(server: Server, app: Express) {
   app.delete("/api/projects/:id", (req, res) => {
     const userId = getEffectiveUserId(req);
     storage.deleteProject(userId, Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // PROJECT LINKS (PR #23 — related links for project edit page)
+  // ============================================================
+  // GET    /api/project-links?projectId=N  — list links for a project
+  // POST   /api/project-links              — create { projectId, label, url }
+  // DELETE /api/project-links/:id          — remove a single link
+  app.get("/api/project-links", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const projectId = Number(req.query.projectId);
+    if (!Number.isFinite(projectId) || projectId <= 0) {
+      return res.status(400).json({ error: "projectId query param is required" });
+    }
+    res.json(storage.getProjectLinks(userId, projectId));
+  });
+  app.post("/api/project-links", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const data = { ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
+    const parsed = insertProjectLinkSchema.safeParse(data);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createProjectLink(userId, parsed.data));
+  });
+  app.delete("/api/project-links/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    storage.deleteProjectLink(userId, Number(req.params.id));
     res.json({ ok: true });
   });
 
@@ -872,6 +970,49 @@ export function registerRoutes(server: Server, app: Express) {
     const { type, linkId } = req.params;
     if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
     storage.unlinkResponsibilitySupport(type, Number(linkId));
+    res.json({ ok: true });
+  });
+
+  // ----- Project ↔ Support junctions (PR #23) -----
+  app.get("/api/projects/:id/support/:type", (req, res) => {
+    const { type, id } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    res.json(storage.getProjectSupports(Number(id), type));
+  });
+  app.post("/api/projects/:id/support/:type", (req, res) => {
+    const { type, id } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    const fkField = supportFkField[type];
+    const fkValue = req.body?.[fkField];
+    if (typeof fkValue !== "number") {
+      return res.status(400).json({ error: `${fkField} (number) is required` });
+    }
+    const validationErr = validateRelImp(req.body);
+    if (validationErr) return res.status(400).json({ error: validationErr });
+    const data: any = {
+      projectId: Number(id),
+      [fkField]: fkValue,
+    };
+    if (req.body.relationshipType !== undefined) data.relationshipType = req.body.relationshipType;
+    if (req.body.importance !== undefined) data.importance = req.body.importance;
+    res.json(storage.linkProjectSupport(type, data));
+  });
+  app.patch("/api/projects/:projectId/support/:type/:linkId", (req, res) => {
+    const { type, linkId } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    const validationErr = validateRelImp(req.body);
+    if (validationErr) return res.status(400).json({ error: validationErr });
+    const result = storage.updateProjectSupportLink(type, Number(linkId), {
+      relationshipType: req.body.relationshipType,
+      importance: req.body.importance,
+    });
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/projects/:projectId/support/:type/:linkId", (req, res) => {
+    const { type, linkId } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    storage.unlinkProjectSupport(type, Number(linkId));
     res.json({ ok: true });
   });
 
