@@ -71,15 +71,31 @@ interface EnvItem {
   name: string;
 }
 
+// Parent context for the picker. PR #23 made this parent-agnostic so the
+// same picker drives both Responsibility and Project edit pages. Existing
+// call sites that pass `responsibilityId` continue to work unchanged because
+// `parentType` defaults to "responsibility" and `parentId` falls back to
+// `responsibilityId`.
+type ParentType = "responsibility" | "project";
+
 interface EnvPickerProps {
-  responsibilityId: number;
+  /** @deprecated Pass parentType="responsibility" + parentId instead. */
+  responsibilityId?: number;
+  parentType?: ParentType;
+  parentId?: number;
   supportType: SupportType;
-  // Env-item ids already linked to this responsibility (filtered out).
+  // Env-item ids already linked to this parent (filtered out).
   excludeIds: number[];
   // Closes the picker.
   onClose: () => void;
   // Called after a successful add (existing or new).
   onAdded: () => void;
+}
+
+function parentBasePath(parentType: ParentType, parentId: number): string {
+  return parentType === "project"
+    ? `/api/projects/${parentId}`
+    : `/api/responsibilities/${parentId}`;
 }
 
 // Server error bodies look like `409: {"error":"…"}` after the throw helper
@@ -99,12 +115,18 @@ function parseServerError(err: Error, fallback: string): string {
 
 export function EnvPicker({
   responsibilityId,
+  parentType = "responsibility",
+  parentId,
   supportType,
   excludeIds,
   onClose,
   onAdded,
 }: EnvPickerProps) {
   const config = SUPPORT_CONFIG[supportType];
+  // Resolve parent: explicit parentId wins, else fall back to responsibilityId.
+  const resolvedParentId = parentId ?? responsibilityId ?? 0;
+  const basePath = parentBasePath(parentType, resolvedParentId);
+  const linksKey = `${basePath}/support/${supportType}`;
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -142,7 +164,7 @@ export function EnvPicker({
     mutationFn: async (envId: number) => {
       await apiRequest(
         "POST",
-        `/api/responsibilities/${responsibilityId}/support/${supportType}`,
+        linksKey,
         { [config.fkField]: envId },
       );
     },
@@ -166,7 +188,7 @@ export function EnvPicker({
       const created = (await res.json()) as EnvItem;
       await apiRequest(
         "POST",
-        `/api/responsibilities/${responsibilityId}/support/${supportType}`,
+        linksKey,
         { [config.fkField]: created.id },
       );
       return created;
@@ -183,7 +205,7 @@ export function EnvPicker({
   async function handleAddExisting(envId: number) {
     await linkSupport.mutateAsync(envId);
     queryClient.invalidateQueries({
-      queryKey: [`/api/responsibilities/${responsibilityId}/support/${supportType}`],
+      queryKey: [linksKey],
     });
     setQuery("");
     onAdded();
@@ -195,7 +217,7 @@ export function EnvPicker({
     await createAndLink.mutateAsync(trimmed);
     queryClient.invalidateQueries({ queryKey: [config.envEndpoint] });
     queryClient.invalidateQueries({
-      queryKey: [`/api/responsibilities/${responsibilityId}/support/${supportType}`],
+      queryKey: [linksKey],
     });
     setQuery("");
     onAdded();

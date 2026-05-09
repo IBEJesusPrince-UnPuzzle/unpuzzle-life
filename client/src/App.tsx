@@ -15,6 +15,7 @@ import ReviewPage from "@/pages/review";
 import DataPage from "@/pages/data";
 import ProjectDetailPage from "@/pages/project-detail";
 import ProjectsPage from "@/pages/projects";
+import ProjectEditPage from "@/pages/project-edit";
 import AuthPage, { RegisterPage } from "@/pages/auth-page";
 import AdminPage from "@/pages/admin";
 import AgendaPage from "@/pages/agenda";
@@ -32,6 +33,15 @@ function ProjectDetailRoute({ params }: { params: { id?: string } }) {
   const id = Number(params?.id);
   if (!id || isNaN(id)) return <NotFound />;
   return <ProjectDetailPage id={id} />;
+}
+
+// PR #23 — /projects/:id is the v2 edit page entry point. The legacy detail
+// view stays mounted at a separate path so existing in-app links still
+// resolve while the v2 work continues.
+function ProjectIdRedirect({ params }: { params: { id?: string } }) {
+  const id = params?.id;
+  if (!id) return <NotFound />;
+  return <Redirect to={`/projects/${id}/edit`} />;
 }
 
 // Old /roles routes redirect to /support (sidebar rename per addendum A1).
@@ -63,7 +73,9 @@ function AppRouter() {
       <Route path="/roles" component={RedirectRoles} />
       <Route path="/roles/:id" component={RedirectRoleId} />
       <Route path="/projects" component={ProjectsPage} />
-      <Route path="/projects/:id" component={ProjectDetailRoute} />
+      <Route path="/projects/:id/edit" component={ProjectEditPage} />
+      <Route path="/projects/:id/legacy" component={ProjectDetailRoute} />
+      <Route path="/projects/:id" component={ProjectIdRedirect} />
       <Route path="/review" component={ReviewPage} />
       <Route path="/data" component={DataPage} />
       <Route path="/inbox" component={InboxPage} />

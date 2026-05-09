@@ -48,7 +48,9 @@ import type { RelationshipType } from "@shared/schema";
 // type must be parameterized.
 interface JunctionRow {
   id: number;
-  responsibilityId: number;
+  // Either responsibilityId (for resp junctions) or projectId (for project junctions).
+  responsibilityId?: number;
+  projectId?: number;
   relationshipType: RelationshipType;
   importance: string;
   // Plus exactly one of: personId / placeId / thingId / providerId / conditionId
@@ -61,8 +63,18 @@ interface EnvItem {
   name: string;
 }
 
+// Parent context for the section. PR #23 made this parent-agnostic so the
+// same section drives both Responsibility and Project edit pages. Existing
+// call sites that pass `responsibilityId` continue to work unchanged because
+// `parentType` defaults to "responsibility" and `parentId` falls back to
+// `responsibilityId`.
+type ParentType = "responsibility" | "project";
+
 interface SupportSectionProps {
-  responsibilityId: number;
+  /** @deprecated Pass parentType="responsibility" + parentId instead. */
+  responsibilityId?: number;
+  parentType?: ParentType;
+  parentId?: number;
   supportType: SupportType;
   // Card heading, e.g. "People", "Places".
   title: string;
@@ -74,6 +86,19 @@ interface SupportSectionProps {
   markedForRemoval: Set<string>;
   markForRemoval: (key: string) => void;
   undoRemoval: (key: string) => void;
+}
+
+function parentBasePath(parentType: ParentType, parentId: number): string {
+  return parentType === "project"
+    ? `/api/projects/${parentId}`
+    : `/api/responsibilities/${parentId}`;
+}
+
+function removalKeyPrefix(parentType: ParentType): string {
+  // Marked-for-removal keys must be distinct per parent so the parent page's
+  // flush regex (resp-edit uses /^resp-support:.../, proj-edit uses /^proj-support:.../)
+  // doesn't cross-fire.
+  return parentType === "project" ? "proj-support" : "resp-support";
 }
 
 const FK_FIELD: Record<SupportType, string> = {
@@ -107,6 +132,8 @@ function parseServerError(err: Error, fallback: string): string {
 
 export function SupportSection({
   responsibilityId,
+  parentType = "responsibility",
+  parentId,
   supportType,
   title,
   helperLine,
@@ -120,9 +147,14 @@ export function SupportSection({
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const fkField = FK_FIELD[supportType];
+  // Resolve parent: explicit parentId wins, else fall back to responsibilityId.
+  const resolvedParentId = parentId ?? responsibilityId ?? 0;
+  const basePath = parentBasePath(parentType, resolvedParentId);
+  const linksKey = `${basePath}/support/${supportType}`;
+  const keyPrefix = removalKeyPrefix(parentType);
 
   const { data: links = [] } = useQuery<JunctionRow[]>({
-    queryKey: [`/api/responsibilities/${responsibilityId}/support/${supportType}`],
+    queryKey: [linksKey],
   });
   const { data: envItems = [] } = useQuery<EnvItem[]>({
     queryKey: [ENV_ENDPOINT[supportType]],
@@ -158,15 +190,13 @@ export function SupportSection({
     mutationFn: async (input: { linkId: number; relationshipType: RelationshipType }) => {
       await apiRequest(
         "PATCH",
-        `/api/responsibilities/${responsibilityId}/support/${supportType}/${input.linkId}`,
+        `${linksKey}/${input.linkId}`,
         { relationshipType: input.relationshipType },
       );
     },
     onMutate: async input => {
       // Optimistic update so the dropdown feels instant.
-      const queryKey = [
-        `/api/responsibilities/${responsibilityId}/support/${supportType}`,
-      ];
+      const queryKey = [linksKey];
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<JunctionRow[]>(queryKey);
       if (previous) {
@@ -182,9 +212,7 @@ export function SupportSection({
       return { previous };
     },
     onError: (err: Error, _input, ctx) => {
-      const queryKey = [
-        `/api/responsibilities/${responsibilityId}/support/${supportType}`,
-      ];
+      const queryKey = [linksKey];
       if (ctx?.previous) queryClient.setQueryData(queryKey, ctx.previous);
       toast({
         variant: "destructive",
@@ -194,16 +222,16 @@ export function SupportSection({
     },
     onSettled: () => {
       queryClient.invalidateQueries({
-        queryKey: [`/api/responsibilities/${responsibilityId}/support/${supportType}`],
+        queryKey: [linksKey],
       });
     },
   });
 
   function handleMarkRemove(linkId: number) {
-    markForRemoval(`resp-support:${supportType}:${linkId}`);
+    markForRemoval(`${keyPrefix}:${supportType}:${linkId}`);
   }
   function handleUndoRemove(linkId: number) {
-    undoRemoval(`resp-support:${supportType}:${linkId}`);
+    undoRemoval(`${keyPrefix}:${supportType}:${linkId}`);
   }
 
   return (
@@ -218,7 +246,8 @@ export function SupportSection({
 
         {pickerOpen ? (
           <EnvPicker
-            responsibilityId={responsibilityId}
+            parentType={parentType}
+            parentId={resolvedParentId}
             supportType={supportType}
             excludeIds={linkedEnvIds}
             onClose={() => setPickerOpen(false)}
@@ -247,8 +276,13 @@ export function SupportSection({
             </p>
           )}
           {linkedRows.map(row => {
-            const key = `resp-support:${supportType}:${row.linkId}`;
+            const key = `${keyPrefix}:${supportType}:${row.linkId}`;
             const marked = markedForRemoval.has(key);
+            // Test ids stay parent-aware so existing resp-edit selectors keep working.
+            const rowTestId =
+              parentType === "project"
+                ? `row-proj-support-${supportType}-${row.linkId}`
+                : `row-resp-support-${supportType}-${row.linkId}`;
             return (
               <div
                 key={row.linkId}
@@ -257,7 +291,7 @@ export function SupportSection({
                     ? "bg-muted text-muted-foreground"
                     : "bg-background"
                 }`}
-                data-testid={`row-resp-support-${supportType}-${row.linkId}`}
+                data-testid={rowTestId}
               >
                 <span className={`flex-1 truncate ${marked ? "line-through" : ""}`}>
                   {row.name}

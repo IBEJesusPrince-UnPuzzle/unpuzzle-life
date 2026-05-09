@@ -275,6 +275,52 @@ export const responsibilityConditions = sqliteTable("responsibility_conditions",
   importance: text("importance").notNull().default("important"),
 });
 
+// PR #23 — PROJECT ↔ SUPPORT junctions.
+// Locked model (§1 line 55, §3 line 60): support records are owned by
+// the Support module (environment_*). Both Responsibilities AND Projects
+// LINK to those rows. The link table carries the relationship_type and
+// the parent id. These five tables mirror responsibility_<type> exactly,
+// just with project_id instead of responsibility_id.
+export const projectPeople = sqliteTable("project_people", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  personId: integer("person_id").notNull().references(() => environmentPeople.id),
+  relationshipType: text("relationship_type").notNull().default("primary"),
+  importance: text("importance").notNull().default("important"),
+});
+
+export const projectPlaces = sqliteTable("project_places", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  placeId: integer("place_id").notNull().references(() => environmentPlaces.id),
+  relationshipType: text("relationship_type").notNull().default("primary"),
+  importance: text("importance").notNull().default("important"),
+});
+
+export const projectThings = sqliteTable("project_things", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  thingId: integer("thing_id").notNull().references(() => environmentThings.id),
+  relationshipType: text("relationship_type").notNull().default("primary"),
+  importance: text("importance").notNull().default("important"),
+});
+
+export const projectProviders = sqliteTable("project_providers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  providerId: integer("provider_id").notNull().references(() => environmentProviders.id),
+  relationshipType: text("relationship_type").notNull().default("primary"),
+  importance: text("importance").notNull().default("important"),
+});
+
+export const projectConditions = sqliteTable("project_conditions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  conditionId: integer("condition_id").notNull().references(() => environmentConditions.id),
+  relationshipType: text("relationship_type").notNull().default("primary"),
+  importance: text("importance").notNull().default("important"),
+});
+
 // Projects can stand alone OR link to one primary responsibility plus optional more (§2).
 export const projectResponsibility = sqliteTable("project_responsibility", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -522,6 +568,11 @@ export const insertResponsibilityPlaceSchema = createInsertSchema(responsibility
 export const insertResponsibilityThingSchema = createInsertSchema(responsibilityThings).omit({ id: true });
 export const insertResponsibilityProviderSchema = createInsertSchema(responsibilityProviders).omit({ id: true });
 export const insertResponsibilityConditionSchema = createInsertSchema(responsibilityConditions).omit({ id: true });
+export const insertProjectPeopleSchema = createInsertSchema(projectPeople).omit({ id: true });
+export const insertProjectPlaceSchema = createInsertSchema(projectPlaces).omit({ id: true });
+export const insertProjectThingSchema = createInsertSchema(projectThings).omit({ id: true });
+export const insertProjectProviderSchema = createInsertSchema(projectProviders).omit({ id: true });
+export const insertProjectConditionSchema = createInsertSchema(projectConditions).omit({ id: true });
 export const insertProjectResponsibilitySchema = createInsertSchema(projectResponsibility).omit({ id: true });
 export const insertProjectTaskSchema = createInsertSchema(projectTasks).omit({ id: true });
 export const insertProjectLinkSchema = createInsertSchema(projectLinks).omit({ id: true });
@@ -572,6 +623,17 @@ export type ResponsibilityProvider = typeof responsibilityProviders.$inferSelect
 export type InsertResponsibilityProvider = z.infer<typeof insertResponsibilityProviderSchema>;
 export type ResponsibilityCondition = typeof responsibilityConditions.$inferSelect;
 export type InsertResponsibilityCondition = z.infer<typeof insertResponsibilityConditionSchema>;
+// PR #23 — project↔support junctions
+export type ProjectPeople = typeof projectPeople.$inferSelect;
+export type InsertProjectPeople = z.infer<typeof insertProjectPeopleSchema>;
+export type ProjectPlace = typeof projectPlaces.$inferSelect;
+export type InsertProjectPlace = z.infer<typeof insertProjectPlaceSchema>;
+export type ProjectThing = typeof projectThings.$inferSelect;
+export type InsertProjectThing = z.infer<typeof insertProjectThingSchema>;
+export type ProjectProvider = typeof projectProviders.$inferSelect;
+export type InsertProjectProvider = z.infer<typeof insertProjectProviderSchema>;
+export type ProjectCondition = typeof projectConditions.$inferSelect;
+export type InsertProjectCondition = z.infer<typeof insertProjectConditionSchema>;
 export type ProjectResponsibility = typeof projectResponsibility.$inferSelect;
 export type InsertProjectResponsibility = z.infer<typeof insertProjectResponsibilitySchema>;
 export type ProjectTask = typeof projectTasks.$inferSelect;
