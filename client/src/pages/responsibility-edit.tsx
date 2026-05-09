@@ -2,8 +2,9 @@
 //
 // Slice 1+2 of §11 (the Responsibility edit screen):
 //   - Header (EditPageHeader: Back, Edit responsibility, info, Saved/Done)
+//   - Responsibility name (600ms debounced autosave) — first, since it's
+//     what's being edited
 //   - Role multi-add + Linked Roles list (with Pleasure-keeps-Self enforcement)
-//   - Responsibility name (600ms debounced autosave)
 //   - 5 Support sections (People/Places/Things/Providers/Conditions) with the
 //     universal 4-option relationship dropdown (Path A labels: Critical /
 //     Important / Helpful / Workaround) and an accordion explainer.
@@ -317,6 +318,29 @@ export default function ResponsibilityEditPage({
       />
 
       <div className="flex-1 p-3 space-y-4 max-w-xl mx-auto w-full pb-24">
+        {/* Responsibility name — first, since it's what's being edited. */}
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <div className="space-y-0.5">
+              <Label className="text-xs" htmlFor="resp-name">
+                Responsibility
+              </Label>
+              <p className="text-[11px] italic text-muted-foreground -mt-0.5">
+                -name the ongoing duty, not a one-time task
+              </p>
+            </div>
+            <Input
+              id="resp-name"
+              value={draft.name}
+              onChange={e => setDraft({ ...draft, name: e.target.value })}
+              placeholder="School drop-off"
+              maxLength={120}
+              className="text-sm h-9"
+              data-testid="input-responsibility-name"
+            />
+          </CardContent>
+        </Card>
+
         {/* Role multi-add + Linked Roles (§11) */}
         <Card>
           <CardContent className="p-4 space-y-3">
@@ -329,7 +353,7 @@ export default function ResponsibilityEditPage({
 
             {isCreate ? (
               <p className="text-xs text-muted-foreground italic">
-                Save the responsibility first (start typing a name below),
+                Save the responsibility first (start typing a name above),
                 then come back to link roles.
               </p>
             ) : (
@@ -431,29 +455,6 @@ export default function ResponsibilityEditPage({
                 </div>
               </>
             )}
-          </CardContent>
-        </Card>
-
-        {/* Responsibility name */}
-        <Card>
-          <CardContent className="p-4 space-y-3">
-            <div className="space-y-0.5">
-              <Label className="text-xs" htmlFor="resp-name">
-                Responsibility
-              </Label>
-              <p className="text-[11px] italic text-muted-foreground -mt-0.5">
-                -name the ongoing duty, not a one-time task
-              </p>
-            </div>
-            <Input
-              id="resp-name"
-              value={draft.name}
-              onChange={e => setDraft({ ...draft, name: e.target.value })}
-              placeholder="School drop-off"
-              maxLength={120}
-              className="text-sm h-9"
-              data-testid="input-responsibility-name"
-            />
           </CardContent>
         </Card>
 
