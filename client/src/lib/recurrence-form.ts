@@ -109,6 +109,100 @@ function ordinalWord(n: number): string {
 // Public API
 // =============================================================================
 
+// =============================================================================
+// Date-agnostic options (PR #18c) — for responsibility-level recurrence
+// =============================================================================
+//
+// Responsibilities have no start-date column (they are conceptual recurrence,
+// not instance-tied). The labels here mirror Google Calendar's mobile picker
+// when no day-of-week or day-of-month is yet known:
+//
+//   "Every day"        → FREQ=DAILY
+//   "Every week"       → FREQ=WEEKLY
+//   "Every month"      → FREQ=MONTHLY
+//   "Every year"       → FREQ=YEARLY
+//   "Custom..."        → opens CustomRecurrenceDialog
+//
+// Recurrence is REQUIRED on a responsibility — there is no "none" entry.
+// The Custom dialog still needs an isoDate anchor for BYDAY/BYMONTHDAY
+// math; callers pass `today` as a silent default.
+export type StandardOptionRequired =
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "yearly"
+  | "custom"
+  | "customExisting";
+
+export interface DropdownItemRequired {
+  value: StandardOptionRequired;
+  label: string;
+}
+
+export function buildResponsibilityDropdownOptions(): DropdownItemRequired[] {
+  return [
+    { value: "daily", label: "Every day" },
+    { value: "weekly", label: "Every week" },
+    { value: "monthly", label: "Every month" },
+    { value: "yearly", label: "Every year" },
+    { value: "custom", label: "Custom..." },
+  ];
+}
+
+// Map a date-agnostic option to a bare RRULE. Weekly/monthly/yearly use no
+// BYDAY / BYMONTHDAY because there is no anchor date — the recurrence engine
+// reads the master agenda_task's date for that. Returns null for custom
+// (the Custom dialog produces the rule).
+export function responsibilityOptionToRule(
+  option: StandardOptionRequired
+): string | null {
+  switch (option) {
+    case "daily":
+      return "FREQ=DAILY";
+    case "weekly":
+      return "FREQ=WEEKLY";
+    case "monthly":
+      return "FREQ=MONTHLY";
+    case "yearly":
+      return "FREQ=YEARLY";
+    case "custom":
+    case "customExisting":
+      return null;
+  }
+}
+
+// Reverse: given an existing rule, return the matching date-agnostic option
+// — but ONLY when the rule is the bare FREQ form (no BYDAY/BYMONTHDAY/etc.).
+// Anything more specific is treated as customExisting so the Custom dialog
+// can show its details.
+export function responsibilityRuleToOption(
+  rule: string | null | undefined
+): StandardOptionRequired | null {
+  if (!rule) return null;
+  const tokens = rule
+    .split(";")
+    .map((t) => t.trim().toUpperCase())
+    .filter(Boolean);
+  // Exactly one token, the FREQ.
+  if (tokens.length !== 1) return null;
+  const t = tokens[0];
+  if (t === "FREQ=DAILY") return "daily";
+  if (t === "FREQ=WEEKLY") return "weekly";
+  if (t === "FREQ=MONTHLY") return "monthly";
+  if (t === "FREQ=YEARLY") return "yearly";
+  return null;
+}
+
+// Today's date as ISO YYYY-MM-DD in the user's local timezone. Used as the
+// silent anchor for the Custom dialog when editing responsibility recurrence.
+export function todayIso(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
 // Build the 7-item dropdown for a given start date (ISO YYYY-MM-DD).
 // Caller may prepend a "customExisting" item when editing a row whose
 // existing rule does not match any of these six standards.

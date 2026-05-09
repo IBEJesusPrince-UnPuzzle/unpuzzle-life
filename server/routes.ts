@@ -351,6 +351,17 @@ export function registerRoutes(server: Server, app: Express) {
     const userId = getEffectiveUserId(req);
     const id = Number(req.params.id);
     const patch: any = { ...(req.body ?? {}) };
+    // PR #18c — the client sends `scope` (this/following/all) alongside
+    // color/recurrenceRule edits to communicate the user's intent. Drizzle's
+    // .set() rejects unknown columns, and the responsibilities table has no
+    // scope column (it lives on agenda_tasks for per-instance overrides).
+    // For now we accept any scope value and treat the save as scope="all"
+    // (full master update). PR #18d will branch on scope: "this" creates a
+    // per-instance agenda_task override, "following" splits the master.
+    if ("scope" in patch) {
+      // ignore for now; intentionally unused
+      delete patch.scope;
+    }
     // Duplicate-name guard on rename (case-insensitive, trimmed).
     if (typeof patch.name === "string") {
       const trimmed = patch.name.trim();
