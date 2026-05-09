@@ -501,26 +501,15 @@ export function AgendaTaskModal({
             </div>
           )}
 
-          {/* Recurrence end date — only when option != none. Capped at
-              start + 1 year by the §22a prompt. */}
-          {mode !== "edit-virtual" && recurrenceActive && (
-            <div className="space-y-1.5">
-              <Label htmlFor="task-recurrence-end">Ends on</Label>
-              <Input
-                id="task-recurrence-end"
-                type="date"
-                value={recurrenceEndDate}
-                min={date}
-                onChange={(e) => onRecurrenceEndDateChange(e.target.value)}
-                data-testid="input-task-recurrence-end"
-              />
-              {recurrenceEndDate && !recEndValid && (
-                <p className="text-xs text-destructive" data-testid="text-recurrence-end-error">
-                  Ends-on must be on or after the start date and within 1 year.
-                </p>
-              )}
-            </div>
-          )}
+          {/* Note: the recurrence end-date input is intentionally NOT shown here.
+              Google Calendar parity — standard options on the main modal don't
+              expose an end date; that control lives only inside the Custom
+              recurrence dialog (PR #14b) where it appears as Ends: Never / On
+              [date] / After N occurrences. The 1-year cap (§22a) still applies:
+              we auto-seed recurrenceEndDate = start + 1y when the user picks a
+              standard option (see onRecurrenceChange), and the §22a prompt
+              fires from the Custom dialog when the user manually picks a date
+              past the cap. */}
 
           {/* Color */}
           <div className="space-y-1.5">
