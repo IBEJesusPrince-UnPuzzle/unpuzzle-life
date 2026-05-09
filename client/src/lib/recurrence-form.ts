@@ -189,8 +189,8 @@ export function ruleToOption(
 }
 
 // Human-readable description of a non-standard rule for the synthetic
-// "customExisting" dropdown item. Best-effort — covers the common shapes
-// (BYDAY list, INTERVAL>1) and falls back to "Custom recurrence".
+// "customExisting" dropdown item. Covers the shapes the Custom dialog can
+// produce; falls back to "Custom recurrence" for anything exotic.
 export function describeCustomRule(rule: string): string {
   const tokens = rule.split(";").reduce<Record<string, string>>((acc, t) => {
     const [k, v] = t.split("=");
@@ -202,7 +202,8 @@ export function describeCustomRule(rule: string): string {
   const interval = tokens.INTERVAL ? Number(tokens.INTERVAL) : 1;
   const byday = tokens.BYDAY;
 
-  // "Every Mon, Wed, Fri" for FREQ=WEEKLY;BYDAY=MO,WE,FR
+  // "Every Mon, Wed, Fri" for FREQ=WEEKLY;BYDAY=MO,WE,FR. Reorder into
+  // canonical SU..SA so the readback is stable.
   if (freq === "WEEKLY" && byday) {
     const codeToShort: Record<string, string> = {
       SU: "Sun",
@@ -213,17 +214,24 @@ export function describeCustomRule(rule: string): string {
       FR: "Fri",
       SA: "Sat",
     };
-    const days = byday
-      .split(",")
-      .map((c) => codeToShort[c.replace(/^[+-]?\d+/, "")] ?? c)
-      .join(", ");
+    const present = new Set(
+      byday.split(",").map((c) => c.replace(/^[+-]?\d+/, ""))
+    );
+    const ordered = WEEKDAY_CODES.filter((c) => present.has(c));
+    const days = ordered.map((c) => codeToShort[c] ?? c).join(", ");
     if (interval > 1) return `Custom (every ${interval} weeks on ${days})`;
     return `Custom (every ${days})`;
   }
 
-  if (freq === "DAILY" && interval > 1) return `Custom (every ${interval} days)`;
-  if (freq === "MONTHLY" && interval > 1) return `Custom (every ${interval} months)`;
-  if (freq === "YEARLY" && interval > 1) return `Custom (every ${interval} years)`;
+  if (freq === "DAILY") {
+    return interval > 1 ? `Custom (every ${interval} days)` : "Custom (daily)";
+  }
+  if (freq === "MONTHLY") {
+    return interval > 1 ? `Custom (every ${interval} months)` : "Custom (monthly)";
+  }
+  if (freq === "YEARLY") {
+    return interval > 1 ? `Custom (every ${interval} years)` : "Custom (yearly)";
+  }
 
   return "Custom recurrence";
 }
@@ -244,4 +252,193 @@ export function oneYearOut(isoDate: string): string {
   const mm = String(target.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(target.getUTCDate()).padStart(2, "0");
   return `${yy}-${mm}-${dd}`;
+}
+
+// =============================================================================
+// Custom recurrence dialog (PR #14b) — build + parse
+// =============================================================================
+//
+// The Custom dialog lets the user pick:
+//   - FREQ: daily | weekly | monthly | yearly
+//   - INTERVAL: 1..N
+//   - BYDAY (weekly only): subset of SU/MO/TU/WE/TH/FR/SA
+//   - Monthly mode: by-day-of-month (BYMONTHDAY) OR by-ordinal-weekday (BYDAY=2FR)
+//   - Ends: never | on [date] | after [N] occurrences
+//
+// We DO NOT use UNTIL inside the RRULE itself — the schema already has a
+// dedicated `recurrenceEndDate` column for that, and the §22a window-merge
+// reads it directly. "After N occurrences" maps to RRULE COUNT=N.
+//
+// The 1-year cap (§22a) applies when ends=on AND the picked date is past
+// start + 1y; the modal opens the cap prompt before saving.
+// =============================================================================
+
+export type CustomFreq = "daily" | "weekly" | "monthly" | "yearly";
+export type EndsMode = "never" | "on" | "after";
+export type MonthlyMode = "day" | "ordinal";
+
+export interface CustomRecurrenceState {
+  freq: CustomFreq;
+  interval: number; // >= 1
+  byday: string[]; // weekly only — subset of WEEKDAY_CODES
+  monthlyMode: MonthlyMode; // monthly only
+  ends: EndsMode;
+  endsOnDate: string; // YYYY-MM-DD when ends=on
+  endsAfterCount: number; // >= 1 when ends=after
+}
+
+// Default Custom state seeded from the start date. Mirrors what Google does
+// when you first open Custom on a fresh event:
+//   - daily, every 1 day
+//   - weekly preselects the start date's weekday
+//   - ends=never
+export function defaultCustomState(isoDate: string): CustomRecurrenceState {
+  const d = parseISODate(isoDate);
+  const dow = dayOfWeekIndex(d);
+  return {
+    freq: "weekly",
+    interval: 1,
+    byday: [WEEKDAY_CODES[dow]],
+    monthlyMode: "day",
+    ends: "never",
+    endsOnDate: oneYearOut(isoDate),
+    endsAfterCount: 13,
+  };
+}
+
+// Build the RRULE string from a Custom state + start date. Returns null if
+// the state is invalid (e.g. weekly with no BYDAY selected).
+export function buildCustomRule(
+  state: CustomRecurrenceState,
+  isoDate: string
+): string | null {
+  if (state.interval < 1) return null;
+  const parts: string[] = [];
+  const d = parseISODate(isoDate);
+
+  switch (state.freq) {
+    case "daily":
+      parts.push("FREQ=DAILY");
+      break;
+    case "weekly": {
+      if (state.byday.length === 0) return null;
+      parts.push("FREQ=WEEKLY");
+      // Preserve canonical weekday order (SU..SA) so equal sets compare equal.
+      const ordered = WEEKDAY_CODES.filter((c) => state.byday.includes(c));
+      parts.push(`BYDAY=${ordered.join(",")}`);
+      break;
+    }
+    case "monthly":
+      parts.push("FREQ=MONTHLY");
+      if (state.monthlyMode === "day") {
+        parts.push(`BYMONTHDAY=${dayOfMonth(d)}`);
+      } else {
+        const dowCode = WEEKDAY_CODES[dayOfWeekIndex(d)];
+        const ord = ordinalInMonth(d);
+        parts.push(`BYDAY=${ord}${dowCode}`);
+      }
+      break;
+    case "yearly":
+      parts.push("FREQ=YEARLY");
+      parts.push(`BYMONTH=${monthIndex(d) + 1}`);
+      parts.push(`BYMONTHDAY=${dayOfMonth(d)}`);
+      break;
+  }
+
+  if (state.interval > 1) parts.push(`INTERVAL=${state.interval}`);
+  if (state.ends === "after" && state.endsAfterCount > 0) {
+    parts.push(`COUNT=${state.endsAfterCount}`);
+  }
+  return parts.join(";");
+}
+
+// Parse an existing RRULE into a Custom state (best-effort). Caller passes
+// the start date for context. Unknown tokens are ignored. If a recurrenceEndDate
+// is also stored separately, the modal injects ends="on" + that date AFTER
+// calling this; this function only knows about COUNT inside the rule itself.
+export function parseRuleToCustomState(
+  rule: string,
+  isoDate: string
+): CustomRecurrenceState {
+  const base = defaultCustomState(isoDate);
+  const tokens = rule.split(";").reduce<Record<string, string>>((acc, t) => {
+    const [k, v] = t.split("=");
+    if (k && v !== undefined) acc[k.trim().toUpperCase()] = v.trim().toUpperCase();
+    return acc;
+  }, {});
+
+  const freq = tokens.FREQ;
+  if (freq === "DAILY") base.freq = "daily";
+  else if (freq === "WEEKLY") base.freq = "weekly";
+  else if (freq === "MONTHLY") base.freq = "monthly";
+  else if (freq === "YEARLY") base.freq = "yearly";
+
+  if (tokens.INTERVAL) {
+    const n = Number(tokens.INTERVAL);
+    if (Number.isFinite(n) && n >= 1) base.interval = n;
+  }
+
+  if (base.freq === "weekly" && tokens.BYDAY) {
+    const codes = tokens.BYDAY.split(",")
+      .map((c) => c.replace(/^[+-]?\d+/, "")) // strip ordinal prefix if any
+      .filter((c) => (WEEKDAY_CODES as readonly string[]).includes(c));
+    if (codes.length > 0) base.byday = codes;
+  }
+
+  if (base.freq === "monthly") {
+    if (tokens.BYDAY) base.monthlyMode = "ordinal";
+    else if (tokens.BYMONTHDAY) base.monthlyMode = "day";
+  }
+
+  if (tokens.COUNT) {
+    const n = Number(tokens.COUNT);
+    if (Number.isFinite(n) && n >= 1) {
+      base.ends = "after";
+      base.endsAfterCount = n;
+    }
+  }
+
+  return base;
+}
+
+// Strip COUNT from a rule. Used when the modal commits Custom state with
+// ends=on or ends=never — we want recurrenceEndDate (or no end at all) to
+// be the source of truth, not COUNT.
+export function stripCount(rule: string): string {
+  return rule
+    .split(";")
+    .map((t) => t.trim())
+    .filter((t) => t && !t.toUpperCase().startsWith("COUNT="))
+    .join(";");
+}
+
+// Human-readable summary of a Custom state for the dropdown label after
+// the user saves the dialog. Mirrors describeCustomRule shape.
+export function describeCustomState(state: CustomRecurrenceState): string {
+  const codeToShort: Record<string, string> = {
+    SU: "Sun",
+    MO: "Mon",
+    TU: "Tue",
+    WE: "Wed",
+    TH: "Thu",
+    FR: "Fri",
+    SA: "Sat",
+  };
+  const n = state.interval;
+  switch (state.freq) {
+    case "daily":
+      return n === 1 ? "Custom (daily)" : `Custom (every ${n} days)`;
+    case "weekly": {
+      // Canonical SU..SA order so the readback is stable regardless of
+      // toggle order in the picker.
+      const ordered = WEEKDAY_CODES.filter((c) => state.byday.includes(c));
+      const days = ordered.map((c) => codeToShort[c] ?? c).join(", ");
+      if (n === 1) return `Custom (every ${days})`;
+      return `Custom (every ${n} weeks on ${days})`;
+    }
+    case "monthly":
+      return n === 1 ? "Custom (monthly)" : `Custom (every ${n} months)`;
+    case "yearly":
+      return n === 1 ? "Custom (yearly)" : `Custom (every ${n} years)`;
+  }
 }

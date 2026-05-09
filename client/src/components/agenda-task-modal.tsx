@@ -49,6 +49,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ColorPicker } from "@/components/color-picker";
+import { CustomRecurrenceDialog } from "@/components/custom-recurrence-dialog";
 import { DEFAULT_AGENDA_COLOR_HEX } from "@/lib/agenda-colors";
 import {
   buildDropdownOptions,
@@ -129,9 +130,13 @@ export function AgendaTaskModal({
   const [customRuleSnapshot, setCustomRuleSnapshot] = useState<string | null>(null);
   const [recurrenceEndDate, setRecurrenceEndDate] = useState("");
   // §22a 1-year cap prompt state. pendingEndDate holds the user's typed
-  // value while the AlertDialog is open.
+  // value while the AlertDialog is open. (Retained from PR #14 for any
+  // future inline pickers; the Custom dialog ships its own cap prompt.)
   const [showCapPrompt, setShowCapPrompt] = useState(false);
   const [pendingEndDate, setPendingEndDate] = useState("");
+
+  // PR #14b — Custom recurrence dialog state.
+  const [customDialogOpen, setCustomDialogOpen] = useState(false);
 
   // Reset/seed whenever the modal opens or the editing target changes.
   useEffect(() => {
@@ -312,26 +317,52 @@ export function AgendaTaskModal({
     return base;
   }, [date, recurrenceOption, customRuleSnapshot]);
 
-  // Handle dropdown selection. "custom" is a stub in PR #14 — show a toast
-  // and revert. Everything else commits and seeds a default end-date if the
-  // user hasn't picked one yet.
+  // Handle dropdown selection. "custom" opens the Custom recurrence dialog
+  // (PR #14b). Selecting the synthetic "customExisting" entry while it's
+  // already the active option also reopens the dialog so the user can edit.
+  // Everything else commits and seeds a default end-date if the user hasn't
+  // picked one yet.
   function onRecurrenceChange(next: StandardOption) {
     if (next === "custom") {
-      toast({
-        title: "Custom recurrence — coming soon",
-        description:
-          "Custom intervals (every N days/weeks/months) ship in the next update.",
-      });
+      // Open the Custom dialog. Don't change recurrenceOption yet — if the
+      // user cancels the dialog, the dropdown should revert to its prior
+      // selection. We do that by leaving state alone here and only updating
+      // it in onCustomDialogSave.
+      setCustomDialogOpen(true);
       return;
     }
-    // Switching AWAY from a customExisting drops the snapshot.
-    if (recurrenceOption === "customExisting" && next !== "customExisting") {
+    if (next === "customExisting") {
+      // User re-clicked their existing custom entry — open the dialog so
+      // they can edit it. Same revert-on-cancel semantics.
+      setCustomDialogOpen(true);
+      return;
+    }
+    // Switching AWAY from a customExisting drops the snapshot. (next is
+    // narrowed to non-custom by the early returns above.)
+    if (recurrenceOption === "customExisting") {
       setCustomRuleSnapshot(null);
     }
     setRecurrenceOption(next);
     if (next === "none") {
       setRecurrenceEndDate("");
     } else if (!recurrenceEndDate) {
+      setRecurrenceEndDate(oneYearOut(date));
+    }
+  }
+
+  // Custom dialog save callback. The dialog hands us the built RRULE plus an
+  // optional end date (only set when ends=on). We mirror that into the
+  // "customExisting" slot so the dropdown describes it back to the user.
+  function onCustomDialogSave(rule: string, endDate: string) {
+    setCustomRuleSnapshot(rule);
+    setRecurrenceOption("customExisting");
+    if (endDate) {
+      setRecurrenceEndDate(endDate);
+    } else {
+      // ends=never or ends=after — no end-date column set. (For ends=after
+      // the COUNT lives inside the rule itself.) We still keep an internal
+      // 1-year safety cap on the column so legacy consumers don't see
+      // unbounded series; the engine reads recurrenceEndDate as a hard stop.
       setRecurrenceEndDate(oneYearOut(date));
     }
   }
@@ -538,8 +569,25 @@ export function AgendaTaskModal({
           )}
         </div>
 
-        {/* §22a end-date prompt (PR #14). Triggered when the user picks an
-            end date past start + 1 year. */}
+        {/* PR #14b — Custom recurrence dialog. Renders inside the modal so
+            it inherits the same dismissal lifecycle. The dialog ships its
+            own §22a cap prompt internally. */}
+        <CustomRecurrenceDialog
+          open={customDialogOpen}
+          onOpenChange={setCustomDialogOpen}
+          startDate={date}
+          initialRule={
+            recurrenceOption === "customExisting" ? customRuleSnapshot : null
+          }
+          initialEndDate={
+            recurrenceOption === "customExisting" ? recurrenceEndDate : ""
+          }
+          onSave={onCustomDialogSave}
+        />
+
+        {/* §22a end-date prompt (PR #14). Retained for any future inline
+            pickers; currently unreachable because the Custom dialog ships
+            its own cap prompt and standard options auto-seed the cap. */}
         <AlertDialog open={showCapPrompt} onOpenChange={(o) => !o && cancelCapPrompt()}>
           {/* z-[60] forces this prompt above the parent Dialog's z-50 stack
               — without it, the alert content sits in the same layer as the
