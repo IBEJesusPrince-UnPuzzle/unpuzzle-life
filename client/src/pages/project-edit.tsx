@@ -51,22 +51,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, X, ExternalLink, ListTodo } from "lucide-react";
+import { Plus, X, ExternalLink } from "lucide-react";
 import { EditPageHeader } from "@/components/edit-page-header";
 import { EditPageUndoBar } from "@/components/edit-page-undo-bar";
 import { CollapsibleStickyHeader } from "@/components/collapsible-sticky-header";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { MarkedForRemovalSection } from "@/components/marked-for-removal-section";
+import { ProjectTasksCard, taskRemovalKey } from "@/components/project-tasks-card";
+import { TaskDependenciesSubCard } from "@/components/task-dependencies-sub-card";
+import { ProjectProgressSubCard } from "@/components/project-progress-sub-card";
 import { useAutosaveDraft } from "@/lib/use-autosave-draft";
 import { SupportSection } from "@/components/support-section";
 import type { SupportType } from "@/components/env-picker";
 import { apiRequest } from "@/lib/queryClient";
+import { parseServerError } from "@/lib/parse-server-error";
 import { useToast } from "@/hooks/use-toast";
 import NotFound from "@/pages/not-found";
 import type {
   Project,
   ProjectLink,
   ProjectResponsibility,
+  ProjectTask,
   Responsibility,
   ResponsibilityRole,
   Role,
@@ -99,19 +104,6 @@ const TRIGGER_OPTIONS: Array<{ value: string; label: string }> = [
 ];
 
 // ----- helpers -----
-
-function parseServerError(err: Error, fallback: string): string {
-  const msg = err.message ?? fallback;
-  const m = msg.match(/^\d+:\s*(\{.*\})$/);
-  if (!m) return msg || fallback;
-  try {
-    const body = JSON.parse(m[1]);
-    if (body && typeof body.error === "string") return body.error;
-  } catch {
-    /* fall through */
-  }
-  return fallback;
-}
 
 function nullable(v: string | null | undefined): string | null {
   if (v === undefined || v === null) return null;
@@ -661,10 +653,25 @@ export default function ProjectEditPage({
     },
   });
 
+  // ----- Mutation that flushes marked-for-removal tasks on Done (PR #26) -----
+  const removeProjectTask = useMutation({
+    mutationFn: async (taskId: number) => {
+      await apiRequest("DELETE", `/api/project-tasks/${taskId}`);
+    },
+    onError: (err: Error) => {
+      toast({
+        variant: "destructive",
+        title: "Couldn't remove task",
+        description: parseServerError(err, "Try again."),
+      });
+    },
+  });
+
   async function handleDone() {
     await done();
     const ops: Promise<unknown>[] = [];
     const supportTypesTouched = new Set<SupportType>();
+    let tasksTouched = false;
     markedForRemoval.forEach(key => {
       const supportM = key.match(
         /^proj-support:(people|places|things|providers|conditions):(\d+)$/,
@@ -674,6 +681,13 @@ export default function ProjectEditPage({
         const linkId = Number(supportM[2]);
         supportTypesTouched.add(supportType);
         ops.push(removeSupportLink.mutateAsync({ supportType, linkId }));
+        return;
+      }
+      const taskM = key.match(/^proj-task:(\d+)$/);
+      if (taskM) {
+        const taskId = Number(taskM[1]);
+        tasksTouched = true;
+        ops.push(removeProjectTask.mutateAsync(taskId));
       }
     });
     if (ops.length > 0) {
@@ -685,6 +699,11 @@ export default function ProjectEditPage({
       for (const st of Array.from(supportTypesTouched)) {
         await queryClient.invalidateQueries({
           queryKey: [`/api/projects/${id}/support/${st}`],
+        });
+      }
+      if (tasksTouched) {
+        await queryClient.invalidateQueries({
+          queryKey: [`/api/project-tasks?projectId=${id}`],
         });
       }
     }
@@ -762,6 +781,46 @@ export default function ProjectEditPage({
   // Re-uses the same queries SupportSection mounts; React Query dedupes.
   const supportTotal = useSupportLinkCount(id);
 
+  // ----- Project tasks (PR #26) -----
+  // Single parent-level query; child components (ProjectTasksCard,
+  // TaskDependenciesSubCard, ProjectProgressSubCard) use the same key, and
+  // React Query dedupes the network call.
+  // Drives:
+  //   1. tasksSubline ("X / Y · M marked" or "No tasks yet")
+  //   2. CollapsibleStickyHeader peek + expanded Next action / Progress lines
+  //   3. handleDone() flush of proj-task:<id> deletes
+  const { data: projectTasks = [] } = useQuery<ProjectTask[]>({
+    queryKey: [`/api/project-tasks?projectId=${id}`],
+    enabled: validId,
+  });
+
+  // ----- Tasks-derived values (PR #26) -----
+  // These hooks must run on every render in the same order, so they live
+  // ABOVE the loading / not-found early-returns. The downstream consts
+  // (taskTotal, isStalled, tasksSubline) are plain values and live below.
+  // Sort: sortOrder ASC NULLs last, then id ASC — mirrors the rule used
+  // inside ProjectTasksCard / TaskDependenciesSubCard so the "Next action"
+  // title here matches the first row the user sees in the list.
+  const sortedTasks = useMemo(() => {
+    const all = projectTasks.slice();
+    return all.sort((a, b) => {
+      const aHas = typeof a.sortOrder === "number";
+      const bHas = typeof b.sortOrder === "number";
+      if (aHas && bHas) {
+        if (a.sortOrder !== b.sortOrder) return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      } else if (aHas) {
+        return -1;
+      } else if (bHas) {
+        return 1;
+      }
+      return a.id - b.id;
+    });
+  }, [projectTasks]);
+  const visibleTasks = useMemo(
+    () => sortedTasks.filter(t => !markedForRemoval.has(taskRemovalKey(t.id))),
+    [sortedTasks, markedForRemoval],
+  );
+
   // ------------------------------------------------------------
   // Loading / not-found gating
   // ------------------------------------------------------------
@@ -798,9 +857,35 @@ export default function ProjectEditPage({
     return null;
   })();
 
+  // ----- Tasks-derived plain values (PR #26) -----
+  // sortedTasks / visibleTasks were memoized above the early-return; the
+  // following are pure derivations safe to evaluate after that gate.
+  const taskTotal = visibleTasks.length;
+  const taskDone = visibleTasks.filter(t => t.status === "done").length;
+  const markedTaskCount = sortedTasks.length - visibleTasks.length;
+  const nextActionTitle =
+    visibleTasks.find(t => t.status === "open")?.title ?? null;
+  // "Last touched" sources: project.lastTouchedAt (if PATCHed by autosave
+  // path) falls back to project.createdAt. Tasks have no per-row updatedAt.
+  const projectLastTouched =
+    project?.lastTouchedAt ?? project?.createdAt ?? null;
+  // Stalled = no touch for >14 days (user-locked 2026-05-09).
+  const STALLED_DAY_THRESHOLD = 14;
+  const isStalled = (() => {
+    if (!projectLastTouched || taskTotal === 0) return false;
+    const ts = Date.parse(projectLastTouched);
+    if (Number.isNaN(ts)) return false;
+    const days = Math.floor((Date.now() - ts) / (24 * 60 * 60 * 1000));
+    return days > STALLED_DAY_THRESHOLD;
+  })();
+
   // ----- Sublines for collapsed cards -----
   const bundleASubline = "5 fields";
-  const tasksSubline = "No tasks yet";
+  const tasksSubline = (() => {
+    if (taskTotal === 0 && markedTaskCount === 0) return "No tasks yet";
+    const base = `${taskDone} / ${taskTotal}`;
+    return markedTaskCount > 0 ? `${base} · ${markedTaskCount} marked` : base;
+  })();
   const bundleBSubline = (() => {
     const parts: string[] = [];
     if (linkedResp) parts.push(`Linked: ${linkedResp.name}`);
@@ -856,6 +941,11 @@ export default function ProjectEditPage({
         onEndChange={v => setDraft({ ...draft, endDate: v })}
         topOffsetPx={headerHeight}
         dateError={dateError}
+        nextActionTitle={nextActionTitle}
+        doneTaskCount={taskDone}
+        totalTaskCount={taskTotal}
+        projectUpdatedAt={projectLastTouched}
+        isStalled={isStalled}
       />
 
       <div className="flex-1 p-3 space-y-4 max-w-xl mx-auto w-full pb-24">
@@ -999,7 +1089,14 @@ export default function ProjectEditPage({
         </CollapsibleCard>
 
         {/* ============================================================
-            TASKS (placeholder body; full UI in later PR)
+            TASKS — PR #26
+            • ProjectTasksCard       — list / add / toggle / inline edit /
+                                       per-row mark-for-removal
+            • TaskDependenciesSubCard — numbered (1) 2) 3)…) view following
+                                       sortOrder, with stub buttons for
+                                       Suggest task order / Edit links
+            • ProjectProgressSubCard  — X / Y tasks complete · Last touched
+                                       · Stalled? (14-day rule)
             ============================================================ */}
         <CollapsibleCard
           title="Tasks"
@@ -1008,67 +1105,22 @@ export default function ProjectEditPage({
           onToggle={() => setCardOpen("tasks", !collapse.tasks)}
           testId="card-tasks"
         >
-          <div className="space-y-0.5">
-            <Label className="text-xs inline-flex items-center gap-1.5">
-              <ListTodo className="w-3.5 h-3.5" />
-              Project tasks
-            </Label>
-            <p className="text-[11px] italic text-muted-foreground -mt-0.5">
-              -add the tasks required to finish this project
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs"
-              disabled
-              data-testid="button-add-task"
-            >
-              <Plus className="w-3 h-3 mr-1" />
-              Add task
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs"
-              disabled
-              data-testid="button-suggest-tasks"
-            >
-              Suggest tasks (coming soon)
-            </Button>
-          </div>
-          <p
-            className="text-xs text-muted-foreground italic"
-            data-testid="text-tasks-placeholder"
-          >
-            (no tasks yet — placeholder for full UI in later PR)
-          </p>
+          <ProjectTasksCard
+            projectId={id}
+            markedForRemoval={markedForRemoval}
+            markForRemoval={markForRemoval}
+          />
 
-          {/* Nested Task dependencies sub-card */}
-          <div
-            className="border rounded-md p-3 space-y-2 bg-background"
-            data-testid="card-task-dependencies"
-          >
-            <div className="space-y-0.5">
-              <Label className="text-xs">Task dependencies</Label>
-              <p className="text-[11px] italic text-muted-foreground -mt-0.5">
-                -show the order tasks should be completed in
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-[11px]"
-              disabled
-              data-testid="button-suggest-task-order"
-            >
-              Suggest task order (coming soon)
-            </Button>
-            <p className="text-xs text-muted-foreground italic">
-              (auto-derived from task order — coming soon)
-            </p>
-          </div>
+          <TaskDependenciesSubCard
+            projectId={id}
+            markedForRemoval={markedForRemoval}
+          />
+
+          <ProjectProgressSubCard
+            projectId={id}
+            projectUpdatedAt={projectLastTouched}
+            markedForRemoval={markedForRemoval}
+          />
         </CollapsibleCard>
 
         {/* ============================================================
