@@ -367,20 +367,54 @@ export function registerRoutes(server: Server, app: Express) {
   });
   app.post("/api/roles", (req, res) => {
     const userId = getEffectiveUserId(req);
-    const data = { ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
+    // Hide cadence/dayOfWeek from UI per addendum A7.1; default on create.
+    const data = {
+      cadence: "weekly",
+      dayOfWeek: null,
+      ...req.body,
+      createdAt: req.body.createdAt || new Date().toISOString(),
+    };
     const parsed = insertRoleSchema.safeParse(data);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createRole(userId, parsed.data));
+    // Duplicate-name guard (case-insensitive, trimmed) per addendum A4.2.
+    const trimmed = (parsed.data.name ?? "").trim();
+    if (!trimmed) return res.status(400).json({ error: "Role name is required." });
+    const existing = storage.getRoles(userId);
+    if (existing.some(r => r.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+      return res.status(409).json({ error: `You already have a role named '${trimmed}'.` });
+    }
+    res.json(storage.createRole(userId, { ...parsed.data, name: trimmed }));
   });
   app.patch("/api/roles/:id", (req, res) => {
     const userId = getEffectiveUserId(req);
-    const result = storage.updateRole(userId, Number(req.params.id), req.body);
+    const id = Number(req.params.id);
+    // Strip cadence/dayOfWeek from PATCH bodies per addendum A7.1 — the
+    // edit screen never touches them; preserve whatever's on disk.
+    const { cadence: _c, dayOfWeek: _d, ...patch } = req.body ?? {};
+    // Duplicate-name guard on rename per addendum A4.2.
+    if (typeof patch.name === "string") {
+      const trimmed = patch.name.trim();
+      if (!trimmed) return res.status(400).json({ error: "Role name is required." });
+      const existing = storage.getRoles(userId);
+      if (existing.some(r => r.id !== id && r.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+        return res.status(409).json({ error: `You already have a role named '${trimmed}'.` });
+      }
+      patch.name = trimmed;
+    }
+    const result = storage.updateRole(userId, id, patch);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
   app.delete("/api/roles/:id", (req, res) => {
     const userId = getEffectiveUserId(req);
-    storage.deleteRole(userId, Number(req.params.id));
+    const id = Number(req.params.id);
+    // Self role cannot be deleted per addendum A4.1 (LOCKED).
+    const all = storage.getRoles(userId);
+    const target = all.find(r => r.id === id);
+    if (target && target.name.trim().toLowerCase() === "self") {
+      return res.status(409).json({ error: "Self cannot be deleted." });
+    }
+    storage.deleteRole(userId, id);
     res.json({ ok: true });
   });
 

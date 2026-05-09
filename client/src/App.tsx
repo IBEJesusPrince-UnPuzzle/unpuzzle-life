@@ -22,6 +22,7 @@ import ClarityPage from "@/pages/clarity";
 import SupportPage from "@/pages/support";
 import SupportRolesPage from "@/pages/support-roles";
 import SupportRoleDetailPage from "@/pages/support-role-detail";
+import SupportRoleEditPage from "@/pages/support-role-edit";
 import ResponsibilityPlaceholderPage from "@/pages/responsibility-placeholder";
 import DevEditPageDemoRoute from "@/pages/dev-edit-page-demo";
 import NotFound from "@/pages/not-found";
@@ -51,6 +52,8 @@ function AppRouter() {
       <Route path="/clarity" component={ClarityPage} />
       <Route path="/support" component={SupportPage} />
       <Route path="/support/roles" component={SupportRolesPage} />
+      <Route path="/support/roles/new" component={SupportRoleEditPage} />
+      <Route path="/support/roles/:id/edit" component={SupportRoleEditPage} />
       <Route path="/support/roles/:id" component={SupportRoleDetailPage} />
       <Route path="/responsibilities/:id" component={ResponsibilityPlaceholderPage} />
       {/* Legacy redirects — retired §18 "Roles" item became "Support" (addendum A1). */}
