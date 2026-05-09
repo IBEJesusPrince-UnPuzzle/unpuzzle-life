@@ -125,6 +125,12 @@ tryMigration("agenda_tasks.title", `ALTER TABLE agenda_tasks ADD COLUMN title TE
 // and render as single-day, identical to before.
 tryMigration("agenda_tasks.end_date", `ALTER TABLE agenda_tasks ADD COLUMN end_date TEXT`);
 
+// PR #15 — agenda_tasks gains an `is_cancelled` column for the
+// "Delete just this occurrence" scope. Override row with isCancelled=1
+// hides the virtual instance from the window query (Google parity:
+// status=cancelled exception event).
+tryMigration("agenda_tasks.is_cancelled", `ALTER TABLE agenda_tasks ADD COLUMN is_cancelled INTEGER NOT NULL DEFAULT 0`);
+
 // ============================================================
 // TABLE CREATION (idempotent — IF NOT EXISTS)
 // ============================================================
@@ -364,6 +370,7 @@ sqlite.exec(`
     series_id INTEGER,
     is_override INTEGER NOT NULL DEFAULT 0,
     original_date TEXT,
+    is_cancelled INTEGER NOT NULL DEFAULT 0,
     notes TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -941,6 +948,20 @@ export class DatabaseStorage implements IStorage {
       .returning().get();
   }
   deleteAgendaTask(userId: number, id: number): void {
+    // PR #15 — cascade override + cancellation rows when deleting a master.
+    // If the row being deleted is a master (has its own seriesId pointing
+    // to itself, by the auto-assign rule), drop every other row whose
+    // seriesId matches — keeps overrides and cancellations from becoming
+    // orphans pointing at a non-existent master. Standalone or override
+    // deletes are unaffected (their seriesId is null or points elsewhere).
+    const target = db.select().from(agendaTasks)
+      .where(and(eq(agendaTasks.id, id), eq(agendaTasks.userId, userId))).get();
+    if (target && target.recurrenceRule && target.seriesId === id) {
+      db.delete(agendaTasks)
+        .where(and(eq(agendaTasks.seriesId, id), eq(agendaTasks.userId, userId)))
+        .run();
+      return;
+    }
     db.delete(agendaTasks).where(and(eq(agendaTasks.id, id), eq(agendaTasks.userId, userId))).run();
   }
 
@@ -1041,7 +1062,11 @@ export class DatabaseStorage implements IStorage {
 
     // 2. Add overrides that land in the window (their `date` is the rendered date).
     //    All-day overrides use overlap test on [date, endDate] (Phase 3c).
+    //    PR #15 — cancellation overrides (isCancelled=1) are bookkeeping-only:
+    //    they hide the virtual instance in step 1 (overrideBySeriesAndDate hit)
+    //    and must NOT render themselves. Skip them here.
     for (const o of overrides) {
+      if (o.isCancelled === 1) continue;
       const inWindow =
         o.isAllDay === 1
           ? allDayOverlapsWindow(o.date, o.endDate, windowStart, windowEnd)

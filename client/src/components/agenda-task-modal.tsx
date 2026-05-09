@@ -50,8 +50,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ColorPicker } from "@/components/color-picker";
 import { CustomRecurrenceDialog } from "@/components/custom-recurrence-dialog";
+import {
+  RecurrenceScopeDialog,
+  type RecurrenceScope,
+} from "@/components/recurrence-scope-dialog";
 import { DEFAULT_AGENDA_COLOR_HEX } from "@/lib/agenda-colors";
 import {
+  addDaysIso,
   buildDropdownOptions,
   describeCustomRule,
   oneYearOut,
@@ -138,6 +143,13 @@ export function AgendaTaskModal({
   // PR #14b — Custom recurrence dialog state.
   const [customDialogOpen, setCustomDialogOpen] = useState(false);
 
+  // PR #15 — Scope dialog state for recurring-instance Save/Delete.
+  // When the user clicks Save or Delete on a recurring row, we intercept
+  // the mutation, open the scope dialog, and only fire the actual mutation
+  // after the user picks This / Following / All.
+  const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
+  const [scopeIntent, setScopeIntent] = useState<"save" | "delete">("save");
+
   // Reset/seed whenever the modal opens or the editing target changes.
   useEffect(() => {
     if (!open) return;
@@ -219,31 +231,100 @@ export function AgendaTaskModal({
     };
   }
 
+  // PR #15 — Is the editing target part of a recurring series?
+  // Two cases:
+  //   - Virtual instance (always recurring; came from rule expansion)
+  //   - Real master (real row that itself carries a recurrenceRule)
+  // Real overrides (isOverride=1) are NOT treated as recurring for scope
+  //   purposes — they're already a single instance, edits/deletes apply
+  //   only to themselves. (An override row's seriesId points to the master,
+  //   but the override itself has no recurrenceRule.)
+  const isRecurring =
+    !!editing &&
+    (mode === "edit-virtual" ||
+      (mode === "edit-real" && !!editing.recurrenceRule && editing.isOverride !== 1));
+
+  // PR #15 — execute Save with a scope. Always invoked through saveMutation.
+  // For non-recurring tasks scope is irrelevant and ignored (mode steers).
+  // For recurring tasks scope drives one of three branches:
+  //   - "this"      → POST override (same as legacy edit-virtual path)
+  //   - "following" → PATCH master recurrenceEndDate = occurrence - 1,
+  //                   POST new master from occurrence forward with edits
+  //   - "all"       → PATCH master with new fields (legacy edit-real path)
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (mode === "edit-real" && editing) {
-        const r = await apiRequest("PATCH", `/api/agenda-tasks/${editing.id}`, buildPayload());
+    mutationFn: async (scope: RecurrenceScope | null) => {
+      // Non-recurring: existing behavior verbatim (no scope).
+      if (!isRecurring) {
+        if (mode === "edit-real" && editing) {
+          const r = await apiRequest("PATCH", `/api/agenda-tasks/${editing.id}`, buildPayload());
+          return r.json();
+        }
+        // Create
+        const payload = {
+          ...buildPayload(),
+          origin: "standalone" as const,
+        };
+        const r = await apiRequest("POST", "/api/agenda-tasks", payload);
         return r.json();
       }
-      if (mode === "edit-virtual" && editing) {
+
+      // Recurring branches — scope is required by the time we get here.
+      if (!editing || !scope) return;
+      const masterId = editing.masterId ?? editing.id;
+      const occurrenceDate = editing.date;
+
+      if (scope === "this") {
         // Override creation: a NEW row, seriesId points back to the master,
-        // originalDate stamps which instance is being replaced. The §22a
-        // window query will hide the virtual occurrence whose date matches
-        // an existing override row.
-        // PR #14 — overrides themselves never carry recurrence (Google parity:
-        // "Only this event" can't change the rule). Strip those fields.
+        // originalDate stamps which instance is being replaced.
+        // Overrides themselves never carry recurrence (Google parity:
+        // "Only this event" can't change the rule).
         const { recurrenceRule: _r, recurrenceEndDate: _re, ...overrideBase } = buildPayload();
         const payload = {
           ...overrideBase,
           origin: "standalone" as const,
-          seriesId: editing.masterId ?? editing.id,
-          originalDate: editing.date,
+          seriesId: masterId,
+          originalDate: occurrenceDate,
           isOverride: 1,
         };
         const r = await apiRequest("POST", "/api/agenda-tasks", payload);
         return r.json();
       }
-      // Create
+
+      if (scope === "all") {
+        // PATCH the master directly. If the user is editing a virtual
+        // instance, route the patch to the master id, not the virtual id.
+        //
+        // PR #15 subtlety: when editing a virtual instance, the form's `date`
+        // field is seeded from the virtual occurrence (e.g. May 25), NOT the
+        // master's start date (May 11). If the user didn't change the date,
+        // forwarding it would shift the entire series. So in scope=all on a
+        // virtual instance, we strip `date` (and the dependent `endDate`)
+        // from the patch when the user hasn't modified them — detected by
+        // comparing current form state to the editing target's seed.
+        // Google Calendar disables the date field outright in this scenario;
+        // this preserves intent without locking the user out.
+        const payload = buildPayload();
+        const stripDateFields =
+          mode === "edit-virtual" && date === editing.date;
+        if (stripDateFields) {
+          delete (payload as any).date;
+          delete (payload as any).endDate;
+        }
+        const r = await apiRequest("PATCH", `/api/agenda-tasks/${masterId}`, payload);
+        return r.json();
+      }
+
+      // scope === "following"
+      // 1. Truncate the original master so it ENDS the day before the
+      //    occurrence the user picked. recurrenceEndDate is inclusive on
+      //    the server (acts as UNTIL).
+      const truncatedEnd = addDaysIso(occurrenceDate, -1);
+      await apiRequest("PATCH", `/api/agenda-tasks/${masterId}`, {
+        recurrenceEndDate: truncatedEnd,
+      });
+      // 2. Create a new master from the occurrence date forward with the
+      //    edited fields. The new master gets its own seriesId (server
+      //    auto-assigns on insert when seriesId is null and a rule is set).
       const payload = {
         ...buildPayload(),
         origin: "standalone" as const,
@@ -264,16 +345,94 @@ export function AgendaTaskModal({
     },
   });
 
+  // PR #15 — Delete with scope.
+  //   - non-recurring: DELETE the row (legacy)
+  //   - this:          POST cancellation override (isCancelled=1)
+  //   - following:     PATCH master recurrenceEndDate = occurrence - 1
+  //   - all:           DELETE master id
   const deleteMutation = useMutation({
-    mutationFn: async () => {
-      if (!editing || mode !== "edit-real") return;
-      await apiRequest("DELETE", `/api/agenda-tasks/${editing.id}`, undefined);
+    mutationFn: async (scope: RecurrenceScope | null) => {
+      if (!editing) return;
+
+      if (!isRecurring) {
+        await apiRequest("DELETE", `/api/agenda-tasks/${editing.id}`, undefined);
+        return;
+      }
+
+      if (!scope) return;
+      const masterId = editing.masterId ?? editing.id;
+      const occurrenceDate = editing.date;
+
+      if (scope === "this") {
+        // Cancellation override row — hides this single virtual instance.
+        // Carries no user-facing fields; it's bookkeeping.
+        const payload = {
+          origin: "standalone" as const,
+          title: null,
+          date: occurrenceDate,
+          isAllDay: 0,
+          color: DEFAULT_AGENDA_COLOR_HEX,
+          seriesId: masterId,
+          originalDate: occurrenceDate,
+          isOverride: 1,
+          isCancelled: 1,
+        };
+        await apiRequest("POST", "/api/agenda-tasks", payload);
+        return;
+      }
+
+      if (scope === "all") {
+        await apiRequest("DELETE", `/api/agenda-tasks/${masterId}`, undefined);
+        return;
+      }
+
+      // scope === "following"
+      const truncatedEnd = addDaysIso(occurrenceDate, -1);
+      await apiRequest("PATCH", `/api/agenda-tasks/${masterId}`, {
+        recurrenceEndDate: truncatedEnd,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/agenda"] });
       onOpenChange(false);
     },
+    onError: (e: any) => {
+      toast({
+        title: "Could not delete",
+        description: String(e?.message ?? e),
+        variant: "destructive",
+      });
+    },
   });
+
+  // PR #15 — click handlers on the footer Save/Delete buttons.
+  // For recurring rows we open the scope dialog; for everything else we
+  // fire the mutation directly with scope=null.
+  function onSaveClick() {
+    if (isRecurring) {
+      setScopeIntent("save");
+      setScopeDialogOpen(true);
+      return;
+    }
+    saveMutation.mutate(null);
+  }
+
+  function onDeleteClick() {
+    if (isRecurring) {
+      setScopeIntent("delete");
+      setScopeDialogOpen(true);
+      return;
+    }
+    deleteMutation.mutate(null);
+  }
+
+  function onScopeConfirm(scope: RecurrenceScope) {
+    if (scopeIntent === "save") {
+      saveMutation.mutate(scope);
+    } else {
+      deleteMutation.mutate(scope);
+    }
+  }
 
   const titleText =
     mode === "create"
@@ -630,11 +789,13 @@ export function AgendaTaskModal({
         </AlertDialog>
 
         <DialogFooter className="gap-2 sm:gap-2 sm:justify-between">
-          {mode === "edit-real" ? (
+          {/* PR #15 — Delete now also shows for edit-virtual so users can
+              delete a single recurring occurrence (scope="this"). */}
+          {mode !== "create" ? (
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => deleteMutation.mutate()}
+              onClick={onDeleteClick}
               disabled={deleteMutation.isPending}
               data-testid="button-task-delete"
               className="text-destructive hover:text-destructive"
@@ -654,7 +815,7 @@ export function AgendaTaskModal({
               Cancel
             </Button>
             <Button
-              onClick={() => saveMutation.mutate()}
+              onClick={onSaveClick}
               disabled={!canSave || saveMutation.isPending}
               data-testid="button-task-save"
             >
@@ -662,6 +823,14 @@ export function AgendaTaskModal({
             </Button>
           </div>
         </DialogFooter>
+
+        {/* PR #15 — Scope dialog for recurring Save/Delete. */}
+        <RecurrenceScopeDialog
+          open={scopeDialogOpen}
+          onOpenChange={setScopeDialogOpen}
+          intent={scopeIntent}
+          onConfirm={onScopeConfirm}
+        />
       </DialogContent>
     </Dialog>
   );
