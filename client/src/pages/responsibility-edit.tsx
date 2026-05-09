@@ -1,14 +1,15 @@
-// /responsibilities/new and /responsibilities/:id/edit — Phase 5 PR #18a
+// /responsibilities/new and /responsibilities/:id/edit — Phase 5 PR #18a + #18b
 //
-// Slice 1 of §11 (the Responsibility edit screen):
+// Slice 1+2 of §11 (the Responsibility edit screen):
 //   - Header (EditPageHeader: Back, Edit responsibility, info, Saved/Done)
 //   - Role multi-add + Linked Roles list (with Pleasure-keeps-Self enforcement)
 //   - Responsibility name (600ms debounced autosave)
+//   - 5 Support sections (People/Places/Things/Providers/Conditions) with the
+//     universal 4-option relationship dropdown (Path A labels: Critical /
+//     Important / Helpful / Workaround) and an accordion explainer.
 //   - Bottom undo bar
 //
 // What lands later:
-//   - PR #18b: 5 support sections (People/Places/Things/Providers/Conditions)
-//     with universal 4-option relationship dropdown + accordion explainers.
 //   - PR #18c: Color picker + scope dialog, recurrence editor.
 //
 // Behavior summary:
@@ -36,6 +37,8 @@ import { EditPageHeader } from "@/components/edit-page-header";
 import { EditPageUndoBar } from "@/components/edit-page-undo-bar";
 import { useAutosaveDraft } from "@/lib/use-autosave-draft";
 import { RolePicker } from "@/components/role-picker";
+import { SupportSection } from "@/components/support-section";
+import type { SupportType } from "@/components/env-picker";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import NotFound from "@/pages/not-found";
@@ -189,15 +192,44 @@ export default function ResponsibilityEditPage({
     undoRemoval(`resp-role:${linkId}`);
   }
 
+  // Support-link delete is one mutation per junction type. We dispatch the
+  // matching DELETE based on the marked-for-removal key prefix below.
+  const removeSupportLink = useMutation({
+    mutationFn: async (input: { supportType: SupportType; linkId: number }) => {
+      await apiRequest(
+        "DELETE",
+        `/api/responsibilities/${id}/support/${input.supportType}/${input.linkId}`,
+      );
+    },
+    onError: (err: Error) => {
+      toast({
+        variant: "destructive",
+        title: "Couldn't remove support",
+        description: parseServerError(err, "Try again."),
+      });
+    },
+  });
+
   async function handleDone() {
     // Flush pending name autosave.
     await done();
     if (!isCreate) {
       const ops: Promise<unknown>[] = [];
+      const supportTypesTouched = new Set<SupportType>();
       markedForRemoval.forEach(key => {
-        const m = key.match(/^resp-role:(\d+)$/);
-        if (m) {
-          ops.push(removeRoleLink.mutateAsync(Number(m[1])));
+        const roleM = key.match(/^resp-role:(\d+)$/);
+        if (roleM) {
+          ops.push(removeRoleLink.mutateAsync(Number(roleM[1])));
+          return;
+        }
+        const supportM = key.match(
+          /^resp-support:(people|places|things|providers|conditions):(\d+)$/,
+        );
+        if (supportM) {
+          const supportType = supportM[1] as SupportType;
+          const linkId = Number(supportM[2]);
+          supportTypesTouched.add(supportType);
+          ops.push(removeSupportLink.mutateAsync({ supportType, linkId }));
         }
       });
       if (ops.length > 0) {
@@ -210,6 +242,11 @@ export default function ResponsibilityEditPage({
           queryKey: [`/api/responsibilities/${id}/roles`],
         });
         await queryClient.invalidateQueries({ queryKey: ["/api/responsibility-roles"] });
+        for (const st of Array.from(supportTypesTouched)) {
+          await queryClient.invalidateQueries({
+            queryKey: [`/api/responsibilities/${id}/support/${st}`],
+          });
+        }
       }
       clearRemovals();
     }
@@ -420,16 +457,73 @@ export default function ResponsibilityEditPage({
           </CardContent>
         </Card>
 
-        {/* Placeholder note for future PRs (#18b/#18c) */}
+        {/* 5 Support sections (§11) — only shown after the responsibility row
+            exists, since they all need an id to link against. */}
         {!isCreate && (
+          <>
+            <SupportSection
+              responsibilityId={id as number}
+              supportType="people"
+              title="People"
+              helperLine="-who does this responsibility involve or depend on?"
+              addLabel="person"
+              markedForRemoval={markedForRemoval}
+              markForRemoval={markForRemoval}
+              undoRemoval={undoRemoval}
+            />
+            <SupportSection
+              responsibilityId={id as number}
+              supportType="places"
+              title="Places"
+              helperLine="-where do you go to carry this out?"
+              addLabel="place"
+              markedForRemoval={markedForRemoval}
+              markForRemoval={markForRemoval}
+              undoRemoval={undoRemoval}
+            />
+            <SupportSection
+              responsibilityId={id as number}
+              supportType="things"
+              title="Things"
+              helperLine="-what do you need to have, carry, or use?"
+              addLabel="thing"
+              markedForRemoval={markedForRemoval}
+              markForRemoval={markForRemoval}
+              undoRemoval={undoRemoval}
+            />
+            <SupportSection
+              responsibilityId={id as number}
+              supportType="providers"
+              title="Providers"
+              helperLine="-who supplies or maintains part of this support?"
+              addLabel="provider"
+              markedForRemoval={markedForRemoval}
+              markForRemoval={markForRemoval}
+              undoRemoval={undoRemoval}
+            />
+            <SupportSection
+              responsibilityId={id as number}
+              supportType="conditions"
+              title="Conditions"
+              helperLine="-what must be true before this can happen smoothly?"
+              addLabel="condition"
+              markedForRemoval={markedForRemoval}
+              markForRemoval={markForRemoval}
+              undoRemoval={undoRemoval}
+            />
+          </>
+        )}
+
+        {isCreate && (
           <Card className="border-dashed">
             <CardContent className="p-4 space-y-1">
               <Label className="text-xs text-muted-foreground">
-                Coming next
+                Support sections
               </Label>
               <p className="text-xs text-muted-foreground">
-                Support sections (People, Places, Things, Providers,
-                Conditions), color, and recurrence land in the next two PRs.
+                Save the responsibility first (start typing a name above),
+                then come back to add People, Places, Things, Providers, and
+                Conditions.
               </p>
             </CardContent>
           </Card>
