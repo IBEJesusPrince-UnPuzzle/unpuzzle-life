@@ -7,7 +7,7 @@ import { Link } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { useState, useEffect } from "react";
 import {
-  ListChecks, Lightbulb, Users, Blocks, UserCheck, DatabaseZap,
+  ListChecks, Lightbulb, Earth, Blocks, UserCheck, DatabaseZap,
   Inbox, Sun, Moon, Shield, LogOut,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -22,10 +22,13 @@ import { useAuth } from "@/hooks/use-auth";
 //     other pages. Until Phase 4 Clarity surfaces an inside-page Inbox entry,
 //     we keep a transitional Inbox link as a separate group below the six.
 //     TODO Phase 4: remove the transitional Inbox link once Clarity ships.
+// Sidebar item 3 was "Roles" in §18. Locked by addendum
+// v8-addendum-support-module.md (May 8, 2026): renamed to "Support" with
+// the Earth icon. Support = system of current; Projects = system of future.
 const navItems = [
   { title: "Agenda",   url: "/agenda",   icon: ListChecks },
   { title: "Clarity",  url: "/clarity",  icon: Lightbulb },
-  { title: "Roles",    url: "/roles",    icon: Users },
+  { title: "Support",  url: "/support",  icon: Earth },
   { title: "Projects", url: "/projects", icon: Blocks },
   { title: "Review",   url: "/review",   icon: UserCheck }, // TODO §18: UserStar
   { title: "Data",     url: "/data",     icon: DatabaseZap },

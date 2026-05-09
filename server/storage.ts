@@ -500,6 +500,8 @@ export interface IStorage {
 
   // Phase 1: Responsibility ↔ Role junction
   getResponsibilityRoles(responsibilityId: number): ResponsibilityRole[];
+  // Bulk: all responsibility↔role links for a user (joined via responsibilities.user_id)
+  getAllResponsibilityRolesForUser(userId: number): ResponsibilityRole[];
   linkResponsibilityRole(data: InsertResponsibilityRole): ResponsibilityRole;
   unlinkResponsibilityRole(id: number): void;
 
@@ -822,6 +824,20 @@ export class DatabaseStorage implements IStorage {
   // ============================================================
   getResponsibilityRoles(responsibilityId: number): ResponsibilityRole[] {
     return db.select().from(responsibilityRole).where(eq(responsibilityRole.responsibilityId, responsibilityId)).all();
+  }
+  getAllResponsibilityRolesForUser(userId: number): ResponsibilityRole[] {
+    // Inner join responsibility_role → responsibilities (filtered by userId).
+    const rows = db
+      .select({
+        id: responsibilityRole.id,
+        responsibilityId: responsibilityRole.responsibilityId,
+        roleId: responsibilityRole.roleId,
+      })
+      .from(responsibilityRole)
+      .innerJoin(responsibilities, eq(responsibilities.id, responsibilityRole.responsibilityId))
+      .where(eq(responsibilities.userId, userId))
+      .all();
+    return rows as ResponsibilityRole[];
   }
   linkResponsibilityRole(data: InsertResponsibilityRole): ResponsibilityRole {
     return db.insert(responsibilityRole).values(data).returning().get();

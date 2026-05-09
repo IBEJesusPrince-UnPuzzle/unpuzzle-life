@@ -19,7 +19,10 @@ import AuthPage, { RegisterPage } from "@/pages/auth-page";
 import AdminPage from "@/pages/admin";
 import AgendaPage from "@/pages/agenda";
 import ClarityPage from "@/pages/clarity";
-import RolesPage from "@/pages/roles";
+import SupportPage from "@/pages/support";
+import SupportRolesPage from "@/pages/support-roles";
+import SupportRoleDetailPage from "@/pages/support-role-detail";
+import ResponsibilityPlaceholderPage from "@/pages/responsibility-placeholder";
 import DevEditPageDemoRoute from "@/pages/dev-edit-page-demo";
 import NotFound from "@/pages/not-found";
 
@@ -27,6 +30,15 @@ function ProjectDetailRoute({ params }: { params: { id?: string } }) {
   const id = Number(params?.id);
   if (!id || isNaN(id)) return <NotFound />;
   return <ProjectDetailPage id={id} />;
+}
+
+// Old /roles routes redirect to /support (sidebar rename per addendum A1).
+function RedirectRoles() {
+  return <Redirect to="/support" />;
+}
+function RedirectRoleId({ params }: { params: { id?: string } }) {
+  const id = params?.id;
+  return <Redirect to={id ? `/support/roles/${id}` : "/support"} />;
 }
 
 function AppRouter() {
@@ -37,7 +49,13 @@ function AppRouter() {
       </Route>
       <Route path="/agenda" component={AgendaPage} />
       <Route path="/clarity" component={ClarityPage} />
-      <Route path="/roles" component={RolesPage} />
+      <Route path="/support" component={SupportPage} />
+      <Route path="/support/roles" component={SupportRolesPage} />
+      <Route path="/support/roles/:id" component={SupportRoleDetailPage} />
+      <Route path="/responsibilities/:id" component={ResponsibilityPlaceholderPage} />
+      {/* Legacy redirects — retired §18 "Roles" item became "Support" (addendum A1). */}
+      <Route path="/roles" component={RedirectRoles} />
+      <Route path="/roles/:id" component={RedirectRoleId} />
       <Route path="/projects" component={ProjectsPage} />
       <Route path="/projects/:id" component={ProjectDetailRoute} />
       <Route path="/review" component={ReviewPage} />

@@ -467,6 +467,13 @@ export function registerRoutes(server: Server, app: Express) {
   app.get("/api/responsibilities/:id/roles", (req, res) => {
     res.json(storage.getResponsibilityRoles(Number(req.params.id)));
   });
+  // Bulk endpoint: returns every responsibility↔role link for the current user.
+  // Used by /support dashboard and §5 role detail to label responsibilities
+  // with their linked roles without N+1 fetching.
+  app.get("/api/responsibility-roles", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getAllResponsibilityRolesForUser(userId));
+  });
   app.post("/api/responsibilities/:id/roles", (req, res) => {
     const data = { ...req.body, responsibilityId: Number(req.params.id) };
     const parsed = insertResponsibilityRoleSchema.safeParse(data);
