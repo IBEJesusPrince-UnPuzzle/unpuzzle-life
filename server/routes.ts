@@ -4,6 +4,9 @@ import { storage, sqlite } from "./storage";
 import { requireAuth, requireAdmin, getEffectiveUserId } from "./auth";
 import {
   insertProjectSchema,
+  PROJECT_STATUSES,
+  PROJECT_PRIORITIES,
+  PROJECT_TRIGGERS,
   insertInboxItemSchema,
   insertWeeklyReviewSchema,
   insertEnvironmentPersonSchema,
@@ -31,7 +34,7 @@ import {
   PROJECT_TASK_STATUSES,
 } from "@shared/schema";
 import { validateRecurrenceRule } from "./recurrence";
-import type { z } from "zod";
+import { z } from "zod";
 
 // Phase 1 helper: support type whitelist for /api/environment/{type} dispatch.
 const SUPPORT_TYPES = ["people", "places", "things", "providers", "conditions"] as const;
@@ -145,9 +148,40 @@ export function registerRoutes(server: Server, app: Express) {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
     res.json(storage.createProject(userId, parsed.data));
   });
+  // PR #21 — PATCH validator. Accepts any subset of project columns. Enum-valued
+  // fields (status, priority, trigger) are checked here; freeform text fields
+  // pass through. Zod .partial() means every field is optional. Unknown fields
+  // are stripped (.strict() would 400 — we want forward-compat).
+  const projectPatchSchema = z.object({
+    title:           z.string().min(1).optional(),
+    description:     z.string().nullable().optional(),
+    trigger:         z.enum(PROJECT_TRIGGERS).nullable().optional(),
+    startDate:       z.string().nullable().optional(),
+    endDate:         z.string().nullable().optional(),
+    outcomeDone:     z.string().nullable().optional(),
+    status:          z.enum(PROJECT_STATUSES).nullable().optional(),
+    priority:        z.enum(PROJECT_PRIORITIES).nullable().optional(),
+    targetDate:      z.string().nullable().optional(),
+    nextAction:      z.string().nullable().optional(),
+    blockers:        z.string().nullable().optional(),
+    risksWatchouts:  z.string().nullable().optional(),
+    notes:           z.string().nullable().optional(),
+    lastTouchedAt:   z.string().nullable().optional(),
+    stalledAt:       z.string().nullable().optional(),
+    archived:        z.number().int().optional(),
+    archivedAt:      z.string().nullable().optional(),
+  });
   app.patch("/api/projects/:id", (req, res) => {
     const userId = getEffectiveUserId(req);
-    const result = storage.updateProject(userId, Number(req.params.id), req.body);
+    const parsed = projectPatchSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    // Drizzle throws on .set({}) — short-circuit empty patches by re-fetching.
+    if (Object.keys(parsed.data).length === 0) {
+      const existing = storage.getProjects(userId).find(p => p.id === Number(req.params.id));
+      if (!existing) return res.status(404).json({ error: "Not found" });
+      return res.json(existing);
+    }
+    const result = storage.updateProject(userId, Number(req.params.id), parsed.data);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });

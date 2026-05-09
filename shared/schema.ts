@@ -38,6 +38,18 @@ export const invitations = sqliteTable("invitations", {
 // Phase 1 (§2): trigger / start_date / end_date added.
 // trigger values: 'missing_support' | 'repeated_friction' | 'major_life_change' | 'new_identity_shift'
 // start_date / end_date are nullable ISO date strings (YYYY-MM-DD); consumed by Phase 2 calendar + Phase 5 Project v2 UI.
+//
+// Phase 5 / PR #21 (§10 Project v2 edit screen): additive nullable columns —
+//   outcomeDone           text   project outcome / definition of done
+//   status                text   'active' | 'paused' | 'done' | 'cancelled' (validated at API boundary)
+//   priority              text   'high' | 'medium' | 'low'
+//   targetDate            text   YYYY-MM-DD; aspirational completion date
+//   nextAction            text   single next concrete step
+//   blockers              text   freeform what's in the way
+//   risksWatchouts        text   freeform risks to watch
+//   notes                 text   freeform notes
+//   lastTouchedAt         text   ISO timestamp; bumped on edit (driven by app)
+//   stalledAt             text   ISO timestamp; set when project is flagged stalled
 export const projects = sqliteTable("projects", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().default(1),
@@ -46,6 +58,16 @@ export const projects = sqliteTable("projects", {
   trigger: text("trigger"),
   startDate: text("start_date"),
   endDate: text("end_date"),
+  outcomeDone: text("outcome_done"),
+  status: text("status"),
+  priority: text("priority"),
+  targetDate: text("target_date"),
+  nextAction: text("next_action"),
+  blockers: text("blockers"),
+  risksWatchouts: text("risks_watchouts"),
+  notes: text("notes"),
+  lastTouchedAt: text("last_touched_at"),
+  stalledAt: text("stalled_at"),
   createdAt: text("created_at").notNull(),
   archived: integer("archived").notNull().default(0),
   archivedAt: text("archived_at"),
@@ -266,6 +288,20 @@ export const projectTasks = sqliteTable("project_tasks", {
   status: text("status").notNull().default("open"), // 'open' | 'done' | 'cancelled'
   recurrenceRule: text("recurrence_rule"),
   recurrenceEndDate: text("recurrence_end_date"), // YYYY-MM-DD; required when recurrenceRule set
+  // PR #21 — linear ordering inside a project's task list (spec §10 mock shows 1-2-3-4 order).
+  // Nullable for backfill; app sorts NULLs last then by id.
+  sortOrder: integer("sort_order"),
+  createdAt: text("created_at").notNull(),
+});
+
+// PR #21 — Related links / files attached to a project (spec §10 "Add link" rows).
+// One row per link. label is freeform display text; url is the destination.
+export const projectLinks = sqliteTable("project_links", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  label: text("label").notNull(),
+  url: text("url").notNull(),
   createdAt: text("created_at").notNull(),
 });
 
@@ -463,6 +499,7 @@ export const insertResponsibilityProviderSchema = createInsertSchema(responsibil
 export const insertResponsibilityConditionSchema = createInsertSchema(responsibilityConditions).omit({ id: true });
 export const insertProjectResponsibilitySchema = createInsertSchema(projectResponsibility).omit({ id: true });
 export const insertProjectTaskSchema = createInsertSchema(projectTasks).omit({ id: true });
+export const insertProjectLinkSchema = createInsertSchema(projectLinks).omit({ id: true });
 export const insertAgendaTaskSchema = createInsertSchema(agendaTasks).omit({ id: true });
 
 export const insertPreferencesSchema = createInsertSchema(preferences).omit({ id: true });
@@ -514,6 +551,8 @@ export type ProjectResponsibility = typeof projectResponsibility.$inferSelect;
 export type InsertProjectResponsibility = z.infer<typeof insertProjectResponsibilitySchema>;
 export type ProjectTask = typeof projectTasks.$inferSelect;
 export type InsertProjectTask = z.infer<typeof insertProjectTaskSchema>;
+export type ProjectLink = typeof projectLinks.$inferSelect;
+export type InsertProjectLink = z.infer<typeof insertProjectLinkSchema>;
 export type AgendaTask = typeof agendaTasks.$inferSelect;
 export type InsertAgendaTask = z.infer<typeof insertAgendaTaskSchema>;
 
@@ -522,6 +561,11 @@ export const SUPPORT_STATES = ["available", "at_risk", "unavailable", "archived"
 export const RELATIONSHIP_TYPES = ["primary", "secondary", "optional", "temporary_workaround"] as const;
 export const IMPORTANCE_LEVELS = ["critical", "important", "helpful"] as const;
 export const PROJECT_TRIGGERS = ["missing_support", "repeated_friction", "major_life_change", "new_identity_shift"] as const;
+// PR #21 — Project v2 enums (§10). Validated at API boundary; stored as plain text.
+export const PROJECT_STATUSES = ["active", "paused", "done", "cancelled"] as const;
+export const PROJECT_PRIORITIES = ["high", "medium", "low"] as const;
+export type ProjectStatus = typeof PROJECT_STATUSES[number];
+export type ProjectPriority = typeof PROJECT_PRIORITIES[number];
 export type SupportState = typeof SUPPORT_STATES[number];
 export type RelationshipType = typeof RELATIONSHIP_TYPES[number];
 export type ImportanceLevel = typeof IMPORTANCE_LEVELS[number];
