@@ -122,6 +122,67 @@ function validateAgendaEndDate(body: Record<string, unknown>): string | null {
   return null;
 }
 
+// PR #22 — Cross-field date validation per Date-handling.docx.
+// Rules:
+//   end_date is for non-recurring items only.
+//   recurrence_end_date is for recurring items only.
+//   On responsibilities, when projectId is set, recurrence_end_date is required
+//   and must be ≤ the project's targetDate.
+// Pure helper; takes a body and (optionally) the resolved project's targetDate.
+const dateRe22 = /^\d{4}-\d{2}-\d{2}$/;
+function validateResponsibilityDates(body: Record<string, unknown>, projectTargetDate?: string | null): string | null {
+  const projectId = body.projectId;
+  const recurrenceEndDate = body.recurrenceEndDate;
+  const startDate = body.startDate;
+  if (startDate !== undefined && startDate !== null && startDate !== "") {
+    if (typeof startDate !== "string" || !dateRe22.test(startDate)) {
+      return "startDate must be in YYYY-MM-DD format";
+    }
+  }
+  if (recurrenceEndDate !== undefined && recurrenceEndDate !== null && recurrenceEndDate !== "") {
+    if (typeof recurrenceEndDate !== "string" || !dateRe22.test(recurrenceEndDate)) {
+      return "recurrenceEndDate must be in YYYY-MM-DD format";
+    }
+    if (typeof startDate === "string" && dateRe22.test(startDate) && recurrenceEndDate < startDate) {
+      return "recurrenceEndDate must be ≥ startDate";
+    }
+  }
+  // Temporary responsibility (projectId set) requires recurrenceEndDate ≤ project.targetDate.
+  if (projectId !== undefined && projectId !== null) {
+    if (recurrenceEndDate === undefined || recurrenceEndDate === null || recurrenceEndDate === "") {
+      return "recurrenceEndDate is required when projectId is set (temporary responsibility)";
+    }
+    if (projectTargetDate && typeof recurrenceEndDate === "string" && recurrenceEndDate > projectTargetDate) {
+      return `recurrenceEndDate (${recurrenceEndDate}) must be ≤ project.targetDate (${projectTargetDate})`;
+    }
+  }
+  return null;
+}
+
+function validateProjectTaskDates(body: Record<string, unknown>): string | null {
+  const startDate = body.startDate;
+  const endDate = body.endDate;
+  const isAllDay = body.isAllDay;
+  if (startDate !== undefined && startDate !== null && startDate !== "") {
+    if (typeof startDate !== "string" || !dateRe22.test(startDate)) {
+      return "startDate must be in YYYY-MM-DD format";
+    }
+  }
+  // Same shape as agenda_tasks: end_date only allowed when isAllDay=1.
+  if (endDate !== undefined && endDate !== null && endDate !== "") {
+    if (typeof endDate !== "string" || !dateRe22.test(endDate)) {
+      return "endDate must be in YYYY-MM-DD format";
+    }
+    if (isAllDay === 0 || isAllDay === false) {
+      return "endDate is only allowed when isAllDay = 1";
+    }
+    if (typeof startDate === "string" && dateRe22.test(startDate) && endDate < startDate) {
+      return "endDate must be ≥ startDate";
+    }
+  }
+  return null;
+}
+
 function isSupportType(s: string): s is SupportTypeParam {
   return (SUPPORT_TYPES as readonly string[]).includes(s);
 }
@@ -396,6 +457,15 @@ export function registerRoutes(server: Server, app: Express) {
     const data = { ...rest, createdAt: rest.createdAt || new Date().toISOString() };
     const parsed = insertResponsibilitySchema.safeParse(data);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    // PR #22 — cross-field date validation. If projectId set, look up project.targetDate.
+    let projectTargetDate: string | null | undefined;
+    if (parsed.data.projectId != null) {
+      const proj = storage.getProjects(userId).find(p => p.id === parsed.data.projectId);
+      if (!proj) return res.status(400).json({ error: `projectId ${parsed.data.projectId} not found` });
+      projectTargetDate = proj.targetDate;
+    }
+    const dateErr = validateResponsibilityDates(parsed.data as Record<string, unknown>, projectTargetDate);
+    if (dateErr) return res.status(400).json({ error: dateErr });
     // Duplicate-name guard (case-insensitive, trimmed) — mirrors role rule.
     const trimmed = (parsed.data.name ?? "").trim();
     if (!trimmed) return res.status(400).json({ error: "Responsibility name is required." });
@@ -441,6 +511,25 @@ export function registerRoutes(server: Server, app: Express) {
     // from a stale client is silently dropped; drizzle's .set() rejects
     // unknown columns, so we have to strip it before forwarding.
     if ("scope" in patch) delete patch.scope;
+    // PR #22 — cross-field date validation. Re-resolve targetDate based on the
+    // patch's projectId or the existing row's projectId.
+    if ("startDate" in patch || "recurrenceEndDate" in patch || "projectId" in patch) {
+      const existing = storage.getResponsibilities(userId).find(r => r.id === id);
+      if (!existing) return res.status(404).json({ error: "Not found" });
+      const merged: Record<string, unknown> = {
+        startDate: "startDate" in patch ? patch.startDate : existing.startDate,
+        recurrenceEndDate: "recurrenceEndDate" in patch ? patch.recurrenceEndDate : existing.recurrenceEndDate,
+        projectId: "projectId" in patch ? patch.projectId : existing.projectId,
+      };
+      let projectTargetDate: string | null | undefined;
+      if (merged.projectId != null) {
+        const proj = storage.getProjects(userId).find(p => p.id === merged.projectId);
+        if (!proj) return res.status(400).json({ error: `projectId ${merged.projectId} not found` });
+        projectTargetDate = proj.targetDate;
+      }
+      const dateErr = validateResponsibilityDates(merged, projectTargetDate);
+      if (dateErr) return res.status(400).json({ error: dateErr });
+    }
     // Duplicate-name guard on rename (case-insensitive, trimmed).
     if (typeof patch.name === "string") {
       const trimmed = patch.name.trim();
@@ -911,6 +1000,9 @@ export function registerRoutes(server: Server, app: Express) {
     }
     const parsed = insertProjectTaskSchema.safeParse(data);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    // PR #22 — date-handling validation (start/end/all-day shape).
+    const dateErr = validateProjectTaskDates(parsed.data as Record<string, unknown>);
+    if (dateErr) return res.status(400).json({ error: dateErr });
     res.json(storage.createProjectTask(userId, parsed.data));
   });
   app.patch("/api/project-tasks/:id", (req, res) => {
@@ -922,6 +1014,19 @@ export function registerRoutes(server: Server, app: Express) {
     if (body.recurrenceRule) {
       const err = validateRecurrenceRule(body.recurrenceRule);
       if (err) return res.status(400).json({ error: `recurrenceRule invalid: ${err}` });
+    }
+    // PR #22 — if any date field is in the patch, re-merge with existing row
+    // and validate the combined shape (matches responsibility PATCH pattern).
+    if ("startDate" in body || "endDate" in body || "isAllDay" in body) {
+      const existing = storage.getProjectTask(userId, Number(req.params.id));
+      if (!existing) return res.status(404).json({ error: "Not found" });
+      const merged: Record<string, unknown> = {
+        startDate: "startDate" in body ? body.startDate : existing.startDate,
+        endDate: "endDate" in body ? body.endDate : existing.endDate,
+        isAllDay: "isAllDay" in body ? body.isAllDay : existing.isAllDay,
+      };
+      const dateErr = validateProjectTaskDates(merged);
+      if (dateErr) return res.status(400).json({ error: dateErr });
     }
     const result = storage.updateProjectTask(userId, Number(req.params.id), body);
     if (!result) return res.status(404).json({ error: "Not found" });

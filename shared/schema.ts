@@ -175,6 +175,15 @@ export const projectEnvironment = sqliteTable("project_environment", {
 // Phase 2 (§23) added two new fields:
 //   color           — persists across all instances of this responsibility (chip color on Agenda)
 //   recurrence_rule — RRULE-style string; responsibilities are recurring by nature
+// PR #22 — Date-handling schema sweep:
+//   startDate            text   YYYY-MM-DD; required at creation (UI-enforced); recurrence anchor.
+//   recurrenceEndDate    text   YYYY-MM-DD; cutoff after which no more occurrences expand.
+//                              Optional for permanent responsibilities; required when projectId is set.
+//   projectId            int    nullable FK to projects.id. When set, this is a TEMPORARY responsibility
+//                              owned by the project. recurrenceEndDate must be ≤ project.targetDate.
+//                              On project completion, user is asked: keep as permanent (clear projectId
+//                              + recurrenceEndDate) or end with project (set recurrenceEndDate).
+//                              History is never deleted — same row continues either way.
 export const responsibilities = sqliteTable("responsibilities", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().default(1),
@@ -185,6 +194,9 @@ export const responsibilities = sqliteTable("responsibilities", {
   isPreset: integer("is_preset").notNull().default(0),
   color: text("color"),
   recurrenceRule: text("recurrence_rule"),
+  startDate: text("start_date"),
+  recurrenceEndDate: text("recurrence_end_date"),
+  projectId: integer("project_id"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -279,6 +291,16 @@ export const projectResponsibility = sqliteTable("project_responsibility", {
 // with origin = 'project' and origin_id pointing here.
 // Recurrence: optional; if set, recurrence_end_date is required and must be
 // ≤ project.end_date (else triggers conversion prompt — enforced in app).
+// PR #22 — Date-handling schema sweep:
+//   startDate    text   YYYY-MM-DD; required at creation (UI-enforced).
+//   endDate      text   YYYY-MM-DD; multi-day support; nullable when single-day or all-day.
+//   isAllDay     int    boolean; mirrors agenda_tasks pattern.
+// Note on recurrence on project_tasks: per locked model (Date-handling.docx),
+// if a project task has an RRULE it is NOT a project_tasks row — it lives in
+// `responsibilities` with projectId set (temporary responsibility). The legacy
+// recurrenceRule / recurrenceEndDate columns on this table are therefore
+// effectively unreachable from the new UI but are kept for backward-compat
+// until a future cleanup PR.
 export const projectTasks = sqliteTable("project_tasks", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().default(1),
@@ -286,8 +308,11 @@ export const projectTasks = sqliteTable("project_tasks", {
   title: text("title").notNull(),
   notes: text("notes"),
   status: text("status").notNull().default("open"), // 'open' | 'done' | 'cancelled'
-  recurrenceRule: text("recurrence_rule"),
-  recurrenceEndDate: text("recurrence_end_date"), // YYYY-MM-DD; required when recurrenceRule set
+  recurrenceRule: text("recurrence_rule"), // legacy; see comment above
+  recurrenceEndDate: text("recurrence_end_date"), // legacy; see comment above
+  startDate: text("start_date"),
+  endDate: text("end_date"),
+  isAllDay: integer("is_all_day").notNull().default(0),
   // PR #21 — linear ordering inside a project's task list (spec §10 mock shows 1-2-3-4 order).
   // Nullable for backfill; app sorts NULLs last then by id.
   sortOrder: integer("sort_order"),
