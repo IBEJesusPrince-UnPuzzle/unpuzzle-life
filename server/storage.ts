@@ -166,6 +166,124 @@ tryMigration("project_tasks.start_date",               `ALTER TABLE project_task
 tryMigration("project_tasks.end_date",                 `ALTER TABLE project_tasks ADD COLUMN end_date TEXT`);
 tryMigration("project_tasks.is_all_day",               `ALTER TABLE project_tasks ADD COLUMN is_all_day INTEGER NOT NULL DEFAULT 0`);
 
+// PR #24 — Rename agenda_tasks.date → start_date.
+// Migration strategy: dual-column transitional. Add the new column, backfill
+// from the legacy `date` column on existing rows, then dual-write at every
+// insert/update site so a downgrade can still read the old column. A follow-up
+// PR drops `date` once we've shipped a release on `start_date` cleanly.
+//
+// On freshly-created tables (post this migration block running) `date` is
+// still present per the CREATE TABLE block below — a future cleanup PR will
+// remove it and bump the schema. For now, both columns exist and stay in sync.
+tryMigration("agenda_tasks.start_date",  `ALTER TABLE agenda_tasks ADD COLUMN start_date TEXT`);
+// Backfill any rows where start_date is still null. Idempotent: subsequent
+// boots find every row already populated and the UPDATE is a no-op.
+try {
+  sqlite.exec(`UPDATE agenda_tasks SET start_date = date WHERE start_date IS NULL AND date IS NOT NULL`);
+} catch (e: any) {
+  const msg = String(e?.message ?? e);
+  // Benign on a brand-new database where the table was just created and is empty,
+  // or where the legacy `date` column has already been removed by a future PR.
+  if (!msg.includes("no such column") && !msg.includes("no such table")) {
+    console.warn(`[migration:agenda_tasks.start_date backfill] unexpected:`, msg);
+  }
+}
+// Dual-write: relax the legacy `date` column's NOT NULL constraint so Drizzle
+// inserts that only populate `start_date` succeed without listing `date`.
+// SQLite can't ALTER a column's constraint in place, so we rebuild the table
+// once — guarded by a check on the current schema. After this runs, the
+// AFTER trigger below mirrors `start_date` → `date` for any reader still on
+// the old column. Symmetric after-update trigger keeps them in sync.
+try {
+  // Detect whether the existing `date` column is still NOT NULL. PRAGMA
+  // table_info returns rows with `notnull = 1` when the column is NOT NULL.
+  const cols = sqlite.prepare(`PRAGMA table_info(agenda_tasks)`).all() as Array<{
+    name: string;
+    notnull: number;
+  }>;
+  const dateCol = cols.find((c) => c.name === "date");
+  const startDateCol = cols.find((c) => c.name === "start_date");
+  // Only rebuild when both columns exist AND `date` is still NOT NULL.
+  // Skips on a brand-new database (table was just created with `date` already
+  // nullable per the CREATE TABLE block) and on subsequent boots after rebuild.
+  if (dateCol && startDateCol && dateCol.notnull === 1) {
+    sqlite.exec(`
+      BEGIN;
+      CREATE TABLE agenda_tasks__pr24 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL DEFAULT 1,
+        origin TEXT NOT NULL,
+        origin_id INTEGER,
+        title TEXT,
+        date TEXT,
+        start_date TEXT,
+        end_date TEXT,
+        time TEXT,
+        duration_minutes INTEGER,
+        is_all_day INTEGER NOT NULL DEFAULT 0,
+        role_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'ready',
+        color TEXT,
+        recurrence_rule TEXT,
+        recurrence_end_date TEXT,
+        series_id INTEGER,
+        is_override INTEGER NOT NULL DEFAULT 0,
+        original_date TEXT,
+        is_cancelled INTEGER NOT NULL DEFAULT 0,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO agenda_tasks__pr24
+        SELECT id, user_id, origin, origin_id, title, date, start_date, end_date,
+               time, duration_minutes, is_all_day, role_id, status, color,
+               recurrence_rule, recurrence_end_date, series_id, is_override,
+               original_date, is_cancelled, notes, created_at, updated_at
+        FROM agenda_tasks;
+      DROP TABLE agenda_tasks;
+      ALTER TABLE agenda_tasks__pr24 RENAME TO agenda_tasks;
+      COMMIT;
+    `);
+  }
+} catch (e: any) {
+  const msg = String(e?.message ?? e);
+  if (!msg.includes("no such table")) {
+    console.warn(`[migration:agenda_tasks date relax NOT NULL] unexpected:`, msg);
+    // Roll back if the BEGIN went through but COMMIT failed.
+    try { sqlite.exec(`ROLLBACK`); } catch {}
+  }
+}
+// Dual-write triggers — keep the legacy `date` column in sync with `start_date`
+// transparently to all callers. Drizzle now writes to `start_date`; the
+// after-insert/update triggers mirror that value to `date` so any leftover
+// reader still sees a valid value. Idempotent: DROP IF EXISTS then CREATE.
+try {
+  sqlite.exec(`
+    DROP TRIGGER IF EXISTS agenda_tasks_dualwrite_insert;
+    CREATE TRIGGER agenda_tasks_dualwrite_insert
+      AFTER INSERT ON agenda_tasks
+      FOR EACH ROW
+      WHEN NEW.start_date IS NOT NULL AND (NEW.date IS NULL OR NEW.date <> NEW.start_date)
+      BEGIN
+        UPDATE agenda_tasks SET date = NEW.start_date WHERE id = NEW.id;
+      END;
+
+    DROP TRIGGER IF EXISTS agenda_tasks_dualwrite_update;
+    CREATE TRIGGER agenda_tasks_dualwrite_update
+      AFTER UPDATE OF start_date ON agenda_tasks
+      FOR EACH ROW
+      WHEN NEW.start_date IS NOT NULL AND (NEW.date IS NULL OR NEW.date <> NEW.start_date)
+      BEGIN
+        UPDATE agenda_tasks SET date = NEW.start_date WHERE id = NEW.id;
+      END;
+  `);
+} catch (e: any) {
+  const msg = String(e?.message ?? e);
+  if (!msg.includes("no such table") && !msg.includes("no such column")) {
+    console.warn(`[migration:agenda_tasks dualwrite triggers] unexpected:`, msg);
+  }
+}
+
 // ============================================================
 // TABLE CREATION (idempotent — IF NOT EXISTS)
 // ============================================================
@@ -465,7 +583,12 @@ sqlite.exec(`
     origin TEXT NOT NULL,
     origin_id INTEGER,
     title TEXT,
-    date TEXT NOT NULL,
+    -- PR #24 -- date is legacy; populated by an AFTER trigger from start_date.
+    -- Constraint relaxed from NOT NULL to nullable so Drizzle inserts that
+    -- omit it still succeed. Existing databases get the same relaxation via
+    -- the table-rebuild migration above. Future PR drops it.
+    date TEXT,
+    start_date TEXT,
     end_date TEXT,
     time TEXT,
     duration_minutes INTEGER,
@@ -531,7 +654,8 @@ export const db = drizzle(sqlite);
 //                     Mirrors responsibilities.recurrenceRule.
 // =============================================================================
 export type ResponsibilityScheduleInput = {
-  date: string;
+  // PR #24 — renamed from `date` to mirror the agenda_tasks.start_date column.
+  startDate: string;
   time: string | null;
   durationMinutes: number | null;
   isAllDay: boolean;
@@ -608,7 +732,7 @@ export interface IStorage {
   getResponsibilityWithSchedule(userId: number, id: number): {
     responsibility: Responsibility;
     schedule: {
-      date: string;
+      startDate: string;
       time: string | null;
       durationMinutes: number | null;
       isAllDay: boolean;
@@ -661,7 +785,7 @@ export interface IStorage {
         title: string;
         color: string | null;
         recurrenceRule: string;
-        date: string;
+        startDate: string;
         time: string | null;
         durationMinutes: number | null;
         isAllDay: boolean;
@@ -953,7 +1077,7 @@ export class DatabaseStorage implements IStorage {
   getResponsibilityWithSchedule(userId: number, id: number): {
     responsibility: Responsibility;
     schedule: {
-      date: string;
+      startDate: string;
       time: string | null;
       durationMinutes: number | null;
       isAllDay: boolean;
@@ -977,7 +1101,7 @@ export class DatabaseStorage implements IStorage {
       responsibility: resp,
       schedule: master
         ? {
-            date: master.date,
+            startDate: master.startDate,
             time: master.time,
             durationMinutes: master.durationMinutes,
             isAllDay: master.isAllDay === 1,
@@ -1008,7 +1132,7 @@ export class DatabaseStorage implements IStorage {
           originId: resp.id,
           title: null,                         // joins from responsibilities.name
           color: null,                         // joins from responsibilities.color
-          date: schedule.date,
+          startDate: schedule.startDate,
           endDate: schedule.isAllDay ? schedule.endDate : null,
           time: schedule.isAllDay ? null : schedule.time,
           durationMinutes: schedule.isAllDay ? null : schedule.durationMinutes,
@@ -1060,7 +1184,7 @@ export class DatabaseStorage implements IStorage {
         const masterPatch: Partial<typeof agendaTasks.$inferInsert> = {
           updatedAt: new Date().toISOString(),
         };
-        if (schedule.date !== undefined) masterPatch.date = schedule.date;
+        if (schedule.startDate !== undefined) masterPatch.startDate = schedule.startDate;
         if (schedule.isAllDay !== undefined) {
           masterPatch.isAllDay = schedule.isAllDay ? 1 : 0;
           if (schedule.isAllDay) {
@@ -1088,7 +1212,7 @@ export class DatabaseStorage implements IStorage {
           db.update(agendaTasks).set(masterPatch)
             .where(eq(agendaTasks.id, existingMaster.id)).run();
         } else if (
-          schedule.date !== undefined &&
+          schedule.startDate !== undefined &&
           schedule.recurrenceRule !== undefined
         ) {
           // Legacy responsibility (created pre-PR #19) being given a
@@ -1100,7 +1224,7 @@ export class DatabaseStorage implements IStorage {
             originId: id,
             title: null,
             color: null,
-            date: schedule.date,
+            startDate: schedule.startDate,
             endDate: schedule.isAllDay ? (schedule.endDate ?? null) : null,
             time: schedule.isAllDay ? null : (schedule.time ?? null),
             durationMinutes: schedule.isAllDay ? null : (schedule.durationMinutes ?? null),
@@ -1195,7 +1319,7 @@ export class DatabaseStorage implements IStorage {
         title: string;
         color: string | null;
         recurrenceRule: string;
-        date: string;
+        startDate: string;
         time: string | null;
         durationMinutes: number | null;
         isAllDay: boolean;
@@ -1228,23 +1352,23 @@ export class DatabaseStorage implements IStorage {
               seriesId: orig.seriesId,
               recurrenceRule: orig.recurrenceRule,
               recurrenceEndDate: orig.recurrenceEndDate,
-              date: orig.date,
+              startDate: orig.startDate,
             },
-            orig.date,
+            orig.startDate,
             today,
           );
           if (occurrences.length > 0) {
-            newEnd = occurrences[occurrences.length - 1].date;
+            newEnd = occurrences[occurrences.length - 1].startDate;
           } else {
             // No occurrence has fired yet. Floor at min(today, start − 1).
-            const startMinus1 = addDaysIso(orig.date, -1);
+            const startMinus1 = addDaysIso(orig.startDate, -1);
             newEnd = startMinus1 < today ? startMinus1 : today;
           }
         } else {
           // Non-recurring source task. Edge case — §22a's cap prompt only
           // fires when the rule is recurring, but we handle it defensively
           // by using min(today, originalStart − 1).
-          const startMinus1 = addDaysIso(orig.date, -1);
+          const startMinus1 = addDaysIso(orig.startDate, -1);
           newEnd = startMinus1 < today ? startMinus1 : today;
         }
         db.update(agendaTasks)
@@ -1278,7 +1402,7 @@ export class DatabaseStorage implements IStorage {
         originId: resp.id,
         title: null,
         color: null,
-        date: taskPayload.date,
+        startDate: taskPayload.startDate,
         endDate: taskPayload.isAllDay ? taskPayload.endDate : null,
         time: taskPayload.isAllDay ? null : taskPayload.time,
         durationMinutes: taskPayload.isAllDay ? null : taskPayload.durationMinutes,
@@ -1665,8 +1789,8 @@ export class DatabaseStorage implements IStorage {
     //    Each virtual instance inherits the master's span (Phase 3c).
     for (const m of masters) {
       const masterSpanDays =
-        m.isAllDay === 1 && m.endDate && m.endDate >= m.date
-          ? daysBetweenIso(m.date, m.endDate)
+        m.isAllDay === 1 && m.endDate && m.endDate >= m.startDate
+          ? daysBetweenIso(m.startDate, m.endDate)
           : 0;
       const expandStart = masterSpanDays > 0 ? addDaysIso(windowStart, -masterSpanDays) : windowStart;
       const expanded = expandMaster(
@@ -1675,28 +1799,28 @@ export class DatabaseStorage implements IStorage {
           seriesId: m.seriesId,
           recurrenceRule: m.recurrenceRule,
           recurrenceEndDate: m.recurrenceEndDate,
-          date: m.date,
+          startDate: m.startDate,
         } satisfies MasterRow,
         expandStart,
         windowEnd,
       );
       for (const inst of expanded) {
         // Per-occurrence endDate: same span as the master.
-        const instEndDate = masterSpanDays > 0 ? addDaysIso(inst.date, masterSpanDays) : null;
-        // Skip occurrences whose [inst.date, instEndDate] don't overlap the window.
-        if (!allDayOverlapsWindow(inst.date, instEndDate, windowStart, windowEnd) && masterSpanDays > 0) {
+        const instEndDate = masterSpanDays > 0 ? addDaysIso(inst.startDate, masterSpanDays) : null;
+        // Skip occurrences whose [inst.startDate, instEndDate] don't overlap the window.
+        if (!allDayOverlapsWindow(inst.startDate, instEndDate, windowStart, windowEnd) && masterSpanDays > 0) {
           continue;
         }
         // For non-multi-day masters, the original date-in-window check still applies.
-        if (masterSpanDays === 0 && (inst.date < windowStart || inst.date > windowEnd)) {
+        if (masterSpanDays === 0 && (inst.startDate < windowStart || inst.startDate > windowEnd)) {
           continue;
         }
-        const ov = overrideBySeriesAndDate.get(overrideKey(inst.seriesId, inst.date));
+        const ov = overrideBySeriesAndDate.get(overrideKey(inst.seriesId, inst.startDate));
         if (ov) continue; // override will be added below if it falls in the window
         out.push({
           ...m,
           id: m.id, // virtual instance keeps the master id; clients use originalDate to disambiguate
-          date: inst.date,
+          startDate: inst.startDate,
           endDate: instEndDate, // per-occurrence span (Phase 3c)
           isVirtual: true,
           masterId: m.id,
@@ -1714,8 +1838,8 @@ export class DatabaseStorage implements IStorage {
       if (o.isCancelled === 1) continue;
       const inWindow =
         o.isAllDay === 1
-          ? allDayOverlapsWindow(o.date, o.endDate, windowStart, windowEnd)
-          : o.date >= windowStart && o.date <= windowEnd;
+          ? allDayOverlapsWindow(o.startDate, o.endDate, windowStart, windowEnd)
+          : o.startDate >= windowStart && o.startDate <= windowEnd;
       if (inWindow) {
         out.push({
           ...o,
@@ -1731,8 +1855,8 @@ export class DatabaseStorage implements IStorage {
     for (const s of standalones) {
       const inWindow =
         s.isAllDay === 1
-          ? allDayOverlapsWindow(s.date, s.endDate, windowStart, windowEnd)
-          : s.date >= windowStart && s.date <= windowEnd;
+          ? allDayOverlapsWindow(s.startDate, s.endDate, windowStart, windowEnd)
+          : s.startDate >= windowStart && s.startDate <= windowEnd;
       if (inWindow) {
         out.push({
           ...s,
@@ -1743,9 +1867,9 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Stable sort: date asc, then time asc (nulls last), then id asc.
+    // Stable sort: startDate asc, then time asc (nulls last), then id asc.
     out.sort((a, b) => {
-      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      if (a.startDate !== b.startDate) return a.startDate < b.startDate ? -1 : 1;
       const at = a.time ?? "99:99";
       const bt = b.time ?? "99:99";
       if (at !== bt) return at < bt ? -1 : 1;

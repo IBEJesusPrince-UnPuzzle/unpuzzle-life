@@ -73,13 +73,13 @@ function formatLongDate(iso: string): string {
  * single-day only), so we don't need a code path for them.
  */
 function formatWhen(item: AgendaWindowItem): string {
-  const startLong = formatLongDate(item.date);
+  const startLong = formatLongDate(item.startDate);
 
   // Multi-day all-day — only when endDate is present and after date.
   if (
     item.isAllDay &&
     item.endDate &&
-    item.endDate !== item.date
+    item.endDate !== item.startDate
   ) {
     return `${startLong} \u2013 ${formatLongDate(item.endDate)}`;
   }

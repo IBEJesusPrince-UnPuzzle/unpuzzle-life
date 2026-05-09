@@ -51,7 +51,7 @@ export function AgendaAllDayBand({ date, onSelect }: Props) {
         const c = findColor(it.color);
         return (
           <button
-            key={`${it.id}-${it.date}`}
+            key={`${it.id}-${it.startDate}`}
             onClick={() => onSelect(it)}
             className="w-full text-left rounded-md px-2 py-1 text-xs font-medium hover:opacity-90 transition-opacity"
             style={{ backgroundColor: c.softHex, color: "#1f2937" }}

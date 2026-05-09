@@ -157,7 +157,7 @@ export function AgendaDayView({ date, onSelect }: Props) {
             const leftPct = p.lane * widthPct;
             return (
               <button
-                key={`${it.id}-${it.date}-${p.startMin}`}
+                key={`${it.id}-${it.startDate}-${p.startMin}`}
                 onClick={() => onSelect(it)}
                 className="absolute rounded-md text-left overflow-hidden hover:opacity-95 transition-opacity border border-white/40 shadow-sm"
                 style={{

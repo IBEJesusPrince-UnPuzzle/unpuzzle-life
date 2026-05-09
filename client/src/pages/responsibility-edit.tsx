@@ -64,7 +64,8 @@ interface RespDraft {
 type ResponsibilityWithSchedule = {
   responsibility: Responsibility;
   schedule: {
-    date: string;
+    // PR #24 — renamed from `date` to mirror agenda_tasks.start_date.
+    startDate: string;
     time: string | null;
     durationMinutes: number | null;
     isAllDay: boolean;
@@ -245,7 +246,7 @@ export default function ResponsibilityEditPage({
         color: input.color,
         recurrenceRule: input.recurrenceRule,
         schedule: {
-          date: input.date,
+          startDate: input.startDate,
           isAllDay: input.isAllDay,
           time: input.time,
           durationMinutes: input.durationMinutes,
@@ -289,7 +290,7 @@ export default function ResponsibilityEditPage({
           color: pendingSchedule.color,
           recurrenceRule: pendingSchedule.recurrenceRule,
           schedule: {
-            date: pendingSchedule.date,
+            startDate: pendingSchedule.startDate,
             isAllDay: pendingSchedule.isAllDay,
             time: pendingSchedule.time,
             durationMinutes: pendingSchedule.durationMinutes,

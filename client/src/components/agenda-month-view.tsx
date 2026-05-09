@@ -79,8 +79,8 @@ export function AgendaMonthView({ date, onDayTap }: Props) {
     const m = new Map<string, AgendaWindowItem[]>();
     for (const it of items) {
       if (it.isAllDay === 1) continue; // handled by span layer
-      if (!m.has(it.date)) m.set(it.date, []);
-      m.get(it.date)!.push(it);
+      if (!m.has(it.startDate)) m.set(it.startDate, []);
+      m.get(it.startDate)!.push(it);
     }
     Array.from(m.values()).forEach((list) => {
       list.sort((a, b) => (a.time ?? "").localeCompare(b.time ?? ""));
@@ -282,7 +282,7 @@ function SpanLayer({
           const tapIso = weekDays[p.startCol];
           return (
             <div
-              key={`mb-${p.item.id}-${p.item.date}-${p.row}-${p.startCol}`}
+              key={`mb-${p.item.id}-${p.item.startDate}-${p.row}-${p.startCol}`}
               className="pointer-events-auto"
               style={{
                 gridColumn: `${colStart} / ${colEnd}`,
@@ -303,7 +303,7 @@ function SpanLayer({
                   (p.clipRight ? "rounded-r-none" : "rounded-r-[3px]")
                 }
                 style={{ backgroundColor: c.softHex, color: c.hex }}
-                data-testid={`month-bar-${p.item.id}-${p.item.date}-${p.row}-${p.startCol}`}
+                data-testid={`month-bar-${p.item.id}-${p.item.startDate}-${p.row}-${p.startCol}`}
               >
                 {p.item.title || "(untitled)"}
               </button>
@@ -372,10 +372,10 @@ function MonthCell({
           const c = findColor(it.color);
           return (
             <div
-              key={`m-${it.id}-${it.date}-${it.time ?? "ad"}`}
+              key={`m-${it.id}-${it.startDate}-${it.time ?? "ad"}`}
               className="rounded-sm px-1 truncate text-[9px] leading-[14px] border border-white/40"
               style={{ backgroundColor: c.softHex, color: c.hex, height: 14 }}
-              data-testid={`month-chip-${it.id}-${it.date}`}
+              data-testid={`month-chip-${it.id}-${it.startDate}`}
             >
               {it.title || "(untitled)"}
             </div>
