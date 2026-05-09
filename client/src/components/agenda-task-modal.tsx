@@ -49,6 +49,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ColorPicker } from "@/components/color-picker";
+import { parseDuration, durationToMinutes } from "@/lib/duration";
 import { CustomRecurrenceDialog } from "@/components/custom-recurrence-dialog";
 import {
   RecurrenceScopeDialog,
@@ -81,21 +82,9 @@ type Props = {
   editing?: AgendaWindowItem | null;
 };
 
-// Convert minutes to a friendly value/unit pair for the duration input.
-function parseDuration(min: number | null | undefined): {
-  value: string;
-  unit: "min" | "hr";
-} {
-  if (!min || min <= 0) return { value: "30", unit: "min" };
-  if (min % 60 === 0) return { value: String(min / 60), unit: "hr" };
-  return { value: String(min), unit: "min" };
-}
-
-function durationToMinutes(value: string, unit: "min" | "hr"): number | null {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return unit === "hr" ? Math.round(n * 60) : Math.round(n);
-}
+// PR #19 — duration helpers were extracted to client/src/lib/duration.ts so
+// the responsibility-edit Schedule card can reuse the same rules without
+// reaching into a sibling component. Behavior unchanged.
 
 export function AgendaTaskModal({
   open,

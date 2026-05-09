@@ -404,6 +404,33 @@ sqlite.pragma("foreign_keys = ON");
 export { sqlite };
 export const db = drizzle(sqlite);
 
+// =============================================================================
+// PR #19 — ResponsibilityScheduleInput
+// =============================================================================
+// The schedule fields that materialize on the master agenda_tasks row when
+// a responsibility is created or its schedule is edited. These do NOT live
+// on the responsibilities table — only color and recurrenceRule do (per
+// PR #18d cascade design).
+//
+//   date              YYYY-MM-DD; first occurrence date (or single-day all-day)
+//   time              HH:MM; null when isAllDay = true
+//   durationMinutes   minutes; null when isAllDay = true
+//   isAllDay          true = full-day event (time/duration cleared)
+//   endDate           YYYY-MM-DD or null; only meaningful when isAllDay = true
+//                     and the event spans multiple days. Null = single-day.
+//   recurrenceRule    RRULE fragment, e.g. "FREQ=WEEKLY". Required (because
+//                     responsibilities are recurring by nature — §23).
+//                     Mirrors responsibilities.recurrenceRule.
+// =============================================================================
+export type ResponsibilityScheduleInput = {
+  date: string;
+  time: string | null;
+  durationMinutes: number | null;
+  isAllDay: boolean;
+  endDate: string | null;
+  recurrenceRule: string;
+};
+
 export interface IStorage {
   // Users
   getUserById(id: number): User | undefined;
@@ -468,8 +495,39 @@ export interface IStorage {
 
   // V2: Responsibilities
   getResponsibilities(userId: number): Responsibility[];
-  createResponsibility(userId: number, data: InsertResponsibility): Responsibility;
-  updateResponsibility(userId: number, id: number, data: Partial<InsertResponsibility>): Responsibility | undefined;
+  // PR #19 — includes master agenda_tasks schedule fields (or null when
+  // the responsibility was created pre-PR #19).
+  getResponsibilityWithSchedule(userId: number, id: number): {
+    responsibility: Responsibility;
+    schedule: {
+      date: string;
+      time: string | null;
+      durationMinutes: number | null;
+      isAllDay: boolean;
+      endDate: string | null;
+      recurrenceRule: string | null;
+    } | null;
+  } | undefined;
+  // PR #19 — atomic create / update / delete. The `schedule` parameter
+  // mirrors the master agenda_tasks row that materializes alongside the
+  // responsibility (origin='responsibility'). When schedule is supplied:
+  //   create: inserts both rows in one sqlite transaction.
+  //   update: patches the existing master row (creating one if none exists).
+  //   delete: drops every responsibility-origin agenda_tasks row first.
+  // recurrenceRule lives on BOTH rows (responsibilities.recurrenceRule for
+  // the cascade source-of-truth, agenda_tasks.recurrenceRule for the
+  // recurrence engine to expand). The two are kept in sync here.
+  createResponsibility(
+    userId: number,
+    data: InsertResponsibility,
+    schedule?: ResponsibilityScheduleInput | null,
+  ): Responsibility;
+  updateResponsibility(
+    userId: number,
+    id: number,
+    data: Partial<InsertResponsibility>,
+    schedule?: Partial<ResponsibilityScheduleInput> | null,
+  ): Responsibility | undefined;
   deleteResponsibility(userId: number, id: number): void;
 
   // V2: Roles
@@ -738,12 +796,201 @@ export class DatabaseStorage implements IStorage {
   getResponsibilities(userId: number): Responsibility[] {
     return db.select().from(responsibilities).where(eq(responsibilities.userId, userId)).all();
   }
-  createResponsibility(userId: number, data: InsertResponsibility): Responsibility {
-    return db.insert(responsibilities).values({ ...data, userId }).returning().get();
+
+  // PR #19 — Returns each responsibility plus the schedule fields from its
+  // master agenda_tasks row (origin='responsibility', isOverride=0). The
+  // responsibility-edit Schedule card uses this to seed Date/Time/Duration/
+  // All-day on load. responsibilities created pre-PR #19 won't have a master
+  // row yet — their `schedule` is null in that case.
+  getResponsibilityWithSchedule(userId: number, id: number): {
+    responsibility: Responsibility;
+    schedule: {
+      date: string;
+      time: string | null;
+      durationMinutes: number | null;
+      isAllDay: boolean;
+      endDate: string | null;
+      recurrenceRule: string | null;
+    } | null;
+  } | undefined {
+    const resp = db.select().from(responsibilities)
+      .where(and(eq(responsibilities.id, id), eq(responsibilities.userId, userId)))
+      .get();
+    if (!resp) return undefined;
+    const master = db.select().from(agendaTasks)
+      .where(and(
+        eq(agendaTasks.userId, userId),
+        eq(agendaTasks.origin, "responsibility"),
+        eq(agendaTasks.originId, id),
+        eq(agendaTasks.isOverride, 0),
+      ))
+      .get();
+    return {
+      responsibility: resp,
+      schedule: master
+        ? {
+            date: master.date,
+            time: master.time,
+            durationMinutes: master.durationMinutes,
+            isAllDay: master.isAllDay === 1,
+            endDate: master.endDate,
+            recurrenceRule: master.recurrenceRule,
+          }
+        : null,
+    };
   }
-  updateResponsibility(userId: number, id: number, data: Partial<InsertResponsibility>): Responsibility | undefined {
-    return db.update(responsibilities).set(data).where(and(eq(responsibilities.id, id), eq(responsibilities.userId, userId))).returning().get();
+  // PR #19 — atomic create. Inserts the responsibility row and (when
+  // schedule is supplied) the master agenda_tasks row in a single sqlite
+  // transaction. The master row carries origin='responsibility' /
+  // originId=resp.id so the agenda window query joins it back to the
+  // responsibility for color/title (PR #18d COALESCE cascade). title and
+  // color on the master row stay null — they live on the responsibility.
+  createResponsibility(
+    userId: number,
+    data: InsertResponsibility,
+    schedule?: ResponsibilityScheduleInput | null,
+  ): Responsibility {
+    const tx = sqlite.transaction(() => {
+      const resp = db.insert(responsibilities).values({ ...data, userId }).returning().get();
+      if (schedule) {
+        const now = new Date().toISOString();
+        const masterRow = db.insert(agendaTasks).values({
+          userId,
+          origin: "responsibility",
+          originId: resp.id,
+          title: null,                         // joins from responsibilities.name
+          color: null,                         // joins from responsibilities.color
+          date: schedule.date,
+          endDate: schedule.isAllDay ? schedule.endDate : null,
+          time: schedule.isAllDay ? null : schedule.time,
+          durationMinutes: schedule.isAllDay ? null : schedule.durationMinutes,
+          isAllDay: schedule.isAllDay ? 1 : 0,
+          recurrenceRule: schedule.recurrenceRule,
+          createdAt: now,
+          updatedAt: now,
+        }).returning().get();
+        // Self-assign series_id so future overrides can point at this master
+        // (mirrors the auto-assign in createAgendaTask).
+        if (masterRow.recurrenceRule && !masterRow.seriesId) {
+          db.update(agendaTasks).set({ seriesId: masterRow.id })
+            .where(eq(agendaTasks.id, masterRow.id)).run();
+        }
+      }
+      return resp;
+    });
+    return tx();
   }
+
+  // PR #19 — atomic update. Patches the responsibility row, and when
+  // schedule fields are present, patches the master agenda_tasks row
+  // (origin='responsibility', originId=resp.id, isOverride=0) too. If the
+  // master row doesn't exist yet (legacy responsibility predating PR #19),
+  // it gets created on first schedule patch. recurrenceRule on the
+  // responsibility row stays the source-of-truth for cascade reads (PR #18d
+  // COALESCE), but the master row's recurrenceRule must mirror it so the
+  // recurrence engine expands instances correctly.
+  updateResponsibility(
+    userId: number,
+    id: number,
+    data: Partial<InsertResponsibility>,
+    schedule?: Partial<ResponsibilityScheduleInput> | null,
+  ): Responsibility | undefined {
+    const tx = sqlite.transaction(() => {
+      let updated: Responsibility | undefined;
+      if (Object.keys(data).length > 0) {
+        updated = db.update(responsibilities).set(data)
+          .where(and(eq(responsibilities.id, id), eq(responsibilities.userId, userId)))
+          .returning().get();
+      } else {
+        updated = db.select().from(responsibilities)
+          .where(and(eq(responsibilities.id, id), eq(responsibilities.userId, userId)))
+          .get();
+      }
+      if (!updated) return undefined;
+
+      if (schedule && Object.keys(schedule).length > 0) {
+        const masterPatch: Partial<typeof agendaTasks.$inferInsert> = {
+          updatedAt: new Date().toISOString(),
+        };
+        if (schedule.date !== undefined) masterPatch.date = schedule.date;
+        if (schedule.isAllDay !== undefined) {
+          masterPatch.isAllDay = schedule.isAllDay ? 1 : 0;
+          if (schedule.isAllDay) {
+            // All-day clears time/duration; endDate may stay or be patched below.
+            masterPatch.time = null;
+            masterPatch.durationMinutes = null;
+          }
+        }
+        if (schedule.time !== undefined && !schedule.isAllDay) masterPatch.time = schedule.time;
+        if (schedule.durationMinutes !== undefined && !schedule.isAllDay) {
+          masterPatch.durationMinutes = schedule.durationMinutes;
+        }
+        if (schedule.endDate !== undefined) masterPatch.endDate = schedule.endDate;
+        if (schedule.recurrenceRule !== undefined) masterPatch.recurrenceRule = schedule.recurrenceRule;
+
+        const existingMaster = db.select().from(agendaTasks)
+          .where(and(
+            eq(agendaTasks.userId, userId),
+            eq(agendaTasks.origin, "responsibility"),
+            eq(agendaTasks.originId, id),
+            eq(agendaTasks.isOverride, 0),
+          ))
+          .get();
+        if (existingMaster) {
+          db.update(agendaTasks).set(masterPatch)
+            .where(eq(agendaTasks.id, existingMaster.id)).run();
+        } else if (
+          schedule.date !== undefined &&
+          schedule.recurrenceRule !== undefined
+        ) {
+          // Legacy responsibility (created pre-PR #19) being given a
+          // schedule for the first time. Insert a fresh master row.
+          const now = new Date().toISOString();
+          const created = db.insert(agendaTasks).values({
+            userId,
+            origin: "responsibility",
+            originId: id,
+            title: null,
+            color: null,
+            date: schedule.date,
+            endDate: schedule.isAllDay ? (schedule.endDate ?? null) : null,
+            time: schedule.isAllDay ? null : (schedule.time ?? null),
+            durationMinutes: schedule.isAllDay ? null : (schedule.durationMinutes ?? null),
+            isAllDay: schedule.isAllDay ? 1 : 0,
+            recurrenceRule: schedule.recurrenceRule,
+            createdAt: now,
+            updatedAt: now,
+          }).returning().get();
+          if (created.recurrenceRule && !created.seriesId) {
+            db.update(agendaTasks).set({ seriesId: created.id })
+              .where(eq(agendaTasks.id, created.id)).run();
+          }
+        }
+      } else if (data.recurrenceRule !== undefined) {
+        // recurrenceRule on the responsibility row changed but no schedule
+        // patch was sent. Mirror it onto the master agenda_tasks row so the
+        // recurrence engine sees the new pattern. (Covers the existing PR #18d
+        // "change Frequency in Schedule card" path.)
+        db.update(agendaTasks)
+          .set({ recurrenceRule: data.recurrenceRule, updatedAt: new Date().toISOString() })
+          .where(and(
+            eq(agendaTasks.userId, userId),
+            eq(agendaTasks.origin, "responsibility"),
+            eq(agendaTasks.originId, id),
+            eq(agendaTasks.isOverride, 0),
+          ))
+          .run();
+      }
+      return updated;
+    });
+    return tx();
+  }
+
+  // PR #19 — cascade delete now also drops every responsibility-origin
+  // agenda_tasks row (master + overrides + cancellations). Without this,
+  // deleting a responsibility would leave orphaned masters with a dangling
+  // originId, and the agenda window query would silently swallow them on
+  // the responsibility-id lookup.
   deleteResponsibility(userId: number, id: number): void {
     // Cascade: every junction that holds a FK to responsibilities.id must go
     // first, otherwise SQLite raises FOREIGN KEY constraint failed. Order
@@ -757,14 +1004,25 @@ export class DatabaseStorage implements IStorage {
     //   - responsibility_providers    (Providers support)
     //   - responsibility_conditions   (Conditions support)
     //   - project_responsibility      (Phase 2 project linkage)
-    db.delete(responsibilityRole).where(eq(responsibilityRole.responsibilityId, id)).run();
-    db.delete(responsibilityPeople).where(eq(responsibilityPeople.responsibilityId, id)).run();
-    db.delete(responsibilityPlaces).where(eq(responsibilityPlaces.responsibilityId, id)).run();
-    db.delete(responsibilityThings).where(eq(responsibilityThings.responsibilityId, id)).run();
-    db.delete(responsibilityProviders).where(eq(responsibilityProviders.responsibilityId, id)).run();
-    db.delete(responsibilityConditions).where(eq(responsibilityConditions.responsibilityId, id)).run();
-    db.delete(projectResponsibility).where(eq(projectResponsibility.responsibilityId, id)).run();
-    db.delete(responsibilities).where(and(eq(responsibilities.id, id), eq(responsibilities.userId, userId))).run();
+    //   - agenda_tasks (origin='responsibility', originId=id) — PR #19
+    const tx = sqlite.transaction(() => {
+      db.delete(responsibilityRole).where(eq(responsibilityRole.responsibilityId, id)).run();
+      db.delete(responsibilityPeople).where(eq(responsibilityPeople.responsibilityId, id)).run();
+      db.delete(responsibilityPlaces).where(eq(responsibilityPlaces.responsibilityId, id)).run();
+      db.delete(responsibilityThings).where(eq(responsibilityThings.responsibilityId, id)).run();
+      db.delete(responsibilityProviders).where(eq(responsibilityProviders.responsibilityId, id)).run();
+      db.delete(responsibilityConditions).where(eq(responsibilityConditions.responsibilityId, id)).run();
+      db.delete(projectResponsibility).where(eq(projectResponsibility.responsibilityId, id)).run();
+      db.delete(agendaTasks)
+        .where(and(
+          eq(agendaTasks.userId, userId),
+          eq(agendaTasks.origin, "responsibility"),
+          eq(agendaTasks.originId, id),
+        ))
+        .run();
+      db.delete(responsibilities).where(and(eq(responsibilities.id, id), eq(responsibilities.userId, userId))).run();
+    });
+    tx();
   }
 
   // V2: Roles

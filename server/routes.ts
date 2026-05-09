@@ -13,6 +13,8 @@ import {
   insertEnvironmentConditionSchema,
   insertProjectEnvironmentSchema,
   insertResponsibilitySchema,
+  responsibilityScheduleSchema,
+  responsibilitySchedulePatchSchema,
   insertRoleSchema,
   insertRolePeopleSchema,
   insertResponsibilityRoleSchema,
@@ -28,6 +30,7 @@ import {
   PROJECT_TASK_STATUSES,
 } from "@shared/schema";
 import { validateRecurrenceRule } from "./recurrence";
+import type { z } from "zod";
 
 // Phase 1 helper: support type whitelist for /api/environment/{type} dispatch.
 const SUPPORT_TYPES = ["people", "places", "things", "providers", "conditions"] as const;
@@ -333,9 +336,29 @@ export function registerRoutes(server: Server, app: Express) {
     const userId = getEffectiveUserId(req);
     res.json(storage.getResponsibilities(userId));
   });
+  // PR #19 — returns the responsibility row PLUS its schedule (the master
+  // agenda_tasks row's date / time / duration / isAllDay / endDate /
+  // recurrenceRule). schedule is null for responsibilities created
+  // pre-PR #19 that haven't been given a schedule yet.
+  app.get("/api/responsibilities/:id/schedule", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const id = Number(req.params.id);
+    const result = storage.getResponsibilityWithSchedule(userId, id);
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  // PR #19 — POST now accepts an optional `schedule` payload (date / time /
+  // durationMinutes / isAllDay / endDate / recurrenceRule). When supplied,
+  // the responsibility row and the master agenda_tasks row are inserted in
+  // a single transaction (storage.createResponsibility). schedule must pass
+  // the cross-field check (time + duration required when not all-day);
+  // otherwise we 400. recurrenceRule on the schedule is mirrored onto
+  // responsibilities.recurrenceRule when the body doesn't supply it
+  // separately, so the cascade source-of-truth stays in sync.
   app.post("/api/responsibilities", (req, res) => {
     const userId = getEffectiveUserId(req);
-    const data = { ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
+    const { schedule: scheduleRaw, ...rest } = req.body ?? {};
+    const data = { ...rest, createdAt: rest.createdAt || new Date().toISOString() };
     const parsed = insertResponsibilitySchema.safeParse(data);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
     // Duplicate-name guard (case-insensitive, trimmed) — mirrors role rule.
@@ -345,12 +368,37 @@ export function registerRoutes(server: Server, app: Express) {
     if (existing.some(r => r.name.trim().toLowerCase() === trimmed.toLowerCase())) {
       return res.status(409).json({ error: `You already have a responsibility named '${trimmed}'.` });
     }
-    res.json(storage.createResponsibility(userId, { ...parsed.data, name: trimmed }));
+
+    let schedule: z.infer<typeof responsibilityScheduleSchema> | null = null;
+    if (scheduleRaw !== undefined && scheduleRaw !== null) {
+      const sched = responsibilityScheduleSchema.safeParse(scheduleRaw);
+      if (!sched.success) return res.status(400).json({ error: sched.error.message });
+      // Validate the recurrence rule with the same engine the agenda modal uses.
+      const ruleErr = validateRecurrenceRule(sched.data.recurrenceRule);
+      if (ruleErr) return res.status(400).json({ error: `Invalid recurrence rule: ${ruleErr}` });
+      schedule = sched.data;
+      // Mirror the schedule's recurrenceRule onto the responsibility row when
+      // the body didn't set one explicitly. Cascade reads (PR #18d COALESCE)
+      // need it on responsibilities; the master agenda_tasks row needs it for
+      // the recurrence engine.
+      if (parsed.data.recurrenceRule == null) {
+        parsed.data.recurrenceRule = sched.data.recurrenceRule;
+      }
+    }
+
+    res.json(storage.createResponsibility(
+      userId,
+      { ...parsed.data, name: trimmed },
+      schedule
+        ? { ...schedule, endDate: schedule.endDate ?? null }
+        : null,
+    ));
   });
   app.patch("/api/responsibilities/:id", (req, res) => {
     const userId = getEffectiveUserId(req);
     const id = Number(req.params.id);
-    const patch: any = { ...(req.body ?? {}) };
+    const { schedule: scheduleRaw, ...rest } = req.body ?? {};
+    const patch: any = { ...rest };
     // PR #18d alignment: per Google's calendar-level pattern, edits at the
     // responsibility level (this endpoint) always cascade to every instance.
     // There is no scope concept here — that lives on agenda_tasks for
@@ -368,7 +416,26 @@ export function registerRoutes(server: Server, app: Express) {
       }
       patch.name = trimmed;
     }
-    const result = storage.updateResponsibility(userId, id, patch);
+
+    // PR #19 — schedule patch (PATCH variant: every field optional, no
+    // cross-field requirement). Storage layer handles the master row.
+    let schedulePatch: z.infer<typeof responsibilitySchedulePatchSchema> | null = null;
+    if (scheduleRaw !== undefined && scheduleRaw !== null) {
+      const sched = responsibilitySchedulePatchSchema.safeParse(scheduleRaw);
+      if (!sched.success) return res.status(400).json({ error: sched.error.message });
+      if (sched.data.recurrenceRule !== undefined) {
+        const ruleErr = validateRecurrenceRule(sched.data.recurrenceRule);
+        if (ruleErr) return res.status(400).json({ error: `Invalid recurrence rule: ${ruleErr}` });
+        // Keep responsibility-level recurrenceRule in sync if the body didn't
+        // also set it directly (cascade source-of-truth).
+        if (patch.recurrenceRule === undefined) {
+          patch.recurrenceRule = sched.data.recurrenceRule;
+        }
+      }
+      schedulePatch = sched.data;
+    }
+
+    const result = storage.updateResponsibility(userId, id, patch, schedulePatch);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
