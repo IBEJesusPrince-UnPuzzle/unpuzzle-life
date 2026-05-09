@@ -1159,6 +1159,54 @@ export class DatabaseStorage implements IStorage {
       if (at !== bt) return at < bt ? -1 : 1;
       return a.id - b.id;
     });
+
+    // §1318 read rule (PR #18d) — COALESCE color and title from the linked
+    // responsibility for rows that came from a responsibility origin and
+    // didn't override those fields locally. This is what makes the
+    // "calendar settings" card on the responsibility edit screen actually
+    // cascade visually: responsibility.color flows into every instance
+    // whose agenda_tasks.color is null, mirroring Google's calendar-level
+    // color behavior.
+    //
+    // Notes on the join:
+    //   - We look up responsibilities by originId (the FK to responsibilities.id),
+    //     scoped to userId. One bulk select keeps this O(1) extra queries.
+    //   - title COALESCE follows the same rule documented at agendaTasks.title
+    //     in shared/schema.ts: agenda title wins, else responsibility name.
+    //   - color COALESCE: explicit agenda_tasks.color wins (covers scope=all
+    //     master patches, scope=this overrides, and scope=following's new
+    //     master — all of which set color on the agenda_tasks row). Null
+    //     falls back to the responsibility's color.
+    //   - For overrides (origin='responsibility', isOverride=1) the override's
+    //     color may itself be null when the user only changed something else;
+    //     we still want to fall through to the responsibility default in that
+    //     case, so the same COALESCE applies uniformly.
+    const responsibilityIds = new Set<number>();
+    for (const row of out) {
+      if (row.origin === "responsibility" && row.originId != null) {
+        responsibilityIds.add(row.originId);
+      }
+    }
+    if (responsibilityIds.size > 0) {
+      const respRows = db
+        .select({
+          id: responsibilities.id,
+          name: responsibilities.name,
+          color: responsibilities.color,
+        })
+        .from(responsibilities)
+        .where(eq(responsibilities.userId, userId))
+        .all();
+      const byId = new Map(respRows.map((r) => [r.id, r]));
+      for (const row of out) {
+        if (row.origin !== "responsibility" || row.originId == null) continue;
+        const resp = byId.get(row.originId);
+        if (!resp) continue;
+        if (row.color == null) row.color = resp.color;
+        if (row.title == null) row.title = resp.name;
+      }
+    }
+
     return out;
   }
 

@@ -11,8 +11,15 @@
 //   - Bottom undo bar
 //
 // What lands later:
-//   - PR #18d: Per-instance + following-only scope semantics on PATCH
-//     (currently the server stubs scope as "all").
+//   - PR #18e: Per-instance (scope=this) + master-split (scope=following)
+//     scope semantics on PATCH /api/agenda-tasks/:id (PR #18d wires the
+//     scope dialog into instance-level edits and ships scope=all).
+//
+// PR #18d alignment: per Google Calendar's pattern, changes at the calendar/
+// category level (this card) apply to all instances with no scope prompt.
+// The scope dialog (This / Following / All) only fires when editing an
+// individual instance from Day view, where the date-anchored split is a
+// real choice. So this card just saves directly.
 //
 // Behavior summary:
 //   - 600ms debounced autosave on name (mirrors role edit screen).
@@ -41,7 +48,6 @@ import { useAutosaveDraft } from "@/lib/use-autosave-draft";
 import { RolePicker } from "@/components/role-picker";
 import { SupportSection } from "@/components/support-section";
 import { CalendarSettingsCard } from "@/components/calendar-settings-card";
-import type { RecurrenceScope } from "@/components/recurrence-scope-dialog";
 import type { SupportType } from "@/components/env-picker";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -197,23 +203,21 @@ export default function ResponsibilityEditPage({
   }
 
   // ============================================================
-  // Calendar settings (color + recurrence) — PR #18c
+  // Calendar settings (color + recurrence) — PR #18c, refined in PR #18d
   // ============================================================
   // Persist color + recurrenceRule via the same PATCH endpoint the name
-  // autosave uses. We pass the user's chosen scope (this/following/all) as
-  // an extra field so PR #18d can light up partial-update semantics later;
-  // for now the server treats every save as scope="all".
+  // autosave uses. Per Google's calendar-level pattern, changes here cascade
+  // to all instances of this responsibility — no scope dialog. The scope
+  // dialog lives on the instance-edit modal (agenda-task-modal.tsx).
   const saveCalendarSettings = useMutation({
     mutationFn: async (input: {
       color: string;
       recurrenceRule: string;
-      scope: RecurrenceScope;
     }) => {
       if (!id) return;
       await apiRequest("PATCH", `/api/responsibilities/${id}`, {
         color: input.color,
         recurrenceRule: input.recurrenceRule,
-        scope: input.scope,
       });
     },
     onSuccess: () => {
@@ -493,15 +497,16 @@ export default function ResponsibilityEditPage({
           </CardContent>
         </Card>
 
-        {/* Calendar settings (§11, PR #18c) — only shown after the
-            responsibility row exists, so we have an id to PATCH against. */}
+        {/* Calendar settings (§11, PR #18c — refined in PR #18d) — only
+            shown after the responsibility row exists, so we have an id to
+            PATCH against. Saves cascade to all instances per Google's
+            calendar-level pattern; no scope prompt at this level. */}
         {!isCreate && responsibility && (
           <CalendarSettingsCard
             initial={{
               color: responsibility.color ?? null,
               recurrenceRule: responsibility.recurrenceRule ?? null,
             }}
-            isExisting={true}
             onSave={(next) => saveCalendarSettings.mutate(next)}
           />
         )}
