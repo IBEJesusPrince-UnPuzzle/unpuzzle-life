@@ -146,6 +146,17 @@ tryMigration("projects.stalled_at",       `ALTER TABLE projects ADD COLUMN stall
 // PR #21 — project_tasks gains a sortOrder for linear ordering inside a project.
 tryMigration("project_tasks.sort_order",  `ALTER TABLE project_tasks ADD COLUMN sort_order INTEGER`);
 
+// PR #22 — Date-handling schema sweep (locked per Date-handling.docx).
+// Two-field rule: end_date for non-recurring items, recurrence_end_date for recurring items.
+// History is never deleted; rows are re-parented (e.g. clearing project_id graduates a
+// temporary responsibility to permanent without data loss).
+tryMigration("responsibilities.start_date",            `ALTER TABLE responsibilities ADD COLUMN start_date TEXT`);
+tryMigration("responsibilities.recurrence_end_date",   `ALTER TABLE responsibilities ADD COLUMN recurrence_end_date TEXT`);
+tryMigration("responsibilities.project_id",            `ALTER TABLE responsibilities ADD COLUMN project_id INTEGER`);
+tryMigration("project_tasks.start_date",               `ALTER TABLE project_tasks ADD COLUMN start_date TEXT`);
+tryMigration("project_tasks.end_date",                 `ALTER TABLE project_tasks ADD COLUMN end_date TEXT`);
+tryMigration("project_tasks.is_all_day",               `ALTER TABLE project_tasks ADD COLUMN is_all_day INTEGER NOT NULL DEFAULT 0`);
+
 // ============================================================
 // TABLE CREATION (idempotent — IF NOT EXISTS)
 // ============================================================
@@ -293,6 +304,12 @@ sqlite.exec(`
     is_preset INTEGER NOT NULL DEFAULT 0,
     color TEXT,
     recurrence_rule TEXT,
+    -- PR #22 date-handling sweep. start_date is required at creation (UI-enforced).
+    -- recurrence_end_date is optional for permanent responsibilities, required when project_id is set.
+    -- project_id (nullable) marks a TEMPORARY responsibility owned by a project.
+    start_date TEXT,
+    recurrence_end_date TEXT,
+    project_id INTEGER REFERENCES projects(id),
     created_at TEXT NOT NULL
   );
 
@@ -372,8 +389,16 @@ sqlite.exec(`
     title TEXT NOT NULL,
     notes TEXT,
     status TEXT NOT NULL DEFAULT 'open',
+    -- Legacy recurrence columns. Per PR #22 model, a recurring project task lives
+    -- in the responsibilities table with project_id set, not here. These columns
+    -- kept for backward-compat until cleanup PR.
     recurrence_rule TEXT,
     recurrence_end_date TEXT,
+    -- PR #22 date-handling sweep. start_date required at creation (UI-enforced).
+    -- end_date for multi-day support; nullable when single-day or all-day.
+    start_date TEXT,
+    end_date TEXT,
+    is_all_day INTEGER NOT NULL DEFAULT 0,
     sort_order INTEGER,
     created_at TEXT NOT NULL
   );
