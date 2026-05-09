@@ -1,5 +1,5 @@
 // =============================================================================
-// CalendarSettingsCard — PR #18c
+// CalendarSettingsCard — PR #18c (revised in PR #18d)
 // =============================================================================
 // Single card on the Responsibility edit screen that owns the two fields a
 // responsibility contributes to its calendar instances:
@@ -10,35 +10,23 @@
 // Order mirrors Google Calendar mobile: the repeat row sits ABOVE the calendar
 // color row, so we keep the same vertical sequence.
 //
-// Scope dialog wiring (Google parity, §11/§1278):
-//   - First save (creating a brand-new responsibility): no scope prompt; the
-//     fields persist directly.
-//   - Subsequent edits to either color or recurrence on an existing
-//     responsibility open RecurrenceScopeDialog (intent="save") asking
-//     This / This and following / All. The chosen scope is sent to the
-//     server. PR #18c stubs server behavior as scope="all" (full master
-//     update); per-instance + following-only are PR #18d.
+// PR #18d revision — Google pattern alignment:
+//   On Google, changing a calendar/category-level color or recurrence applies
+//   to EVERY event in that calendar with no scope prompt. The scope prompt
+//   (This / This and following / All) only fires when you edit an individual
+//   instance from Day view, where "this one occurrence vs. all of them" is a
+//   real distinction.
 //
-// State model:
-//   - The card is fully controlled. Parent passes `initial` (server snapshot)
-//     and the card calls `onSave({ color, recurrenceRule, scope })` after
-//     the user confirms in the scope dialog (or directly, when no prior
-//     value existed).
-//   - Local edit state is independent of the parent's autosave draft —
-//     calendar settings are not autosaved on every keystroke; they save
-//     after the user picks a value (color tile click, recurrence dropdown
-//     change, custom dialog save) and the scope dialog confirms.
+//   Per that pattern, this card now saves directly with no dialog. Edits at
+//   the responsibility level always cascade to all instances. The scope
+//   dialog has moved to the agenda task modal's edit flow (PR #18d).
 // =============================================================================
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { ColorPicker } from "@/components/color-picker";
 import { RecurrenceEditor } from "@/components/recurrence-editor";
-import {
-  RecurrenceScopeDialog,
-  type RecurrenceScope,
-} from "@/components/recurrence-scope-dialog";
 import { DEFAULT_AGENDA_COLOR_HEX } from "@/lib/agenda-colors";
 
 export type CalendarSettings = {
@@ -54,17 +42,13 @@ export type CalendarSettingsCardProps = {
     color: string | null;
     recurrenceRule: string | null;
   };
-  // True when the responsibility row already exists on the server. When
-  // false, scope dialog is suppressed (no instances exist yet to scope to).
-  isExisting: boolean;
-  // Persist callback. PR #18c stubs scope="all" server-side; the card always
-  // forwards the user's pick so PR #18d can light up "this" / "following".
-  onSave: (next: CalendarSettings & { scope: RecurrenceScope }) => void;
+  // Persist callback. Saves cascade to all instances by definition (Google
+  // calendar-level semantics).
+  onSave: (next: CalendarSettings) => void;
 };
 
 export function CalendarSettingsCard({
   initial,
-  isExisting,
   onSave,
 }: CalendarSettingsCardProps) {
   // Display values: fall back to defaults when the server has no value yet.
@@ -75,72 +59,22 @@ export function CalendarSettingsCard({
   const [recurrenceRule, setRecurrenceRule] = useState<string>(initialRule);
 
   // Re-sync when server snapshot changes (e.g. after another tab edits the
-  // row, or after the scope dialog completes a save and the parent
-  // invalidates the query).
+  // row, or after a save invalidates the query).
   useEffect(() => {
     setColor(initial.color ?? DEFAULT_AGENDA_COLOR_HEX);
     setRecurrenceRule(initial.recurrenceRule ?? "FREQ=WEEKLY");
   }, [initial.color, initial.recurrenceRule]);
 
-  // Pending change waiting for scope confirmation. We capture the proposed
-  // values at the moment the user changes a field so the scope dialog
-  // confirms exactly what they picked, even if they tap another control
-  // before resolving the dialog.
-  const [pending, setPending] = useState<CalendarSettings | null>(null);
-  const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
-
-  // Track whether the row has any prior value on the server. The first
-  // time a brand-new responsibility's color/recurrence is set, we skip the
-  // scope dialog (there are no existing instances to scope against).
-  const hasServerValue = useRef(
-    initial.color !== null || initial.recurrenceRule !== null,
-  );
-  useEffect(() => {
-    hasServerValue.current =
-      initial.color !== null || initial.recurrenceRule !== null;
-  }, [initial.color, initial.recurrenceRule]);
-
-  function handleFieldChange(next: CalendarSettings) {
-    // Brand-new responsibility OR row not yet persisted: save without prompt.
-    if (!isExisting || !hasServerValue.current) {
-      onSave({ ...next, scope: "all" });
-      // Reflect the saved values immediately so the row reads as "saved".
-      hasServerValue.current = true;
-      return;
-    }
-    // Existing responsibility with a prior value: open the scope dialog.
-    setPending(next);
-    setScopeDialogOpen(true);
-  }
-
   function onColorChange(nextHex: string) {
     if (nextHex.toLowerCase() === color.toLowerCase()) return;
     setColor(nextHex);
-    handleFieldChange({ color: nextHex, recurrenceRule });
+    onSave({ color: nextHex, recurrenceRule });
   }
 
   function onRecurrenceChange(nextRule: string) {
     if (nextRule === recurrenceRule) return;
     setRecurrenceRule(nextRule);
-    handleFieldChange({ color, recurrenceRule: nextRule });
-  }
-
-  function onScopeConfirm(scope: RecurrenceScope) {
-    if (!pending) return;
-    onSave({ ...pending, scope });
-    setPending(null);
-  }
-
-  function onScopeOpenChange(open: boolean) {
-    setScopeDialogOpen(open);
-    if (!open && pending) {
-      // User dismissed the dialog without confirming — revert local state
-      // back to the last server-known values so the UI doesn't lie about
-      // what's persisted.
-      setColor(initial.color ?? DEFAULT_AGENDA_COLOR_HEX);
-      setRecurrenceRule(initial.recurrenceRule ?? "FREQ=WEEKLY");
-      setPending(null);
-    }
+    onSave({ color, recurrenceRule: nextRule });
   }
 
   return (
@@ -171,13 +105,6 @@ export function CalendarSettingsCard({
           <ColorPicker value={color} onChange={onColorChange} />
         </div>
       </CardContent>
-
-      <RecurrenceScopeDialog
-        open={scopeDialogOpen}
-        onOpenChange={onScopeOpenChange}
-        intent="save"
-        onConfirm={onScopeConfirm}
-      />
     </Card>
   );
 }
