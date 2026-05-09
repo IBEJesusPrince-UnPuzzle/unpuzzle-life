@@ -20,6 +20,7 @@ import AdminPage from "@/pages/admin";
 import AgendaPage from "@/pages/agenda";
 import ClarityPage from "@/pages/clarity";
 import RolesPage from "@/pages/roles";
+import DevEditPageDemoRoute from "@/pages/dev-edit-page-demo";
 import NotFound from "@/pages/not-found";
 
 function ProjectDetailRoute({ params }: { params: { id?: string } }) {
@@ -43,6 +44,7 @@ function AppRouter() {
       <Route path="/data" component={DataPage} />
       <Route path="/inbox" component={InboxPage} />
       <Route path="/admin" component={AdminPage} />
+      <Route path="/dev/edit-page-demo" component={DevEditPageDemoRoute} />
       <Route component={NotFound} />
     </Switch>
   );
