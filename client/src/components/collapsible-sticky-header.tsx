@@ -1,4 +1,4 @@
-// CollapsibleStickyHeader — PR #25 (project edit restructure)
+// CollapsibleStickyHeader — PR #25 (project edit restructure) + PR #26 wiring
 //
 // Sticky two-tier block that sits underneath EditPageHeader on the project
 // edit page.
@@ -6,15 +6,18 @@
 // Always-pinned rows:
 //   1. Name (text input) + Status (compact tag-styled dropdown) +
 //      Priority (compact tag-styled dropdown) + manual chevron toggle
-//   2. (collapsed only) Peek line: "Next action: —"
+//   2. (collapsed only) Peek line: "Next action: <first incomplete task title>"
+//      Falls back to "Next action: —" when no tasks exist yet.
 //
 // Collapsible block (auto-collapses on scroll, auto-expands at top):
 //   1. Dates row     — Start / Target / End (the End cell only renders when
 //                      status === "done")
-//   2. Next action   — read-only display, "(auto-filled once you add tasks)"
-//                      until tasks ship in a later PR
-//   3. Progress      — read-only display, "0 / 0 tasks complete · Last
-//                      touched today · Stalled? —"
+//   2. Next action   — first incomplete task title (live, parent-derived).
+//                      "—" until at least one open task exists.
+//   3. Progress      — "X / Y tasks complete · Last touched <relative> ·
+//                      Stalled? Yes/No" (live, parent-derived). Same data
+//                      shown in detail inside the Tasks card's Progress
+//                      sub-card; this is the at-a-glance summary.
 //
 // Behavior locked in /home/user/workspace/pr25-project-edit-target.md:
 //   - Auto-collapse when scrollY > AUTO_COLLAPSE_THRESHOLD
@@ -65,6 +68,19 @@ export interface CollapsibleStickyHeaderProps {
 
   // ---------- Validation ----------
   dateError: string | null;
+
+  // ---------- Tasks-derived display (PR #26) ----------
+  // Title of the first incomplete (status='open') task, in spec sort order.
+  // null when no tasks exist or all are done/cancelled.
+  nextActionTitle: string | null;
+  // Counts for the at-a-glance Progress line.
+  doneTaskCount: number;
+  totalTaskCount: number;
+  // Project's updatedAt; used to show "Last touched <relative>".
+  projectUpdatedAt: string | null;
+  // True when project has tasks but none changed in the last 14 days.
+  // Computed by parent so all three places using this value stay in sync.
+  isStalled: boolean;
 }
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
@@ -85,6 +101,23 @@ const PRIORITY_OPTIONS: Array<{ value: string; label: string }> = [
 const AUTO_COLLAPSE_THRESHOLD = 32;
 const AUTO_EXPAND_THRESHOLD = 8;
 
+// Relative "Last touched" formatter. Mirrors ProjectProgressSubCard so the
+// at-a-glance value here matches the detail view exactly.
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+function relativeTouched(updatedAt: string | null | undefined): string {
+  if (!updatedAt) return "—";
+  const ts = Date.parse(updatedAt);
+  if (Number.isNaN(ts)) return "—";
+  const days = Math.floor((Date.now() - ts) / MS_PER_DAY);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  if (days < 14) return "last week";
+  if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
+  if (days < 60) return "last month";
+  return `${Math.floor(days / 30)} months ago`;
+}
+
 export function CollapsibleStickyHeader({
   title,
   onTitleChange,
@@ -100,6 +133,11 @@ export function CollapsibleStickyHeader({
   onEndChange,
   topOffsetPx,
   dateError,
+  nextActionTitle,
+  doneTaskCount,
+  totalTaskCount,
+  projectUpdatedAt,
+  isStalled,
 }: CollapsibleStickyHeaderProps) {
   // expanded === null means "auto" (follow scroll). expanded === true/false
   // means user has manually overridden via the chevron; the next scroll
@@ -258,7 +296,7 @@ export function CollapsibleStickyHeader({
           className="px-3 pb-2 text-[11px] text-muted-foreground"
           data-testid="text-sticky-peek"
         >
-          Next action: —
+          Next action: {nextActionTitle ?? "—"}
         </div>
       )}
 
@@ -328,32 +366,31 @@ export function CollapsibleStickyHeader({
             </p>
           )}
 
-          {/* Next action — read-only placeholder until tasks ship. */}
+          {/* Next action — live, derived from project tasks. */}
           <div className="space-y-0.5">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
               Next action
             </div>
             <div
               className="text-xs text-muted-foreground"
-              data-testid="text-next-action-placeholder"
+              data-testid="text-next-action"
             >
-              — (auto-filled once you add tasks)
+              {nextActionTitle ?? "— (no open tasks yet)"}
             </div>
           </div>
 
-          {/* Progress — read-only placeholder until tasks ship. */}
+          {/* Progress — live summary; full breakdown lives inside Tasks card. */}
           <div className="space-y-0.5">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
               Progress
             </div>
             <div
               className="text-xs text-muted-foreground"
-              data-testid="text-progress-placeholder"
+              data-testid="text-progress-summary"
             >
-              0 / 0 tasks complete · Last touched today · Stalled? —
-            </div>
-            <div className="text-[11px] italic text-muted-foreground -mt-0.5">
-              (auto-filled once you add tasks)
+              {totalTaskCount === 0
+                ? "0 / 0 tasks complete · — · Stalled? —"
+                : `${doneTaskCount} / ${totalTaskCount} tasks complete · Last touched ${relativeTouched(projectUpdatedAt)} · Stalled? ${isStalled ? "Yes" : "No"}`}
             </div>
           </div>
         </div>

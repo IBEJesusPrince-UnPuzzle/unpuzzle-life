@@ -51,6 +51,7 @@ import { SupportSection } from "@/components/support-section";
 import { CalendarSettingsCard, type CalendarSettings } from "@/components/calendar-settings-card";
 import type { SupportType } from "@/components/env-picker";
 import { apiRequest } from "@/lib/queryClient";
+import { parseServerError } from "@/lib/parse-server-error";
 import { useToast } from "@/hooks/use-toast";
 import NotFound from "@/pages/not-found";
 import type { Role, Responsibility, ResponsibilityRole } from "@shared/schema";
@@ -74,21 +75,6 @@ type ResponsibilityWithSchedule = {
     recurrenceRule: string | null;
   } | null;
 };
-
-// Server error bodies look like `409: {"error":"..."}` after our throw helper
-// stringifies the status + body. Pull the message out so toasts read clean.
-function parseServerError(err: Error, fallback: string): string {
-  const msg = err.message ?? fallback;
-  const m = msg.match(/^\d+:\s*(\{.*\})$/);
-  if (!m) return msg || fallback;
-  try {
-    const body = JSON.parse(m[1]);
-    if (body && typeof body.error === "string") return body.error;
-  } catch {
-    // fall through
-  }
-  return fallback;
-}
 
 const PLEASURE_NAME = "UnPuzzle Pleasure";
 

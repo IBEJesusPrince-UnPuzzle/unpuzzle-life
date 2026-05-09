@@ -1,4 +1,5 @@
 // MarkedForRemovalSection — PR #25 (project edit restructure)
+//                       — PR #26 (extended to project tasks)
 //
 // Locked behavior (pr25-project-edit-target.md, line 37–38):
 //   - Renders OUTSIDE all bundles, just above the bottom undo-all bar.
@@ -9,21 +10,30 @@
 //     bundle re-renders it because the markedForRemoval set drops the key).
 //
 // Single source of truth: marked items only show up here, never in the
-// bundle (SupportSection now hides marked rows). This component is shared
-// between project-edit and responsibility-edit pages — pass the appropriate
-// parentType + parentId.
+// bundle (SupportSection hides marked rows; ProjectTasksCard hides marked
+// task rows). This component is shared between project-edit and
+// responsibility-edit pages — pass the appropriate parentType + parentId.
+//
+// Supported key shapes:
+//   - proj-support:<type>:<linkId>     → "<Type> · <env name>"
+//   - resp-support:<type>:<linkId>     → "<Type> · <env name>"
+//   - proj-task:<taskId>               → "Tasks · <task title>" (PR #26)
 //
 // Implementation:
 //   - We read the same /api/<parent>/<id>/support/<type> queries that
 //     SupportSection uses, so React Query dedupes them.
 //   - We also read the corresponding /api/environment/<type> queries to
 //     resolve the human label for each FK.
+//   - For project parents, we additionally read /api/project-tasks for
+//     resolving task titles. Responsibility parents skip this query.
 //   - We filter the marked set by the parent's prefix (proj-support vs
-//     resp-support) so cross-page state never leaks.
+//     resp-support, plus proj-task on project pages) so cross-page state
+//     never leaks.
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import type { ProjectTask } from "@shared/schema";
 
 type ParentType = "responsibility" | "project";
 type SupportType = "people" | "places" | "things" | "providers" | "conditions";
@@ -143,6 +153,18 @@ export function MarkedForRemovalSection({
     conditions: conditionsEnv.data ?? [],
   };
 
+  // Project-task lookups. Only fetched when this is a project parent.
+  // (Responsibility parents have no concept of project_tasks marked here.)
+  const projectTasksQuery = useQuery<ProjectTask[]>({
+    queryKey: [`/api/project-tasks?projectId=${parentId}`],
+    enabled: parentType === "project",
+  });
+  const tasksById = useMemo(() => {
+    const m = new Map<number, ProjectTask>();
+    (projectTasksQuery.data ?? []).forEach(t => m.set(t.id, t));
+    return m;
+  }, [projectTasksQuery.data]);
+
   // Build the rows the user sees: one per marked key that we can resolve
   // back to a category + label. Keys we can't resolve (data still loading,
   // or item removed server-side already) are skipped silently — the parent
@@ -154,26 +176,45 @@ export function MarkedForRemovalSection({
       label: string;
     }> = [];
     markedForRemoval.forEach(key => {
-      // Only handle this parent's keys. Other key shapes (future,
-      // non-support) flow through unchanged.
-      const m = key.match(
+      // ----- support-link key shape -----
+      const supportMatch = key.match(
         new RegExp(`^${keyPrefix}:(people|places|things|providers|conditions):(\\d+)$`),
       );
-      if (!m) return;
-      const supportType = m[1] as SupportType;
-      const linkId = Number(m[2]);
-      const link = linksByType[supportType].find(l => l.id === linkId);
-      if (!link) return;
-      const fkField = FK_FIELD[supportType];
-      const envId = link[fkField];
-      if (typeof envId !== "number") return;
-      const env = envByType[supportType].find(e => e.id === envId);
-      if (!env) return;
-      out.push({
-        key,
-        category: CATEGORY_LABEL[supportType],
-        label: env.name,
-      });
+      if (supportMatch) {
+        const supportType = supportMatch[1] as SupportType;
+        const linkId = Number(supportMatch[2]);
+        const link = linksByType[supportType].find(l => l.id === linkId);
+        if (!link) return;
+        const fkField = FK_FIELD[supportType];
+        const envId = link[fkField];
+        if (typeof envId !== "number") return;
+        const env = envByType[supportType].find(e => e.id === envId);
+        if (!env) return;
+        out.push({
+          key,
+          category: CATEGORY_LABEL[supportType],
+          label: env.name,
+        });
+        return;
+      }
+
+      // ----- project-task key shape (PR #26) -----
+      // Only meaningful on project pages; resp pages don't own project tasks.
+      if (parentType === "project") {
+        const taskMatch = key.match(/^proj-task:(\d+)$/);
+        if (taskMatch) {
+          const taskId = Number(taskMatch[1]);
+          const task = tasksById.get(taskId);
+          if (!task) return;
+          out.push({
+            key,
+            category: "Tasks",
+            label: task.title,
+          });
+          return;
+        }
+      }
+      // Other key shapes (future, non-support) flow through unchanged.
     });
     // Stable order: by category then label.
     out.sort((a, b) => {
@@ -181,7 +222,7 @@ export function MarkedForRemovalSection({
       return a.label.localeCompare(b.label);
     });
     return out;
-  }, [markedForRemoval, keyPrefix, linksByType, envByType]);
+  }, [markedForRemoval, keyPrefix, parentType, linksByType, envByType, tasksById]);
 
   if (rows.length === 0) return null;
 
