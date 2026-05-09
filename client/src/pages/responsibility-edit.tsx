@@ -11,7 +11,8 @@
 //   - Bottom undo bar
 //
 // What lands later:
-//   - PR #18c: Color picker + scope dialog, recurrence editor.
+//   - PR #18d: Per-instance + following-only scope semantics on PATCH
+//     (currently the server stubs scope as "all").
 //
 // Behavior summary:
 //   - 600ms debounced autosave on name (mirrors role edit screen).
@@ -39,6 +40,8 @@ import { EditPageUndoBar } from "@/components/edit-page-undo-bar";
 import { useAutosaveDraft } from "@/lib/use-autosave-draft";
 import { RolePicker } from "@/components/role-picker";
 import { SupportSection } from "@/components/support-section";
+import { CalendarSettingsCard } from "@/components/calendar-settings-card";
+import type { RecurrenceScope } from "@/components/recurrence-scope-dialog";
 import type { SupportType } from "@/components/env-picker";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -192,6 +195,38 @@ export default function ResponsibilityEditPage({
   function handleUndoRemoveRole(linkId: number) {
     undoRemoval(`resp-role:${linkId}`);
   }
+
+  // ============================================================
+  // Calendar settings (color + recurrence) — PR #18c
+  // ============================================================
+  // Persist color + recurrenceRule via the same PATCH endpoint the name
+  // autosave uses. We pass the user's chosen scope (this/following/all) as
+  // an extra field so PR #18d can light up partial-update semantics later;
+  // for now the server treats every save as scope="all".
+  const saveCalendarSettings = useMutation({
+    mutationFn: async (input: {
+      color: string;
+      recurrenceRule: string;
+      scope: RecurrenceScope;
+    }) => {
+      if (!id) return;
+      await apiRequest("PATCH", `/api/responsibilities/${id}`, {
+        color: input.color,
+        recurrenceRule: input.recurrenceRule,
+        scope: input.scope,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/responsibilities"] });
+    },
+    onError: (err: Error) => {
+      toast({
+        variant: "destructive",
+        title: "Couldn't save calendar settings",
+        description: parseServerError(err, "Try again."),
+      });
+    },
+  });
 
   // Support-link delete is one mutation per junction type. We dispatch the
   // matching DELETE based on the marked-for-removal key prefix below.
@@ -457,6 +492,19 @@ export default function ResponsibilityEditPage({
             )}
           </CardContent>
         </Card>
+
+        {/* Calendar settings (§11, PR #18c) — only shown after the
+            responsibility row exists, so we have an id to PATCH against. */}
+        {!isCreate && responsibility && (
+          <CalendarSettingsCard
+            initial={{
+              color: responsibility.color ?? null,
+              recurrenceRule: responsibility.recurrenceRule ?? null,
+            }}
+            isExisting={true}
+            onSave={(next) => saveCalendarSettings.mutate(next)}
+          />
+        )}
 
         {/* 5 Support sections (§11) — only shown after the responsibility row
             exists, since they all need an id to link against. */}
