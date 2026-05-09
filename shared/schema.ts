@@ -386,6 +386,42 @@ export const insertEnvironmentProviderSchema = createInsertSchema(environmentPro
 export const insertEnvironmentConditionSchema = createInsertSchema(environmentConditions).omit({ id: true });
 export const insertProjectEnvironmentSchema = createInsertSchema(projectEnvironment).omit({ id: true });
 export const insertResponsibilitySchema = createInsertSchema(responsibilities).omit({ id: true });
+
+// PR #19 — Schedule payload that rides alongside POST/PATCH /api/responsibilities.
+// These fields target the master agenda_tasks row created/updated for this
+// responsibility (origin='responsibility'). They do NOT touch the
+// responsibilities table; only color and recurrenceRule do that. The
+// recurrenceRule lives on BOTH rows and the server keeps them in sync
+// (storage.ts createResponsibility / updateResponsibility).
+//
+//   date              YYYY-MM-DD          required on create
+//   isAllDay          boolean             defaults false
+//   time              HH:MM | null        required when !isAllDay
+//   durationMinutes   positive int | null required when !isAllDay
+//   endDate           YYYY-MM-DD | null   only honored when isAllDay
+//   recurrenceRule    RRULE fragment      required on create
+export const responsibilityScheduleSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
+  isAllDay: z.boolean().default(false),
+  time: z.string().regex(/^\d{2}:\d{2}$/, "Time must be HH:MM").nullable(),
+  durationMinutes: z.number().int().positive().nullable(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "End date must be YYYY-MM-DD").nullable().optional(),
+  recurrenceRule: z.string().min(1, "Recurrence rule is required"),
+}).refine(
+  (s) => s.isAllDay || (s.time !== null && s.durationMinutes !== null),
+  { message: "Time and duration are required when not all-day" },
+);
+
+// PATCH variant — every field optional, no cross-field requirement.
+// The server will only patch fields that are actually present.
+export const responsibilitySchedulePatchSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  isAllDay: z.boolean().optional(),
+  time: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+  durationMinutes: z.number().int().positive().nullable().optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  recurrenceRule: z.string().min(1).optional(),
+});
 export const insertRoleSchema = createInsertSchema(roles).omit({ id: true });
 export const insertRolePeopleSchema = createInsertSchema(rolePeople).omit({ id: true });
 export const insertResponsibilityRoleSchema = createInsertSchema(responsibilityRole).omit({ id: true });

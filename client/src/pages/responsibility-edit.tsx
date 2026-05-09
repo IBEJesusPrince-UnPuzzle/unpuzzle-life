@@ -34,7 +34,7 @@
 //   - Cadence/dayOfWeek not exposed here — recurrenceRule (PR #18c) replaces
 //     them at the responsibility level.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
@@ -47,7 +47,7 @@ import { EditPageUndoBar } from "@/components/edit-page-undo-bar";
 import { useAutosaveDraft } from "@/lib/use-autosave-draft";
 import { RolePicker } from "@/components/role-picker";
 import { SupportSection } from "@/components/support-section";
-import { CalendarSettingsCard } from "@/components/calendar-settings-card";
+import { CalendarSettingsCard, type CalendarSettings } from "@/components/calendar-settings-card";
 import type { SupportType } from "@/components/env-picker";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -57,6 +57,21 @@ import type { Role, Responsibility, ResponsibilityRole } from "@shared/schema";
 interface RespDraft {
   name: string;
 }
+
+// PR #19 — schedule snapshot returned by GET /api/responsibilities/:id/schedule.
+// schedule is null for legacy responsibilities created before PR #19; we
+// pass null straight through to the card so its defaults seed the form.
+type ResponsibilityWithSchedule = {
+  responsibility: Responsibility;
+  schedule: {
+    date: string;
+    time: string | null;
+    durationMinutes: number | null;
+    isAllDay: boolean;
+    endDate: string | null;
+    recurrenceRule: string | null;
+  } | null;
+};
 
 // Server error bodies look like `409: {"error":"..."}` after our throw helper
 // stringifies the status + body. Pull the message out so toasts read clean.
@@ -101,6 +116,13 @@ export default function ResponsibilityEditPage({
     queryKey: [`/api/responsibilities/${id}/roles`],
     enabled: !isCreate && validId,
   });
+  // PR #19 — fetch master agenda_tasks schedule fields for this responsibility.
+  // null when there's no master row yet (legacy responsibility, or brand-new
+  // create that hasn't been atomically POSTed).
+  const { data: scheduleData } = useQuery<ResponsibilityWithSchedule>({
+    queryKey: [`/api/responsibilities/${id}/schedule`],
+    enabled: !isCreate && validId,
+  });
 
   const responsibility = isCreate
     ? null
@@ -117,25 +139,28 @@ export default function ResponsibilityEditPage({
     [responsibility?.name],
   );
 
+  // PR #19 — pendingSchedule holds the latest schedule snapshot the
+  // CalendarSettingsCard has emitted. On a brand-new responsibility, the
+  // POST waits for both name AND pendingSchedule before firing (locked
+  // "name + time" gate). On an existing responsibility, schedule changes
+  // PATCH separately via saveCalendarSettings.
+  const [pendingSchedule, setPendingSchedule] = useState<CalendarSettings | null>(null);
+  // createInFlight is a ref (not state) so flipping it doesn't re-run the
+  // create effect — if it were state, the effect's cleanup would cancel the
+  // in-flight POST's post-await navigation, leaving the user stranded on
+  // /responsibilities/new. Ref-based flag is set inside the timer callback
+  // and only matters across timer fires.
+  const createInFlightRef = useRef(false);
+
   const draftState = useAutosaveDraft<RespDraft>({
     value: serverDraft,
     save: async (next: RespDraft) => {
       const trimmedName = next.name.trim();
       if (!trimmedName) return;
       if (isCreate) {
-        try {
-          const res = await apiRequest("POST", "/api/responsibilities", {
-            name: trimmedName,
-          });
-          const created = (await res.json()) as Responsibility;
-          queryClient.invalidateQueries({ queryKey: ["/api/responsibilities"] });
-          // Stable URL after first save.
-          setLocation(`/responsibilities/${created.id}/edit`, { replace: true });
-        } catch (err) {
-          const msg = parseServerError(err as Error, "Couldn't create responsibility");
-          toast({ variant: "destructive", title: "Couldn't save", description: msg });
-          throw err;
-        }
+        // PR #19 — in create mode, name alone no longer triggers the POST.
+        // The atomic create requires schedule too; the dedicated effect below
+        // (watching draft.name + pendingSchedule) handles it.
         return;
       }
       try {
@@ -203,25 +228,35 @@ export default function ResponsibilityEditPage({
   }
 
   // ============================================================
-  // Schedule (color + recurrence) — PR #18c, refined in PR #18d, relabeled in PR #18e
+  // Schedule (color + recurrence + date/time/duration/all-day)
+  //   PR #18c — color + recurrence card
+  //   PR #18d — cascade direct-save (no scope prompt at calendar level)
+  //   PR #18e — "Schedule" label + section reorder
+  //   PR #19  — added Date / Time / Duration / All-day; PATCH now sends a
+  //              schedule sub-object that hits the master agenda_tasks row
+  //              via storage.updateResponsibility.
+  // Per Google's calendar-level pattern, changes cascade to all instances
+  // — no scope dialog. The scope dialog lives on the instance-edit modal.
   // ============================================================
-  // Persist color + recurrenceRule via the same PATCH endpoint the name
-  // autosave uses. Per Google's calendar-level pattern, changes here cascade
-  // to all instances of this responsibility — no scope dialog. The scope
-  // dialog lives on the instance-edit modal (agenda-task-modal.tsx).
   const saveCalendarSettings = useMutation({
-    mutationFn: async (input: {
-      color: string;
-      recurrenceRule: string;
-    }) => {
+    mutationFn: async (input: CalendarSettings) => {
       if (!id) return;
       await apiRequest("PATCH", `/api/responsibilities/${id}`, {
         color: input.color,
         recurrenceRule: input.recurrenceRule,
+        schedule: {
+          date: input.date,
+          isAllDay: input.isAllDay,
+          time: input.time,
+          durationMinutes: input.durationMinutes,
+          endDate: input.endDate,
+          recurrenceRule: input.recurrenceRule,
+        },
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/responsibilities"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/responsibilities/${id}/schedule`] });
     },
     onError: (err: Error) => {
       toast({
@@ -231,6 +266,52 @@ export default function ResponsibilityEditPage({
       });
     },
   });
+
+  // PR #19 — atomic create. Fires when (we're in create mode) AND
+  // (name is non-empty) AND (pendingSchedule is set, meaning the card has
+  // committed a valid schedule). POSTs the responsibility row + master
+  // agenda_tasks row in one transaction (storage.createResponsibility) and
+  // redirects to the stable /responsibilities/:id/edit URL.
+  useEffect(() => {
+    if (!isCreate) return;
+    const trimmedName = draftState.draft.name.trim();
+    if (!trimmedName) return;
+    if (!pendingSchedule) return;
+    const timer = setTimeout(async () => {
+      // Ref-guarded so concurrent re-renders (from name typing or schedule
+      // tweaks while POST is in-flight) don't fire a second POST. Cleanup
+      // doesn't reset this — once the POST starts, it owns the create.
+      if (createInFlightRef.current) return;
+      createInFlightRef.current = true;
+      try {
+        const res = await apiRequest("POST", "/api/responsibilities", {
+          name: trimmedName,
+          color: pendingSchedule.color,
+          recurrenceRule: pendingSchedule.recurrenceRule,
+          schedule: {
+            date: pendingSchedule.date,
+            isAllDay: pendingSchedule.isAllDay,
+            time: pendingSchedule.time,
+            durationMinutes: pendingSchedule.durationMinutes,
+            endDate: pendingSchedule.endDate,
+            recurrenceRule: pendingSchedule.recurrenceRule,
+          },
+        });
+        const created = (await res.json()) as Responsibility;
+        queryClient.invalidateQueries({ queryKey: ["/api/responsibilities"] });
+        setLocation(`/responsibilities/${created.id}/edit`, { replace: true });
+      } catch (err) {
+        const msg = parseServerError(err as Error, "Couldn't create responsibility");
+        toast({ variant: "destructive", title: "Couldn't save", description: msg });
+        // Allow another attempt after the user fixes whatever caused the error.
+        createInFlightRef.current = false;
+      }
+    }, 600);
+    return () => {
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCreate, draftState.draft.name, pendingSchedule]);
 
   // Support-link delete is one mutation per junction type. We dispatch the
   // matching DELETE based on the marked-for-removal key prefix below.
@@ -380,21 +461,28 @@ export default function ResponsibilityEditPage({
           </CardContent>
         </Card>
 
-        {/* Schedule (§11, PR #18c — refined in PR #18d, relabeled in PR #18e)
+        {/* Schedule (§11, PR #18c–#18e, expanded in PR #19)
             — sits directly under the Responsibility name so the language
             flows: "recurring duty" → "how often you complete this duty".
-            Only shown after the responsibility row exists, since we need an
-            id to PATCH against. Saves cascade to all instances per Google's
-            calendar-level pattern; no scope prompt at this level. */}
-        {!isCreate && responsibility && (
-          <CalendarSettingsCard
-            initial={{
-              color: responsibility.color ?? null,
-              recurrenceRule: responsibility.recurrenceRule ?? null,
-            }}
-            onSave={(next) => saveCalendarSettings.mutate(next)}
-          />
-        )}
+            Visible from the start so the create flow is single-screen
+            (locked PR #19 decision). Saves cascade to all instances per
+            Google's calendar-level pattern; no scope prompt at this level.
+            On create, the card emits onSave once name + time are valid; the
+            atomic-create effect above POSTs both rows in one transaction. */}
+        <CalendarSettingsCard
+          initial={{
+            color: responsibility?.color ?? null,
+            recurrenceRule: responsibility?.recurrenceRule ?? null,
+            schedule: scheduleData?.schedule ?? null,
+          }}
+          onSave={(next) => {
+            if (isCreate) {
+              setPendingSchedule(next);
+            } else {
+              saveCalendarSettings.mutate(next);
+            }
+          }}
+        />
 
         {/* Role multi-add + Linked Roles (§11) */}
         <Card>

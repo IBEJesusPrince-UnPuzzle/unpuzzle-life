@@ -1,58 +1,89 @@
 // =============================================================================
-// CalendarSettingsCard — PR #18c (revised in PR #18d, relabeled in PR #18e)
+// CalendarSettingsCard — PR #18c (revised in #18d, relabeled in #18e, expanded in #19)
 // =============================================================================
-// Single "Schedule" card on the Responsibility edit screen. Owns the two
-// fields a responsibility contributes to its calendar instances:
+// Single "Schedule" card on the Responsibility edit screen. Owns every field
+// that determines when a responsibility shows up on the calendar:
 //
-//   1. Frequency (RRULE)  — required; defaults to "Every week"
-//   2. Color (hex)        — defaults to Peacock
+//   PR #18c–#18e (cascade fields, live on the responsibilities row)
+//     1. Frequency (RRULE)
+//     2. Color
 //
-// PR #18e note — the section is titled "Schedule" and the dropdown is labeled
-// "Frequency" so the language flows from the Responsibility helper line
-// ("recurring duty") into "how often you complete this duty". The internal
-// component, prop, and type names keep "CalendarSettings" since they describe
-// the underlying concept (calendar-level fields per Google's pattern), not
-// the visible label.
+//   PR #19 (schedule fields, live on the master agenda_tasks row)
+//     3. Date           (start date for all instances; defaults to today)
+//     4. All-day        (checkbox; clears Time + Duration when on)
+//     5. Time           (HH:MM; required when not all-day; blank by default)
+//     6. Duration       (positive number + min/hr unit toggle)
+//     7. End date       (only when all-day; blank = single-day)
 //
-// Order mirrors Google Calendar mobile: the repeat row sits ABOVE the calendar
-// color row, so we keep the same vertical sequence.
+// Field order matches agenda-task-modal.tsx so the muscle memory for picking
+// a date / time / duration is identical between the +Task modal and the
+// Responsibility edit page (locked Phase 5 decision).
 //
-// PR #18d revision — Google pattern alignment:
-//   On Google, changing a calendar/category-level color or recurrence applies
-//   to EVERY event in that calendar with no scope prompt. The scope prompt
-//   (This / This and following / All) only fires when you edit an individual
-//   instance from Day view, where "this one occurrence vs. all of them" is a
-//   real distinction.
-//
-//   Per that pattern, this card now saves directly with no dialog. Edits at
-//   the responsibility level always cascade to all instances. The scope
-//   dialog has moved to the agenda task modal's edit flow (PR #18d).
+// Save semantics:
+//   - PR #18d Google parity: changes here cascade to all instances. There's
+//     no "this / following / all" prompt at the responsibility level — that
+//     dialog only appears in the agenda task modal's edit-virtual flow.
+//   - The card autosaves on every committed change. The parent page wires
+//     the mutation; this card just emits the latest snapshot via onSave.
+//   - On a brand-new responsibility (no `initial.scheduleSeeded`), onSave
+//     does NOT fire until the user picks a Time (or toggles All-day). This
+//     enforces the locked "name + time" gate so the parent can post the
+//     atomic create payload (storage.createResponsibility).
 // =============================================================================
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ColorPicker } from "@/components/color-picker";
 import { RecurrenceEditor } from "@/components/recurrence-editor";
 import { DEFAULT_AGENDA_COLOR_HEX } from "@/lib/agenda-colors";
+import { parseDuration, durationToMinutes } from "@/lib/duration";
 
+// CalendarSettings — the full snapshot the card emits. The parent maps this
+// to the API shape: color/recurrenceRule onto the responsibility row,
+// date/time/durationMinutes/isAllDay/endDate onto the master agenda_tasks
+// row (storage.ts splits the payload accordingly).
 export type CalendarSettings = {
-  color: string;            // hex, e.g. "#039BE5"
-  recurrenceRule: string;   // RRULE fragment, e.g. "FREQ=WEEKLY"
+  color: string;
+  recurrenceRule: string;
+  date: string;                     // YYYY-MM-DD
+  isAllDay: boolean;
+  time: string | null;              // HH:MM, null when isAllDay
+  durationMinutes: number | null;   // null when isAllDay
+  endDate: string | null;           // YYYY-MM-DD, null when not allDay or single-day
 };
 
 export type CalendarSettingsCardProps = {
   // Server snapshot. A brand-new responsibility passes color=null,
-  // recurrenceRule=null — the card seeds defaults for display but only
-  // emits onSave when the user actually picks a value.
+  // recurrenceRule=null, schedule=null — the card seeds defaults for
+  // display but only emits onSave when the user has actually picked a
+  // value (specifically, at minimum a Time, unless All-day is on).
   initial: {
     color: string | null;
     recurrenceRule: string | null;
+    schedule: {
+      date: string;
+      time: string | null;
+      durationMinutes: number | null;
+      isAllDay: boolean;
+      endDate: string | null;
+    } | null;
   };
   // Persist callback. Saves cascade to all instances by definition (Google
   // calendar-level semantics).
   onSave: (next: CalendarSettings) => void;
 };
+
+// today's date in YYYY-MM-DD using the user's local clock (no UTC drift)
+function todayLocal(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 export function CalendarSettingsCard({
   initial,
@@ -61,27 +92,142 @@ export function CalendarSettingsCard({
   // Display values: fall back to defaults when the server has no value yet.
   const initialColor = initial.color ?? DEFAULT_AGENDA_COLOR_HEX;
   const initialRule = initial.recurrenceRule ?? "FREQ=WEEKLY";
+  const initialDate = initial.schedule?.date ?? todayLocal();
+  const initialIsAllDay = initial.schedule?.isAllDay ?? false;
+  const initialTime = initial.schedule?.time ?? "";
+  const initialEndDate = initial.schedule?.endDate ?? "";
+  const initialDuration = parseDuration(
+    initial.schedule?.durationMinutes ?? 60,
+  );
 
   const [color, setColor] = useState<string>(initialColor);
   const [recurrenceRule, setRecurrenceRule] = useState<string>(initialRule);
+  const [date, setDate] = useState<string>(initialDate);
+  const [isAllDay, setIsAllDay] = useState<boolean>(initialIsAllDay);
+  const [time, setTime] = useState<string>(initialTime);
+  const [endDate, setEndDate] = useState<string>(initialEndDate);
+  const [durValue, setDurValue] = useState<string>(initialDuration.value);
+  const [durUnit, setDurUnit] = useState<"min" | "hr">(initialDuration.unit);
 
   // Re-sync when server snapshot changes (e.g. after another tab edits the
   // row, or after a save invalidates the query).
   useEffect(() => {
     setColor(initial.color ?? DEFAULT_AGENDA_COLOR_HEX);
     setRecurrenceRule(initial.recurrenceRule ?? "FREQ=WEEKLY");
-  }, [initial.color, initial.recurrenceRule]);
+    if (initial.schedule) {
+      setDate(initial.schedule.date);
+      setIsAllDay(initial.schedule.isAllDay);
+      setTime(initial.schedule.time ?? "");
+      setEndDate(initial.schedule.endDate ?? "");
+      const d = parseDuration(initial.schedule.durationMinutes ?? 60);
+      setDurValue(d.value);
+      setDurUnit(d.unit);
+    }
+  }, [
+    initial.color,
+    initial.recurrenceRule,
+    initial.schedule?.date,
+    initial.schedule?.time,
+    initial.schedule?.durationMinutes,
+    initial.schedule?.isAllDay,
+    initial.schedule?.endDate,
+  ]);
+
+  // Whether the current draft can be committed. On a brand-new responsibility
+  // (no scheduleSeeded), at minimum Time must be picked (or All-day toggled).
+  // This enforces the locked "name + time" gate from PR #19.
+  const isReadyToSave = useMemo(() => {
+    if (!date) return false;
+    if (isAllDay) return true;
+    if (!time) return false;
+    if (durationToMinutes(durValue, durUnit) == null) return false;
+    return true;
+  }, [date, isAllDay, time, durValue, durUnit]);
+
+  function commit(overrides: Partial<{
+    color: string;
+    recurrenceRule: string;
+    date: string;
+    isAllDay: boolean;
+    time: string;
+    endDate: string;
+    durValue: string;
+    durUnit: "min" | "hr";
+  }> = {}) {
+    const next = {
+      color: overrides.color ?? color,
+      recurrenceRule: overrides.recurrenceRule ?? recurrenceRule,
+      date: overrides.date ?? date,
+      isAllDay: overrides.isAllDay ?? isAllDay,
+      time: overrides.time ?? time,
+      endDate: overrides.endDate ?? endDate,
+      durValue: overrides.durValue ?? durValue,
+      durUnit: overrides.durUnit ?? durUnit,
+    };
+    // Gate: don't fire onSave on a brand-new responsibility until Time is set
+    // (or All-day toggled). Prevents premature POSTs during the create flow.
+    if (!next.date) return;
+    if (!next.isAllDay) {
+      if (!next.time) return;
+      if (durationToMinutes(next.durValue, next.durUnit) == null) return;
+    }
+    onSave({
+      color: next.color,
+      recurrenceRule: next.recurrenceRule,
+      date: next.date,
+      isAllDay: next.isAllDay,
+      time: next.isAllDay ? null : next.time,
+      durationMinutes: next.isAllDay ? null : durationToMinutes(next.durValue, next.durUnit),
+      endDate: next.isAllDay ? (next.endDate || null) : null,
+    });
+  }
 
   function onColorChange(nextHex: string) {
     if (nextHex.toLowerCase() === color.toLowerCase()) return;
     setColor(nextHex);
-    onSave({ color: nextHex, recurrenceRule });
+    commit({ color: nextHex });
   }
 
   function onRecurrenceChange(nextRule: string) {
     if (nextRule === recurrenceRule) return;
     setRecurrenceRule(nextRule);
-    onSave({ color, recurrenceRule: nextRule });
+    commit({ recurrenceRule: nextRule });
+  }
+
+  function onDateChange(next: string) {
+    if (next === date) return;
+    setDate(next);
+    commit({ date: next });
+  }
+
+  function onAllDayChange(checked: boolean) {
+    if (checked === isAllDay) return;
+    setIsAllDay(checked);
+    commit({ isAllDay: checked });
+  }
+
+  function onTimeChange(next: string) {
+    if (next === time) return;
+    setTime(next);
+    commit({ time: next });
+  }
+
+  function onEndDateChange(next: string) {
+    if (next === endDate) return;
+    setEndDate(next);
+    commit({ endDate: next });
+  }
+
+  function onDurValueChange(next: string) {
+    if (next === durValue) return;
+    setDurValue(next);
+    commit({ durValue: next });
+  }
+
+  function onDurUnitChange(next: "min" | "hr") {
+    if (next === durUnit) return;
+    setDurUnit(next);
+    commit({ durUnit: next });
   }
 
   return (
@@ -95,7 +241,7 @@ export function CalendarSettingsCard({
           </p>
         </div>
 
-        {/* Frequency first (Google order: repeat row above calendar color). */}
+        {/* Frequency first (Google order: repeat row above date/time/color). */}
         <div className="space-y-1.5">
           <Label className="text-xs" htmlFor="responsibility-recurrence">
             Frequency
@@ -107,7 +253,90 @@ export function CalendarSettingsCard({
           />
         </div>
 
-        {/* Color second. */}
+        {/* Date — becomes "Start date" when all-day with multi-day support */}
+        <div className="space-y-1.5">
+          <Label className="text-xs" htmlFor="responsibility-date">
+            {isAllDay ? "Start date" : "Date"}
+          </Label>
+          <Input
+            id="responsibility-date"
+            type="date"
+            value={date}
+            onChange={(e) => onDateChange(e.target.value)}
+            data-testid="input-responsibility-date"
+          />
+        </div>
+
+        {/* All-day toggle */}
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="responsibility-all-day"
+            checked={isAllDay}
+            onCheckedChange={(v) => onAllDayChange(v === true)}
+            data-testid="checkbox-responsibility-all-day"
+          />
+          <Label htmlFor="responsibility-all-day" className="cursor-pointer text-xs">
+            All-day
+          </Label>
+        </div>
+
+        {/* End date — only when all-day. Empty means single-day. */}
+        {isAllDay && (
+          <div className="space-y-1.5">
+            <Label className="text-xs" htmlFor="responsibility-end-date">
+              End date <span className="text-muted-foreground text-xs">— leave blank for single day</span>
+            </Label>
+            <Input
+              id="responsibility-end-date"
+              type="date"
+              value={endDate}
+              min={date}
+              onChange={(e) => onEndDateChange(e.target.value)}
+              data-testid="input-responsibility-end-date"
+            />
+          </div>
+        )}
+
+        {/* Time + duration (hidden when all-day). Mirrors agenda-task-modal
+            lines 633–669 verbatim so muscle memory is identical. */}
+        {!isAllDay && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs" htmlFor="responsibility-time">Start time</Label>
+              <Input
+                id="responsibility-time"
+                type="time"
+                value={time}
+                onChange={(e) => onTimeChange(e.target.value)}
+                data-testid="input-responsibility-time"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Duration</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  min={1}
+                  value={durValue}
+                  onChange={(e) => onDurValueChange(e.target.value)}
+                  className="flex-1"
+                  data-testid="input-responsibility-duration-value"
+                />
+                <select
+                  value={durUnit}
+                  onChange={(e) => onDurUnitChange(e.target.value as "min" | "hr")}
+                  className="rounded-md border border-input bg-background px-2 text-sm"
+                  data-testid="select-responsibility-duration-unit"
+                >
+                  <option value="min">min</option>
+                  <option value="hr">hr</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Color last. */}
         <div className="space-y-1.5">
           <Label className="text-xs">Color</Label>
           <ColorPicker value={color} onChange={onColorChange} />
