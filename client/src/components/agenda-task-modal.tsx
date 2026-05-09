@@ -24,6 +24,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Trash2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -93,6 +94,9 @@ export function AgendaTaskModal({
   editing,
 }: Props) {
   const { toast } = useToast();
+  // PR #20 — wouter setLocation for redirecting to /responsibilities/:id/edit
+  // after a successful convert-to-responsibility.
+  const [, setLocation] = useLocation();
 
   // Mode resolution. Virtual rows have isVirtual=true and a non-null masterId.
   const mode: "create" | "edit-real" | "edit-virtual" = useMemo(() => {
@@ -536,15 +540,92 @@ export function AgendaTaskModal({
     setPendingEndDate("");
     setShowCapPrompt(false);
   }
-  function convertToResponsibilityStub() {
-    toast({
-      title: "Coming in Phase 5",
-      description:
-        "Convert-to-responsibility lands when the Responsibility edit page ships.",
-    });
-    setRecurrenceEndDate(oneYearOut(date));
-    setPendingEndDate("");
-    setShowCapPrompt(false);
+  // PR #20 — Convert-to-responsibility (§22a). Atomic create-and-redirect:
+  //   * Saved task path: send taskId so the server truncates the original
+  //     row's recurrence_end_date to the last occurrence ≤ today.
+  //   * Unsaved task path: send taskId=null — the source row was never
+  //     persisted, so there's nothing to truncate; just create the
+  //     responsibility from the in-flight payload.
+  // The server returns the new responsibility row; we redirect to its edit
+  // page so the user can fill in the rest (people / places / things /
+  // providers / conditions — standalone tasks don't carry those today).
+  // ruleOverride lets the Custom dialog's cap prompt feed in the rule the
+  // user just authored (which hasn't been committed to the parent form's
+  // state yet — commit happens via onSave). When omitted, we fall back to
+  // the parent form's activeRule().
+  const convertMutation = useMutation({
+    mutationFn: async (ruleOverride?: string) => {
+      // Today in the user's local clock (server uses this as the truncation
+      // floor; passing it from the client avoids server-timezone drift).
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      // Pull the current form payload, then layer in any rule override
+      // from the Custom dialog. The recurrence rule must be present —
+      // §22a's prompt only fires for recurring tasks.
+      const base = buildPayload();
+      const rule = ruleOverride ?? base.recurrenceRule;
+      if (!rule) throw new Error("Cannot convert: no recurrence rule");
+      // Saved-task source uses editing.id (or editing.masterId for virtual
+      // instances; convert always operates on the master/series, never an
+      // override). Unsaved (mode=create) sends taskId=null.
+      const taskId =
+        editing && (mode === "edit-real" || mode === "edit-virtual")
+          ? (editing.masterId ?? editing.id)
+          : null;
+      const taskPayload = {
+        title: title.trim(),
+        color: base.color ?? null,
+        recurrenceRule: rule,
+        date: base.date,
+        time: base.time,
+        durationMinutes: base.durationMinutes,
+        isAllDay: base.isAllDay === 1,
+        endDate: base.endDate,
+        // Standalone tasks don't have a role picker today, but a
+        // saved task may already carry a role_id from server-seeded data —
+        // pass it through if present.
+        roleId: editing?.roleId ?? null,
+      };
+      const r = await apiRequest("POST", "/api/responsibilities/convert-from-task", {
+        taskId,
+        taskPayload,
+        today,
+      });
+      return r.json() as Promise<{ id: number }>;
+    },
+    onSuccess: (resp) => {
+      // Invalidate caches so Agenda + Support lists reflect the new
+      // responsibility and (if a saved task was truncated) the agenda
+      // window stops expanding the original past today.
+      queryClient.invalidateQueries({ queryKey: ["/api/responsibilities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agenda-window"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agenda-tasks"] });
+      // Close every open chrome layer (parent modal, parent cap prompt,
+      // Custom dialog) before navigating so the user sees the responsibility
+      // edit page cleanly.
+      setPendingEndDate("");
+      setShowCapPrompt(false);
+      setCustomDialogOpen(false);
+      onOpenChange(false);
+      setLocation(`/responsibilities/${resp.id}/edit`);
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Could not convert task",
+        description: err?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  function convertToResponsibility() {
+    convertMutation.mutate(undefined);
+  }
+  // Bridge for the Custom dialog's Convert button (§22a). Passes the rule
+  // the user just authored in that dialog so the conversion uses the new
+  // rule instead of the parent form's stale activeRule().
+  function convertToResponsibilityFromDialog(rule: string) {
+    convertMutation.mutate(rule);
   }
   function cancelCapPrompt() {
     setPendingEndDate("");
@@ -731,6 +812,7 @@ export function AgendaTaskModal({
             recurrenceOption === "customExisting" ? recurrenceEndDate : ""
           }
           onSave={onCustomDialogSave}
+          onConvertToResponsibility={convertToResponsibilityFromDialog}
         />
 
         {/* §22a end-date prompt (PR #14). Retained for any future inline
@@ -761,7 +843,8 @@ export function AgendaTaskModal({
                 Cap at 1 year
               </AlertDialogAction>
               <AlertDialogAction
-                onClick={convertToResponsibilityStub}
+                onClick={convertToResponsibility}
+                disabled={convertMutation.isPending}
                 data-testid="button-recurrence-convert"
               >
                 Convert to responsibility

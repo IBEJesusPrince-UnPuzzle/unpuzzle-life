@@ -530,6 +530,41 @@ export interface IStorage {
   ): Responsibility | undefined;
   deleteResponsibility(userId: number, id: number): void;
 
+  // PR #20 — Convert standalone task → responsibility (§22a).
+  // Atomic transaction:
+  //   1. If input.taskId is set, fetch the original task. Truncate it by
+  //      setting recurrenceEndDate to the last actual occurrence ≤ today
+  //      (last day it showed up before today, per user lock). For
+  //      future-dated tasks (no occurrence yet), the floor is
+  //      min(today, originalStart − 1). The original task row is preserved
+  //      as history (no delete) per §22a.
+  //   2. Insert a new responsibilities row from name, color, recurrenceRule.
+  //   3. Insert the master agenda_tasks row (origin='responsibility',
+  //      originId=resp.id) carrying date / time / duration / isAllDay /
+  //      endDate / recurrenceRule / roleId from the source task.
+  // taskId omitted = unsaved-task path (the form was open in create mode
+  // and the user picked Convert before pressing Save). We just create the
+  // responsibility from the in-flight payload — no source row to truncate.
+  convertTaskToResponsibility(
+    userId: number,
+    input: {
+      taskId: number | null;
+      taskPayload: {
+        title: string;
+        color: string | null;
+        recurrenceRule: string;
+        date: string;
+        time: string | null;
+        durationMinutes: number | null;
+        isAllDay: boolean;
+        endDate: string | null;
+        roleId: number | null;
+      };
+      today: string; // YYYY-MM-DD — caller-provided so server timezone can't
+                     // skew the truncation floor by a day.
+    },
+  ): Responsibility;
+
   // V2: Roles
   getRoles(userId: number): Role[];
   createRole(userId: number, data: InsertRole): Role;
@@ -1023,6 +1058,133 @@ export class DatabaseStorage implements IStorage {
       db.delete(responsibilities).where(and(eq(responsibilities.id, id), eq(responsibilities.userId, userId))).run();
     });
     tx();
+  }
+
+  // PR #20 — Convert standalone task → responsibility (§22a).
+  // See IStorage interface for the full contract. Truncation rule
+  // (user-locked): "the last day it showed up before today is the last day
+  // of the recurrence." Implementation:
+  //   1. Build a virtual MasterRow from the source task and call
+  //      expandMaster(master, originalStart, today) to enumerate every
+  //      occurrence between the original start date and today (inclusive).
+  //   2. The new recurrenceEndDate is the LAST entry in that list (the most
+  //      recent occurrence on or before today). If the rule produces no
+  //      occurrences yet (future-dated tasks, or tasks whose first occurrence
+  //      hasn't fired), we fall back to min(today, originalStart − 1).
+  //   3. The original task's recurrence_rule is left UNTOUCHED (§22a spec
+  //      line 1283 — only the end date moves; the rule still describes the
+  //      original cadence).
+  convertTaskToResponsibility(
+    userId: number,
+    input: {
+      taskId: number | null;
+      taskPayload: {
+        title: string;
+        color: string | null;
+        recurrenceRule: string;
+        date: string;
+        time: string | null;
+        durationMinutes: number | null;
+        isAllDay: boolean;
+        endDate: string | null;
+        roleId: number | null;
+      };
+      today: string;
+    },
+  ): Responsibility {
+    const { taskId, taskPayload, today } = input;
+    const tx = sqlite.transaction(() => {
+      // 1. Truncate the original task (if it exists). We only touch
+      //    recurrenceEndDate — leaving recurrence_rule alone per §22a.
+      if (taskId) {
+        const orig = db.select().from(agendaTasks)
+          .where(and(eq(agendaTasks.id, taskId), eq(agendaTasks.userId, userId)))
+          .get();
+        if (!orig) {
+          throw new Error(`Source task ${taskId} not found`);
+        }
+        // Compute the truncation floor. If the task has a recurrence rule
+        // and at least one occurrence has fired on or before today, the new
+        // end date is that occurrence. Otherwise (future-dated, no fire
+        // yet), fall back to min(today, originalStart − 1).
+        let newEnd: string;
+        if (orig.recurrenceRule) {
+          const occurrences = expandMaster(
+            {
+              id: orig.id,
+              seriesId: orig.seriesId,
+              recurrenceRule: orig.recurrenceRule,
+              recurrenceEndDate: orig.recurrenceEndDate,
+              date: orig.date,
+            },
+            orig.date,
+            today,
+          );
+          if (occurrences.length > 0) {
+            newEnd = occurrences[occurrences.length - 1].date;
+          } else {
+            // No occurrence has fired yet. Floor at min(today, start − 1).
+            const startMinus1 = addDaysIso(orig.date, -1);
+            newEnd = startMinus1 < today ? startMinus1 : today;
+          }
+        } else {
+          // Non-recurring source task. Edge case — §22a's cap prompt only
+          // fires when the rule is recurring, but we handle it defensively
+          // by using min(today, originalStart − 1).
+          const startMinus1 = addDaysIso(orig.date, -1);
+          newEnd = startMinus1 < today ? startMinus1 : today;
+        }
+        db.update(agendaTasks)
+          .set({
+            recurrenceEndDate: newEnd,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(agendaTasks.id, taskId))
+          .run();
+      }
+
+      // 2. Insert the new responsibility row. cadence stays at the schema
+      //    default ('weekly') — the recurrence engine reads recurrenceRule,
+      //    cadence is a v1 carry-over and not used by the agenda window
+      //    expansion. The user can re-pick a cadence on the edit page.
+      const now = new Date().toISOString();
+      const resp = db.insert(responsibilities).values({
+        userId,
+        name: taskPayload.title,
+        color: taskPayload.color,
+        recurrenceRule: taskPayload.recurrenceRule,
+        createdAt: now,
+      }).returning().get();
+
+      // 3. Insert the master agenda_tasks row. Mirrors the pattern in
+      //    createResponsibility — title/color stay null and join from the
+      //    responsibility row via PR #18d's COALESCE cascade.
+      const masterRow = db.insert(agendaTasks).values({
+        userId,
+        origin: "responsibility",
+        originId: resp.id,
+        title: null,
+        color: null,
+        date: taskPayload.date,
+        endDate: taskPayload.isAllDay ? taskPayload.endDate : null,
+        time: taskPayload.isAllDay ? null : taskPayload.time,
+        durationMinutes: taskPayload.isAllDay ? null : taskPayload.durationMinutes,
+        isAllDay: taskPayload.isAllDay ? 1 : 0,
+        roleId: taskPayload.roleId,
+        recurrenceRule: taskPayload.recurrenceRule,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().get();
+      // Self-assign series_id so future overrides can point at this master
+      // (mirrors createAgendaTask + createResponsibility).
+      if (masterRow.recurrenceRule && !masterRow.seriesId) {
+        db.update(agendaTasks).set({ seriesId: masterRow.id })
+          .where(eq(agendaTasks.id, masterRow.id)).run();
+      }
+
+      return resp;
+    });
+    return tx();
   }
 
   // V2: Roles

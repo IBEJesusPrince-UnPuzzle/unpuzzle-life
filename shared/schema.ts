@@ -412,6 +412,37 @@ export const responsibilityScheduleSchema = z.object({
   { message: "Time and duration are required when not all-day" },
 );
 
+// PR #20 — Convert standalone task → responsibility (§22a).
+// Body for POST /api/responsibilities/convert-from-task. Handles both
+//   * saved tasks: send taskId (server will look up the row and truncate
+//                  its recurrenceEndDate to the last occurrence ≤ today)
+//   * unsaved tasks: send taskId=null and rely on taskPayload (no
+//                    truncation — the source task was never persisted)
+// taskPayload always carries the fields needed to seed the new
+// responsibility + its master agenda_tasks row. Recurrence rule is required
+// because §22a's prompt only fires for recurring tasks.
+export const convertTaskToResponsibilitySchema = z.object({
+  taskId: z.number().int().positive().nullable(),
+  taskPayload: z.object({
+    title: z.string().trim().min(1, "Task name is required"),
+    color: z.string().nullable(),
+    recurrenceRule: z.string().min(1, "Recurrence rule is required"),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
+    time: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
+    durationMinutes: z.number().int().positive().nullable(),
+    isAllDay: z.boolean(),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+    roleId: z.number().int().positive().nullable(),
+  }).refine(
+    (p) => p.isAllDay || (p.time !== null && p.durationMinutes !== null),
+    { message: "Time and duration are required when not all-day" },
+  ),
+  // Caller-provided "today" (YYYY-MM-DD in user's local timezone) so the
+  // server's clock can't shift the truncation floor by a day across
+  // timezones. Required — no default — to keep timezone semantics explicit.
+  today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "today must be YYYY-MM-DD"),
+});
+
 // PATCH variant — every field optional, no cross-field requirement.
 // The server will only patch fields that are actually present.
 export const responsibilitySchedulePatchSchema = z.object({
