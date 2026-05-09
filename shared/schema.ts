@@ -327,6 +327,13 @@ export const agendaTasks = sqliteTable("agenda_tasks", {
   // Hybrid model bookkeeping (one column beyond §23; necessary to map
   // an override row back to the virtual instance it replaces).
   originalDate: text("original_date"), // YYYY-MM-DD; null unless isOverride=1
+  // PR #15 — "Delete just this occurrence" stores a cancellation override:
+  //   isOverride=1, isCancelled=1, originalDate=virtual instance date.
+  // The window query skips virtual instances whose (seriesId, originalDate)
+  // hits a cancellation row. Symmetric with edit-this (which writes an
+  // override row that REPLACES the virtual instance); cancellation just
+  // omits it. Mirrors Google's status=cancelled exception events.
+  isCancelled: integer("is_cancelled").notNull().default(0),
   notes: text("notes"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),

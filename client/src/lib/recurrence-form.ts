@@ -238,6 +238,19 @@ export function describeCustomRule(rule: string): string {
 
 // Compute the 1-year cap for a given start date (ISO YYYY-MM-DD).
 // Returns ISO YYYY-MM-DD. Feb 29 → next year's Feb 28 (JS Date semantics).
+// PR #15 — add or subtract whole days from an ISO date, returning ISO.
+// Used by the "This and following" scope split: when the user picks an
+// occurrence date, the original master is truncated to (occurrenceDate - 1).
+export function addDaysIso(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const target = new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1));
+  target.setUTCDate(target.getUTCDate() + days);
+  const yy = target.getUTCFullYear();
+  const mm = String(target.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(target.getUTCDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
 export function oneYearOut(isoDate: string): string {
   const [y, m, d] = isoDate.split("-").map(Number);
   // new Date(year, monthIdx, day) handles Feb 29 → Mar 1 rollover; we want
