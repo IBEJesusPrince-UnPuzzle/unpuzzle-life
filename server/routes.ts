@@ -338,11 +338,30 @@ export function registerRoutes(server: Server, app: Express) {
     const data = { ...req.body, createdAt: req.body.createdAt || new Date().toISOString() };
     const parsed = insertResponsibilitySchema.safeParse(data);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
-    res.json(storage.createResponsibility(userId, parsed.data));
+    // Duplicate-name guard (case-insensitive, trimmed) — mirrors role rule.
+    const trimmed = (parsed.data.name ?? "").trim();
+    if (!trimmed) return res.status(400).json({ error: "Responsibility name is required." });
+    const existing = storage.getResponsibilities(userId);
+    if (existing.some(r => r.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+      return res.status(409).json({ error: `You already have a responsibility named '${trimmed}'.` });
+    }
+    res.json(storage.createResponsibility(userId, { ...parsed.data, name: trimmed }));
   });
   app.patch("/api/responsibilities/:id", (req, res) => {
     const userId = getEffectiveUserId(req);
-    const result = storage.updateResponsibility(userId, Number(req.params.id), req.body);
+    const id = Number(req.params.id);
+    const patch: any = { ...(req.body ?? {}) };
+    // Duplicate-name guard on rename (case-insensitive, trimmed).
+    if (typeof patch.name === "string") {
+      const trimmed = patch.name.trim();
+      if (!trimmed) return res.status(400).json({ error: "Responsibility name is required." });
+      const existing = storage.getResponsibilities(userId);
+      if (existing.some(r => r.id !== id && r.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+        return res.status(409).json({ error: `You already have a responsibility named '${trimmed}'.` });
+      }
+      patch.name = trimmed;
+    }
+    const result = storage.updateResponsibility(userId, id, patch);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
@@ -509,13 +528,47 @@ export function registerRoutes(server: Server, app: Express) {
     res.json(storage.getAllResponsibilityRolesForUser(userId));
   });
   app.post("/api/responsibilities/:id/roles", (req, res) => {
-    const data = { ...req.body, responsibilityId: Number(req.params.id) };
+    const userId = getEffectiveUserId(req);
+    const respId = Number(req.params.id);
+    const data = { ...req.body, responsibilityId: respId };
     const parsed = insertResponsibilityRoleSchema.safeParse(data);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    // Prevent duplicate role link on the same responsibility.
+    const existingLinks = storage.getResponsibilityRoles(respId);
+    if (existingLinks.some(l => l.roleId === parsed.data.roleId)) {
+      return res.status(409).json({ error: "That role is already linked to this responsibility." });
+    }
+    // Verify role belongs to current user (guard cross-user link attempts).
+    const userRoles = storage.getRoles(userId);
+    if (!userRoles.some(r => r.id === parsed.data.roleId)) {
+      return res.status(404).json({ error: "Role not found." });
+    }
     res.json(storage.linkResponsibilityRole(parsed.data));
   });
   app.delete("/api/responsibilities/:respId/roles/:id", (req, res) => {
-    storage.unlinkResponsibilityRole(Number(req.params.id));
+    const userId = getEffectiveUserId(req);
+    const respId = Number(req.params.respId);
+    const linkId = Number(req.params.id);
+    // Pleasure-keeps-Self enforcement (addendum: locked spec §5).
+    // For the responsibility named exactly "UnPuzzle Pleasure" (case-sensitive),
+    // the link to the Self role cannot be removed — Self stays personally
+    // protected even when the responsibility is shared with other roles.
+    const allResps = storage.getResponsibilities(userId);
+    const resp = allResps.find(r => r.id === respId);
+    if (resp && resp.name === "UnPuzzle Pleasure") {
+      const links = storage.getResponsibilityRoles(respId);
+      const link = links.find(l => l.id === linkId);
+      if (link) {
+        const userRoles = storage.getRoles(userId);
+        const linkedRole = userRoles.find(r => r.id === link.roleId);
+        if (linkedRole && linkedRole.name.trim().toLowerCase() === "self") {
+          return res.status(409).json({
+            error: "Self stays linked to UnPuzzle Pleasure so it remains personally protected.",
+          });
+        }
+      }
+    }
+    storage.unlinkResponsibilityRole(linkId);
     res.json({ ok: true });
   });
 

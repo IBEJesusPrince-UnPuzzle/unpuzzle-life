@@ -1,14 +1,13 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Users, CheckSquare, ChevronRight } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 
 /**
  * Bottom sheet opened from the /support header [+] button.
  *
  * Locked by addendum A5 (May 8, 2026). Two items today:
- *   - New role           → /support/roles/new  (live in PR #17b)
- *   - New responsibility → toast placeholder until PR #18
+ *   - New role           → /support/roles/new            (PR #17b)
+ *   - New responsibility → /responsibilities/new         (PR #18a)
  *
  * Future items (New person, New place, …) will live here as well.
  */
@@ -19,7 +18,6 @@ export function SupportAddSheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { toast } = useToast();
   const [, setLocation] = useLocation();
 
   const handleNewRole = () => {
@@ -29,10 +27,7 @@ export function SupportAddSheet({
 
   const handleNewResponsibility = () => {
     onOpenChange(false);
-    toast({
-      title: "Responsibility creation lands in PR #18",
-      description: "Coming next.",
-    });
+    setLocation("/responsibilities/new");
   };
 
   return (
