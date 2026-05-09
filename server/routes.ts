@@ -15,6 +15,7 @@ import {
   insertResponsibilitySchema,
   responsibilityScheduleSchema,
   responsibilitySchedulePatchSchema,
+  convertTaskToResponsibilitySchema,
   insertRoleSchema,
   insertRolePeopleSchema,
   insertResponsibilityRoleSchema,
@@ -443,6 +444,46 @@ export function registerRoutes(server: Server, app: Express) {
     const userId = getEffectiveUserId(req);
     storage.deleteResponsibility(userId, Number(req.params.id));
     res.json({ ok: true });
+  });
+
+  // PR #20 — Convert standalone task → responsibility (§22a). One atomic
+  // request that:
+  //   1. Truncates the original task's recurrence_end_date to the last
+  //      occurrence on/before today (or min(today, start − 1) for
+  //      future-dated tasks). Original recurrence_rule stays untouched
+  //      per §22a.
+  //   2. Inserts the new responsibility row.
+  //   3. Inserts the master agenda_tasks row (origin='responsibility')
+  //      with the source task's date/time/duration/isAllDay/endDate/role.
+  // The client redirects to /responsibilities/:id/edit on success.
+  // Duplicate-name handling mirrors POST /api/responsibilities (409).
+  app.post("/api/responsibilities/convert-from-task", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const parsed = convertTaskToResponsibilitySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    // Validate the recurrence rule with the same engine the modal uses.
+    const ruleErr = validateRecurrenceRule(parsed.data.taskPayload.recurrenceRule);
+    if (ruleErr) return res.status(400).json({ error: `Invalid recurrence rule: ${ruleErr}` });
+    // Duplicate-name guard — same shape as POST /api/responsibilities.
+    const trimmed = parsed.data.taskPayload.title.trim();
+    if (!trimmed) return res.status(400).json({ error: "Task name is required." });
+    const existing = storage.getResponsibilities(userId);
+    if (existing.some(r => r.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+      return res.status(409).json({ error: `You already have a responsibility named '${trimmed}'.` });
+    }
+    try {
+      const resp = storage.convertTaskToResponsibility(userId, {
+        taskId: parsed.data.taskId,
+        taskPayload: { ...parsed.data.taskPayload, title: trimmed },
+        today: parsed.data.today,
+      });
+      res.json(resp);
+    } catch (err: any) {
+      // Source task not found (taskId stale) is the most common failure.
+      const msg = err?.message || String(err);
+      if (/not found/i.test(msg)) return res.status(404).json({ error: msg });
+      throw err;
+    }
   });
 
   // ============================================================

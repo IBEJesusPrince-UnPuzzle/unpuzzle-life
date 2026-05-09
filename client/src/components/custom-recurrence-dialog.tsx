@@ -107,6 +107,14 @@ type Props = {
   // dialog passes endDate="" when ends=never or ends=after (no UNTIL stored
   // in the column — COUNT lives inside the rule for ends=after).
   onSave: (rule: string, endDate: string) => void;
+  // PR #20 — Convert-to-responsibility (§22a). Called from this dialog's
+  // cap prompt when the user picks "Convert to responsibility". The parent
+  // owns the conversion mutation (so it can read the parent form's title /
+  // date / role state); we just hand it the rule the user just authored.
+  // The parent is responsible for closing this dialog when the conversion
+  // resolves — we don't auto-close on click so a network error still leaves
+  // the dialog visible for retry.
+  onConvertToResponsibility?: (rule: string) => void;
 };
 
 export function CustomRecurrenceDialog({
@@ -116,6 +124,7 @@ export function CustomRecurrenceDialog({
   initialRule,
   initialEndDate,
   onSave,
+  onConvertToResponsibility,
 }: Props) {
   const { toast } = useToast();
   // §22a cap prompt local to the dialog — keeps the cap concern self-contained.
@@ -242,13 +251,18 @@ export function CustomRecurrenceDialog({
     setShowCapPrompt(false);
     commitSave(capped);
   }
-  function convertToResponsibilityStub() {
-    toast({
-      title: "Coming in Phase 5",
-      description:
-        "Convert-to-responsibility lands when the Responsibility edit page ships.",
-    });
-    capAtOneYearAndSave();
+  // PR #20 — hand the parent the rule the user just authored (with the
+  // user's own end date, NOT the 1y cap). The parent runs the conversion
+  // and — on success — navigates away, which unmounts both this dialog and
+  // its parent modal. If the parent didn't wire onConvertToResponsibility
+  // (defensive fallback), we cap-and-save like the legacy stub did.
+  function handleConvertToResponsibility() {
+    if (!rulePreview) return;
+    if (onConvertToResponsibility) {
+      onConvertToResponsibility(rulePreview);
+    } else {
+      capAtOneYearAndSave();
+    }
   }
 
   return (
@@ -478,7 +492,7 @@ export function CustomRecurrenceDialog({
                 Cap at 1 year
               </AlertDialogAction>
               <AlertDialogAction
-                onClick={convertToResponsibilityStub}
+                onClick={handleConvertToResponsibility}
                 data-testid="button-custom-recurrence-convert"
               >
                 Convert to responsibility
