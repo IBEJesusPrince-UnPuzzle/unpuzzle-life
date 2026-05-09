@@ -684,6 +684,10 @@ export class DatabaseStorage implements IStorage {
     return db.update(environmentPeople).set(data).where(and(eq(environmentPeople.id, id), eq(environmentPeople.userId, userId))).returning().get();
   }
   deleteEnvironmentPerson(userId: number, id: number): void {
+    // Cascade: unlink from any responsibilities first (FK on responsibility_people).
+    // The responsibilities themselves stay; the environment item simply
+    // disappears from their People support sections.
+    db.delete(responsibilityPeople).where(eq(responsibilityPeople.personId, id)).run();
     db.delete(environmentPeople).where(and(eq(environmentPeople.id, id), eq(environmentPeople.userId, userId))).run();
   }
 
@@ -698,6 +702,8 @@ export class DatabaseStorage implements IStorage {
     return db.update(environmentPlaces).set(data).where(and(eq(environmentPlaces.id, id), eq(environmentPlaces.userId, userId))).returning().get();
   }
   deleteEnvironmentPlace(userId: number, id: number): void {
+    // Cascade: unlink from any responsibilities first (FK on responsibility_places).
+    db.delete(responsibilityPlaces).where(eq(responsibilityPlaces.placeId, id)).run();
     db.delete(environmentPlaces).where(and(eq(environmentPlaces.id, id), eq(environmentPlaces.userId, userId))).run();
   }
 
@@ -712,6 +718,8 @@ export class DatabaseStorage implements IStorage {
     return db.update(environmentThings).set(data).where(and(eq(environmentThings.id, id), eq(environmentThings.userId, userId))).returning().get();
   }
   deleteEnvironmentThing(userId: number, id: number): void {
+    // Cascade: unlink from any responsibilities first (FK on responsibility_things).
+    db.delete(responsibilityThings).where(eq(responsibilityThings.thingId, id)).run();
     db.delete(environmentThings).where(and(eq(environmentThings.id, id), eq(environmentThings.userId, userId))).run();
   }
 
@@ -737,6 +745,25 @@ export class DatabaseStorage implements IStorage {
     return db.update(responsibilities).set(data).where(and(eq(responsibilities.id, id), eq(responsibilities.userId, userId))).returning().get();
   }
   deleteResponsibility(userId: number, id: number): void {
+    // Cascade: every junction that holds a FK to responsibilities.id must go
+    // first, otherwise SQLite raises FOREIGN KEY constraint failed. Order
+    // doesn't matter among siblings; the responsibility row goes last.
+    //
+    // Affected junctions (per shared/schema.ts):
+    //   - responsibility_role         (role linkage)
+    //   - responsibility_people       (People support)
+    //   - responsibility_places       (Places support)
+    //   - responsibility_things       (Things support)
+    //   - responsibility_providers    (Providers support)
+    //   - responsibility_conditions   (Conditions support)
+    //   - project_responsibility      (Phase 2 project linkage)
+    db.delete(responsibilityRole).where(eq(responsibilityRole.responsibilityId, id)).run();
+    db.delete(responsibilityPeople).where(eq(responsibilityPeople.responsibilityId, id)).run();
+    db.delete(responsibilityPlaces).where(eq(responsibilityPlaces.responsibilityId, id)).run();
+    db.delete(responsibilityThings).where(eq(responsibilityThings.responsibilityId, id)).run();
+    db.delete(responsibilityProviders).where(eq(responsibilityProviders.responsibilityId, id)).run();
+    db.delete(responsibilityConditions).where(eq(responsibilityConditions.responsibilityId, id)).run();
+    db.delete(projectResponsibility).where(eq(projectResponsibility.responsibilityId, id)).run();
     db.delete(responsibilities).where(and(eq(responsibilities.id, id), eq(responsibilities.userId, userId))).run();
   }
 
@@ -751,8 +778,14 @@ export class DatabaseStorage implements IStorage {
     return db.update(roles).set(data).where(and(eq(roles.id, id), eq(roles.userId, userId))).returning().get();
   }
   deleteRole(userId: number, id: number): void {
-    // Cascade: delete role_people entries first
+    // Cascade order:
+    //   1. role_people     (no FK constraint, but we still own these rows)
+    //   2. responsibility_role  (FK — unlink any responsibilities pointing here;
+    //      responsibilities themselves stay and surface as orphans on the
+    //      Support page's 'needs attention' banner, matching the existing UX)
+    //   3. roles row
     db.delete(rolePeople).where(eq(rolePeople.roleId, id)).run();
+    db.delete(responsibilityRole).where(eq(responsibilityRole.roleId, id)).run();
     db.delete(roles).where(and(eq(roles.id, id), eq(roles.userId, userId))).run();
   }
 
@@ -780,6 +813,8 @@ export class DatabaseStorage implements IStorage {
     return db.update(environmentProviders).set(data).where(and(eq(environmentProviders.id, id), eq(environmentProviders.userId, userId))).returning().get();
   }
   deleteEnvironmentProvider(userId: number, id: number): void {
+    // Cascade: unlink from any responsibilities first (FK on responsibility_providers).
+    db.delete(responsibilityProviders).where(eq(responsibilityProviders.providerId, id)).run();
     db.delete(environmentProviders).where(and(eq(environmentProviders.id, id), eq(environmentProviders.userId, userId))).run();
   }
 
@@ -796,6 +831,8 @@ export class DatabaseStorage implements IStorage {
     return db.update(environmentConditions).set(data).where(and(eq(environmentConditions.id, id), eq(environmentConditions.userId, userId))).returning().get();
   }
   deleteEnvironmentCondition(userId: number, id: number): void {
+    // Cascade: unlink from any responsibilities first (FK on responsibility_conditions).
+    db.delete(responsibilityConditions).where(eq(responsibilityConditions.conditionId, id)).run();
     db.delete(environmentConditions).where(and(eq(environmentConditions.id, id), eq(environmentConditions.userId, userId))).run();
   }
 
