@@ -430,6 +430,12 @@ export const agendaTasks = sqliteTable("agenda_tasks", {
   durationMinutes: integer("duration_minutes"), // null when isAllDay = 1
   isAllDay: integer("is_all_day").notNull().default(0),
   roleId: integer("role_id"), // nullable; standalone tasks may have no role
+  // PR #29c (Phase 8 Inbox processing) -- nullable link to a responsibility.
+  // Lets a Do It Later inbox task carry its responsibility context without
+  // converting to a permanent responsibility row (PR #20 still owns convert).
+  // Existing tasks remain NULL; future PRs may surface this on the Agenda
+  // chip filters (today the column is set on inbox-spawned tasks only).
+  responsibilityId: integer("responsibility_id"),
   status: text("status").notNull().default("ready"), // 'ready' | 'note' | 'unavailable'
   color: text("color"), // null when origin='responsibility' (joins to responsibilities.color)
   recurrenceRule: text("recurrence_rule"),
