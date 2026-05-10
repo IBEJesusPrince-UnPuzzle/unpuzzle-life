@@ -1,5 +1,5 @@
 // =============================================================================
-// AgendaTaskModal — Phase 3a (§22a)
+// AgendaTaskModal — Phase 3a (§22a) + PR #29c (hybrid page mode)
 // =============================================================================
 // One modal handles three flows:
 //
@@ -17,13 +17,21 @@
 //                                 the §22a window-merge will use to replace
 //                                 that single occurrence (Phase 2 logic).
 //
-// Standalone-only is the locked Phase 3a +Task scope (§18 + §22a). Linking
-// new rows to a responsibility / project_task happens in Phase 5 when those
-// edit UIs ship.
+// PR #29c (Phase 8 Inbox processing) — same component now ALSO renders as a
+// full page (displayMode="page") for the Do It Later inbox flow. In page mode:
+//   * The <Dialog> chrome is omitted; the page wrapper supplies its own.
+//   * Below Color, we render Role + Responsibility dropdowns and a stubbed
+//     [+ Add support details] toggle (locked hybrid ASCII; the actual
+//     support pivots ship in a follow-up PR).
+//   * Save posts to /api/inbox/:id/process action=do_it_later instead of
+//     /api/agenda-tasks, then navigates back to /inbox via onSaved.
+//   * Edit / delete / scope dialog paths are unreachable in page mode (Do
+//     It Later always creates a new row from an inbox item).
+//
 // =============================================================================
 
 import { useEffect, useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Trash2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -81,6 +89,20 @@ type Props = {
   defaultDate: string; // YYYY-MM-DD
   // When set, modal is in edit mode. Otherwise it's create mode.
   editing?: AgendaWindowItem | null;
+  // PR #29c (Phase 8 Inbox processing) — when "page", omit the Dialog chrome
+  // and render inline so the inbox Do It Later page can host this component.
+  // Default "dialog" preserves the existing Agenda + Task behavior verbatim.
+  displayMode?: "dialog" | "page";
+  // PR #29c — page-mode props. Used only when displayMode === "page".
+  inboxItemId?: number;
+  // Seed the title from the inbox row's content. (Could derive in the page
+  // wrapper, but passing it here keeps state ownership in the form.)
+  defaultTitle?: string;
+  // Called after a successful Save in page mode so the page can navigate
+  // back to /inbox and invalidate the inbox list cache.
+  onSaved?: () => void;
+  // Called when the user clicks Cancel in page mode.
+  onCancel?: () => void;
 };
 
 // PR #19 — duration helpers were extracted to client/src/lib/duration.ts so
@@ -92,7 +114,13 @@ export function AgendaTaskModal({
   onOpenChange,
   defaultDate,
   editing,
+  displayMode = "dialog",
+  inboxItemId,
+  defaultTitle,
+  onSaved,
+  onCancel,
 }: Props) {
+  const isPageMode = displayMode === "page";
   const { toast } = useToast();
   // PR #20 — wouter setLocation for redirecting to /responsibilities/:id/edit
   // after a successful convert-to-responsibility.
@@ -143,6 +171,42 @@ export function AgendaTaskModal({
   const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
   const [scopeIntent, setScopeIntent] = useState<"save" | "delete">("save");
 
+  // PR #29c — page-mode-only state: role + responsibility pickers, support
+  // toggle. roleId/responsibilityId default to null so existing dialog-mode
+  // callers see no behavior change (these fields are simply not rendered in
+  // dialog mode and not sent in the dialog-mode mutation payload).
+  const [roleId, setRoleId] = useState<number | null>(null);
+  const [responsibilityId, setResponsibilityId] = useState<number | null>(null);
+
+  // PR #29c — page-mode data fetches for Role / Responsibility pickers.
+  // Guarded by isPageMode so dialog-mode (Agenda) never issues these
+  // queries. responsibility_roles is the junction the schema uses to link
+  // responsibilities to roles; responsibilities have NO direct role_id
+  // column, so we client-side filter via the junction.
+  const rolesQuery = useQuery<Array<{ id: number; name: string }>>({
+    queryKey: ["/api/roles"],
+    enabled: isPageMode,
+  });
+  const responsibilitiesQuery = useQuery<Array<{ id: number; name: string }>>({
+    queryKey: ["/api/responsibilities"],
+    enabled: isPageMode,
+  });
+  const respRolesQuery = useQuery<Array<{ responsibilityId: number; roleId: number }>>({
+    queryKey: ["/api/responsibility-roles"],
+    enabled: isPageMode,
+  });
+
+  // Responsibilities filtered by the currently-picked Role. Null role => empty.
+  const filteredResponsibilities = useMemo(() => {
+    if (!isPageMode || roleId == null) return [];
+    const allowedIds = new Set(
+      (respRolesQuery.data ?? [])
+        .filter((rr) => rr.roleId === roleId)
+        .map((rr) => rr.responsibilityId),
+    );
+    return (responsibilitiesQuery.data ?? []).filter((r) => allowedIds.has(r.id));
+  }, [isPageMode, roleId, respRolesQuery.data, responsibilitiesQuery.data]);
+
   // Reset/seed whenever the modal opens or the editing target changes.
   useEffect(() => {
     if (!open) return;
@@ -173,7 +237,8 @@ export function AgendaTaskModal({
       }
       setRecurrenceEndDate(editing.recurrenceEndDate ?? "");
     } else {
-      setTitle("");
+      // PR #29c — in page mode, seed Title from the inbox item's content.
+      setTitle(isPageMode ? (defaultTitle ?? "") : "");
       setDate(defaultDate);
       setEndDate("");
       setIsAllDay(false);
@@ -185,8 +250,11 @@ export function AgendaTaskModal({
       setRecurrenceOption("none");
       setCustomRuleSnapshot(null);
       setRecurrenceEndDate("");
+      // PR #29c — reset role/responsibility on each fresh open in page mode.
+      setRoleId(null);
+      setResponsibilityId(null);
     }
-  }, [open, editing, defaultDate]);
+  }, [open, editing, defaultDate, isPageMode, defaultTitle]);
 
   // Compute the active RRULE for the current form state.
   //   - none → null
@@ -338,6 +406,53 @@ export function AgendaTaskModal({
     },
   });
 
+  // PR #29c (Phase 8 Inbox processing) — page-mode Save. Posts to the
+  // orchestrator do_it_later action, which creates the agenda_task and
+  // marks the inbox item processed atomically. Never reachable from the
+  // dialog-mode flow (the Save button dispatches saveMutation in that case).
+  // Recurrence + scope dialogs are unreachable here because Do It Later is
+  // always a fresh create from an inbox item.
+  const inboxSaveMutation = useMutation({
+    mutationFn: async () => {
+      if (!inboxItemId) throw new Error("Missing inboxItemId");
+      // Reuse buildPayload() so recurrence + color + endDate semantics match
+      // the Agenda + Task flow exactly. Add the inbox-only fields on top.
+      const base = buildPayload();
+      const payload = {
+        title: (base.title ?? "").trim(),
+        startDate: base.startDate,
+        isAllDay: base.isAllDay === 1,
+        time: base.time,
+        durationMinutes: base.durationMinutes,
+        endDate: base.endDate,
+        color: base.color,
+        notes: base.notes,
+        recurrenceRule: base.recurrenceRule,
+        recurrenceEndDate: base.recurrenceEndDate,
+        roleId,
+        responsibilityId,
+      };
+      const r = await apiRequest(
+        "POST",
+        `/api/inbox/${inboxItemId}/process`,
+        { action: "do_it_later", payload },
+      );
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agenda"] });
+      if (onSaved) onSaved();
+    },
+    onError: (e: any) => {
+      toast({
+        title: "Could not save",
+        description: String(e?.message ?? e),
+        variant: "destructive",
+      });
+    },
+  });
+
   // PR #15 — Delete with scope.
   //   - non-recurring: DELETE the row (legacy)
   //   - this:          POST cancellation override (isCancelled=1)
@@ -401,7 +516,14 @@ export function AgendaTaskModal({
   // PR #15 — click handlers on the footer Save/Delete buttons.
   // For recurring rows we open the scope dialog; for everything else we
   // fire the mutation directly with scope=null.
+  // PR #29c — in page mode we dispatch the inbox orchestrator mutation
+  // instead; recurrence is allowed but scope dialog is unreachable (page
+  // mode is always a fresh create, never an edit).
   function onSaveClick() {
+    if (isPageMode) {
+      inboxSaveMutation.mutate();
+      return;
+    }
     if (isRecurring) {
       setScopeIntent("save");
       setScopeDialogOpen(true);
@@ -428,11 +550,13 @@ export function AgendaTaskModal({
   }
 
   const titleText =
-    mode === "create"
-      ? "Add task"
-      : mode === "edit-virtual"
-        ? "Edit this occurrence"
-        : "Edit task";
+    isPageMode
+      ? "Add task from inbox"
+      : mode === "create"
+        ? "Add task"
+        : mode === "edit-virtual"
+          ? "Edit this occurrence"
+          : "Edit task";
 
   // Phase 3c — disable Save if the user typed an end date that's earlier than
   // the start date. (Empty endDate means single-day and is always valid.)
@@ -632,17 +756,42 @@ export function AgendaTaskModal({
     setShowCapPrompt(false);
   }
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" data-testid="dialog-agenda-task">
-        <DialogHeader>
-          <DialogTitle>{titleText}</DialogTitle>
-        </DialogHeader>
+  // PR #29c — Save button disabled state. In dialog mode this tracks the
+  // legacy saveMutation; in page mode it tracks the inbox orchestrator
+  // mutation instead.
+  const saveIsPending = isPageMode
+    ? inboxSaveMutation.isPending
+    : saveMutation.isPending;
+  // PR #29c — Save button label changes for inbox flow per locked ASCII
+  // ("Save task" instead of "Save").
+  const saveButtonLabel = isPageMode
+    ? saveIsPending
+      ? "Saving…"
+      : "Save task"
+    : saveIsPending
+      ? "Saving…"
+      : "Save";
 
-        <div className="space-y-4 py-2">
-          {/* Title */}
-          <div className="space-y-1.5">
-            <Label htmlFor="task-title">Title</Label>
+  // PR #29c — wrap the body + dialogs + footer in render helpers so we can
+  // either nest them in <DialogContent> (dialog mode, the locked Agenda
+  // flow) or render them inline in a page wrapper (page mode, inbox Do It
+  // Later). The inner JSX is byte-for-byte identical between the two modes
+  // except for the new isPageMode-gated Role/Responsibility/support block,
+  // so the Agenda + Task experience stays visually unchanged.
+  const headerJsx = (
+    <DialogTitle>{titleText}</DialogTitle>
+  );
+
+  // Body JSX (Title → Date → All-day → End date → Time/Duration →
+  // Recurrence → Color → [page-only Role/Resp/support] → Notes). Returned
+  // wrapped in the same <div className="space-y-4 py-2"> the Dialog has
+  // always used, so the rendered DOM matches the pre-refactor shape
+  // exactly when called from the Dialog branch.
+  const renderFormBody = () => (
+    <div className="space-y-4 py-2">
+      {/* Title */}
+      <div className="space-y-1.5">
+        <Label htmlFor="task-title">Title</Label>
             <Input
               id="task-title"
               placeholder="What is this task?"
@@ -777,6 +926,76 @@ export function AgendaTaskModal({
             <ColorPicker value={color} onChange={setColor} />
           </div>
 
+          {/* PR #29c — page-mode-only: Role + Responsibility + stub support
+              toggle. Renders below Color, above Notes (locked hybrid ASCII).
+              The [+ Add support details] button stubs to a toast — the
+              actual support pivots ship in a follow-up PR. */}
+          {isPageMode && (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="task-role">Role</Label>
+                <select
+                  id="task-role"
+                  value={roleId == null ? "" : String(roleId)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    const next = v === "" ? null : Number(v);
+                    setRoleId(next);
+                    // Changing role invalidates the responsibility pick.
+                    setResponsibilityId(null);
+                  }}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  data-testid="select-task-role"
+                >
+                  <option value="">Choose role…</option>
+                  {(rolesQuery.data ?? []).map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="task-responsibility">Responsibility</Label>
+                <select
+                  id="task-responsibility"
+                  value={responsibilityId == null ? "" : String(responsibilityId)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setResponsibilityId(v === "" ? null : Number(v));
+                  }}
+                  disabled={roleId == null}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
+                  data-testid="select-task-responsibility"
+                >
+                  <option value="">
+                    {roleId == null ? "Choose a role first…" : "Choose responsibility…"}
+                  </option>
+                  {filteredResponsibilities.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    toast({
+                      title: "Coming in next PR",
+                      description:
+                        "Linking People / Places / Things / Providers / Conditions ships in PR 29d.",
+                    })
+                  }
+                  data-testid="button-add-support-details"
+                >
+                  + Add support details
+                </Button>
+              </div>
+            </>
+          )}
+
           {/* Notes */}
           <div className="space-y-1.5">
             <Label htmlFor="task-notes">Notes</Label>
@@ -790,75 +1009,142 @@ export function AgendaTaskModal({
             />
           </div>
 
-          {mode === "edit-virtual" && (
-            <p className="text-xs text-muted-foreground">
-              Saving will only change this single occurrence. The recurring
-              series stays intact.
-            </p>
-          )}
-        </div>
+      {mode === "edit-virtual" && (
+        <p className="text-xs text-muted-foreground">
+          Saving will only change this single occurrence. The recurring
+          series stays intact.
+        </p>
+      )}
+    </div>
+  );
 
-        {/* PR #14b — Custom recurrence dialog. Renders inside the modal so
-            it inherits the same dismissal lifecycle. The dialog ships its
-            own §22a cap prompt internally. */}
-        <CustomRecurrenceDialog
-          open={customDialogOpen}
-          onOpenChange={setCustomDialogOpen}
-          startDate={date}
-          initialRule={
-            recurrenceOption === "customExisting" ? customRuleSnapshot : null
-          }
-          initialEndDate={
-            recurrenceOption === "customExisting" ? recurrenceEndDate : ""
-          }
-          onSave={onCustomDialogSave}
-          onConvertToResponsibility={convertToResponsibilityFromDialog}
-        />
+  // Inline dialogs (Custom recurrence + §22a cap prompt + Scope dialog).
+  // These are siblings of the form body, not nested inside it. Rendered
+  // by both Dialog and page mode so behavior is identical.
+  const renderInlineDialogs = () => (
+    <>
+      {/* PR #14b — Custom recurrence dialog. Renders inside the modal so
+          it inherits the same dismissal lifecycle. The dialog ships its
+          own §22a cap prompt internally. */}
+      <CustomRecurrenceDialog
+        open={customDialogOpen}
+        onOpenChange={setCustomDialogOpen}
+        startDate={date}
+        initialRule={
+          recurrenceOption === "customExisting" ? customRuleSnapshot : null
+        }
+        initialEndDate={
+          recurrenceOption === "customExisting" ? recurrenceEndDate : ""
+        }
+        onSave={onCustomDialogSave}
+        onConvertToResponsibility={convertToResponsibilityFromDialog}
+      />
 
-        {/* §22a end-date prompt (PR #14). Retained for any future inline
-            pickers; currently unreachable because the Custom dialog ships
-            its own cap prompt and standard options auto-seed the cap. */}
-        <AlertDialog open={showCapPrompt} onOpenChange={(o) => !o && cancelCapPrompt()}>
-          {/* z-[60] forces this prompt above the parent Dialog's z-50 stack
-              — without it, the alert content sits in the same layer as the
-              Dialog and visually merges with it. */}
-          <AlertDialogContent
-            data-testid="alert-recurrence-cap"
-            className="z-[60]"
-          >
-            <AlertDialogHeader>
-              <AlertDialogTitle>This recurrence goes past a year</AlertDialogTitle>
-              <AlertDialogDescription>
-                What do you want to do?
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            {/* Override the default footer (flex-col-reverse + sm:flex-row)
-                because we want a vertical stack on every breakpoint with
-                clear top-to-bottom reading order. */}
-            <div className="flex flex-col gap-2 mt-4">
-              <AlertDialogAction
-                onClick={capAtOneYear}
-                data-testid="button-recurrence-cap"
-              >
-                Cap at 1 year
-              </AlertDialogAction>
-              <AlertDialogAction
-                onClick={convertToResponsibility}
-                disabled={convertMutation.isPending}
-                data-testid="button-recurrence-convert"
-              >
-                Convert to responsibility
-              </AlertDialogAction>
-              <AlertDialogCancel
-                onClick={cancelCapPrompt}
-                data-testid="button-recurrence-cap-cancel"
-                className="mt-0"
-              >
-                Cancel
-              </AlertDialogCancel>
-            </div>
-          </AlertDialogContent>
-        </AlertDialog>
+      {/* §22a end-date prompt (PR #14). Retained for any future inline
+          pickers; currently unreachable because the Custom dialog ships
+          its own cap prompt and standard options auto-seed the cap. */}
+      <AlertDialog open={showCapPrompt} onOpenChange={(o) => !o && cancelCapPrompt()}>
+        {/* z-[60] forces this prompt above the parent Dialog's z-50 stack
+            — without it, the alert content sits in the same layer as the
+            Dialog and visually merges with it. */}
+        <AlertDialogContent
+          data-testid="alert-recurrence-cap"
+          className="z-[60]"
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>This recurrence goes past a year</AlertDialogTitle>
+            <AlertDialogDescription>
+              What do you want to do?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {/* Override the default footer (flex-col-reverse + sm:flex-row)
+              because we want a vertical stack on every breakpoint with
+              clear top-to-bottom reading order. */}
+          <div className="flex flex-col gap-2 mt-4">
+            <AlertDialogAction
+              onClick={capAtOneYear}
+              data-testid="button-recurrence-cap"
+            >
+              Cap at 1 year
+            </AlertDialogAction>
+            <AlertDialogAction
+              onClick={convertToResponsibility}
+              disabled={convertMutation.isPending}
+              data-testid="button-recurrence-convert"
+            >
+              Convert to responsibility
+            </AlertDialogAction>
+            <AlertDialogCancel
+              onClick={cancelCapPrompt}
+              data-testid="button-recurrence-cap-cancel"
+              className="mt-0"
+            >
+              Cancel
+            </AlertDialogCancel>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* PR #15 — Scope dialog for recurring Save/Delete. */}
+      <RecurrenceScopeDialog
+        open={scopeDialogOpen}
+        onOpenChange={setScopeDialogOpen}
+        intent={scopeIntent}
+        onConfirm={onScopeConfirm}
+      />
+    </>
+  );
+
+  return isPageMode ? (
+    <div
+      className="mx-auto w-full max-w-md px-4 py-4 sm:py-6"
+      data-testid="page-agenda-task"
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => (onCancel ? onCancel() : onOpenChange(false))}
+          data-testid="button-back"
+        >
+          ← Back
+        </Button>
+        <h1 className="text-base font-semibold" data-testid="text-page-title">
+          {titleText}
+        </h1>
+        <span className="w-12" aria-hidden />
+      </div>
+
+      {renderFormBody()}
+      {renderInlineDialogs()}
+
+      <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button
+          variant="outline"
+          onClick={() => (onCancel ? onCancel() : onOpenChange(false))}
+          data-testid="button-task-cancel"
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={onSaveClick}
+          disabled={!canSave || saveIsPending}
+          data-testid="button-task-save"
+        >
+          {saveButtonLabel}
+        </Button>
+      </div>
+    </div>
+  ) : (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md" data-testid="dialog-agenda-task">
+        <DialogHeader>
+          {headerJsx}
+        </DialogHeader>
+
+        {renderFormBody()}
+
+        {renderInlineDialogs()}
 
         <DialogFooter className="gap-2 sm:gap-2 sm:justify-between">
           {/* PR #15 — Delete now also shows for edit-virtual so users can
@@ -888,21 +1174,13 @@ export function AgendaTaskModal({
             </Button>
             <Button
               onClick={onSaveClick}
-              disabled={!canSave || saveMutation.isPending}
+              disabled={!canSave || saveIsPending}
               data-testid="button-task-save"
             >
-              {saveMutation.isPending ? "Saving…" : "Save"}
+              {saveButtonLabel}
             </Button>
           </div>
         </DialogFooter>
-
-        {/* PR #15 — Scope dialog for recurring Save/Delete. */}
-        <RecurrenceScopeDialog
-          open={scopeDialogOpen}
-          onOpenChange={setScopeDialogOpen}
-          intent={scopeIntent}
-          onConfirm={onScopeConfirm}
-        />
       </DialogContent>
     </Dialog>
   );
