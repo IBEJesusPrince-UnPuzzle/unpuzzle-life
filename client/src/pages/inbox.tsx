@@ -6,16 +6,21 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Inbox as InboxIcon, Plus, Trash2, Pencil, Check, X, Undo2, Archive,
+  Sparkles, Sliders,
 } from "lucide-react";
 import { useState } from "react";
+import { Link } from "wouter";
 import type { InboxItem } from "@shared/schema";
 import { usePreferences } from "@/hooks/use-preferences";
+import { InboxProcessMenu } from "@/components/inbox-process-menu";
 
 export default function InboxPage() {
   const { data: prefs } = usePreferences();
   const [newItem, setNewItem] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
+  // PR #29b — processing menu state.
+  const [processItem, setProcessItem] = useState<InboxItem | null>(null);
 
   const { data: items = [] } = useQuery<InboxItem[]>({ queryKey: ["/api/inbox"] });
   const { data: trashedItems = [] } = useQuery<InboxItem[]>({
@@ -69,12 +74,22 @@ export default function InboxPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Inbox</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Capture everything. Processing flow returns in Phase 6.
+            Capture everything, then process when you're ready.
           </p>
         </div>
-        <Badge variant="secondary" className="text-sm">
-          {unprocessed.length} unprocessed
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="text-sm">
+            {unprocessed.length} unprocessed
+          </Badge>
+          {/* PR #29b Q3(a) — Someday entry on Inbox header. */}
+          <Link
+            href="/someday"
+            className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+            data-testid="link-someday"
+          >
+            <Sparkles className="w-3 h-3" /> Someday
+          </Link>
+        </div>
       </div>
 
       {/* Capture */}
@@ -155,6 +170,21 @@ export default function InboxPage() {
                   >
                     <Pencil className="w-3 h-3" />
                   </Button>
+                  {/* PR #29b — Process button opens the six-action menu.
+                      Compact on narrow viewports so the row content doesn't
+                      wrap to multiple lines: icon-only on mobile, label on
+                      sm and up. */}
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="text-xs h-7 px-2 sm:px-3"
+                    onClick={() => setProcessItem(item)}
+                    data-testid={`button-process-${item.id}`}
+                    aria-label="Process this item"
+                  >
+                    <Sliders className="w-3 h-3 sm:mr-1" />
+                    <span className="hidden sm:inline">Process</span>
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -192,6 +222,14 @@ export default function InboxPage() {
           </div>
         </div>
       )}
+
+      {/* PR #29b — Processing menu sheet (mounted at page level so it persists
+          while the user picks an action; closes on action confirm or Cancel). */}
+      <InboxProcessMenu
+        item={processItem}
+        open={processItem !== null}
+        onOpenChange={(o) => { if (!o) setProcessItem(null); }}
+      />
 
       {/* Recently trashed */}
       {trashedItems.length > 0 && (

@@ -11,6 +11,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { ReportIssueButton } from "@/components/report-issue-button";
 import InboxPage from "@/pages/inbox";
+import InboxFileItPage from "@/pages/inbox-file-it";
+import SomedayPage from "@/pages/someday";
 import ReviewPage from "@/pages/review";
 import DataPage from "@/pages/data";
 import ProjectDetailPage from "@/pages/project-detail";
@@ -79,6 +81,8 @@ function AppRouter() {
       <Route path="/review" component={ReviewPage} />
       <Route path="/data" component={DataPage} />
       <Route path="/inbox" component={InboxPage} />
+      <Route path="/inbox/process/:id/file-it" component={InboxFileItPage} />
+      <Route path="/someday" component={SomedayPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/dev/edit-page-demo" component={DevEditPageDemoRoute} />
       <Route component={NotFound} />

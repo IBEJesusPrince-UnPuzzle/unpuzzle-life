@@ -604,9 +604,23 @@ export function registerRoutes(server: Server, app: Express) {
   });
 
   // GET /api/inbox/someday — list of wondered items (Q1 lock).
+  // Must register BEFORE GET /api/inbox/:id so the literal "someday"
+  // path doesn't get matched as an id parameter.
   app.get("/api/inbox/someday", (req, res) => {
     const userId = getEffectiveUserId(req);
     res.json(storage.getSomedayInboxItems(userId));
+  });
+
+  // PR #29b — Single inbox item by id. Used by the File It / Do It Later /
+  // Add to Project pages to render the source-item header. Registered after
+  // /trashed and /someday so those literal paths take precedence.
+  app.get("/api/inbox/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "id must be a number" });
+    const item = storage.getInboxItem(userId, id);
+    if (!item) return res.status(404).json({ error: "Not found" });
+    res.json(item);
   });
 
   // POST /api/inbox/:id/restore-from-someday — "Move back to Inbox" action
