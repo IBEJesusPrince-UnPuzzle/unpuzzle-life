@@ -144,6 +144,12 @@ tryMigration("agenda_tasks.end_date", `ALTER TABLE agenda_tasks ADD COLUMN end_d
 // status=cancelled exception event).
 tryMigration("agenda_tasks.is_cancelled", `ALTER TABLE agenda_tasks ADD COLUMN is_cancelled INTEGER NOT NULL DEFAULT 0`);
 
+// PR #29c (Phase 8 Inbox processing) -- agenda_tasks gains a nullable
+// responsibility_id column so Do It Later inbox tasks can carry their
+// responsibility context. Existing rows remain NULL. See shared/schema.ts
+// for the locked rationale.
+tryMigration("agenda_tasks.responsibility_id", `ALTER TABLE agenda_tasks ADD COLUMN responsibility_id INTEGER`);
+
 // PR #21 — Project v2 schema (§10). All additions are nullable so existing
 // project rows backfill as NULL. UI lands in PR #22; this PR is schema + API only.
 tryMigration("projects.outcome_done",     `ALTER TABLE projects ADD COLUMN outcome_done TEXT`);
@@ -598,6 +604,8 @@ sqlite.exec(`
     duration_minutes INTEGER,
     is_all_day INTEGER NOT NULL DEFAULT 0,
     role_id INTEGER,
+    -- PR #29c (Phase 8 Inbox processing) -- nullable, set by Do It Later.
+    responsibility_id INTEGER,
     status TEXT NOT NULL DEFAULT 'ready',
     color TEXT,
     recurrence_rule TEXT,

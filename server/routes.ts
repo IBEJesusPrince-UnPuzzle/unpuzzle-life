@@ -421,11 +421,12 @@ export function registerRoutes(server: Server, app: Express) {
   // Validation strategy: per-action narrow zod parse. The body comes in two
   // parts: { action, payload }. We pick the schema by action.
 
-  // do_it_later body — minimal subset of agenda_task fields. We reuse the
-  // permissive insertAgendaTaskSchema and let the agenda-tasks code path
-  // handle the heavy validation by calling storage.createAgendaTask. Note:
-  // PR #29c will replace this with a richer schema once the hybrid form
-  // exists; for now the orchestrator passes through what the client sends.
+  // do_it_later body -- PR #29c widened the schema to accept the full
+  // agenda_task payload from the hybrid <AgendaTaskForm mode="page">. This
+  // lets the inbox Do It Later page persist recurrence, color, and the
+  // responsibility_id link added by PR #29c. The orchestrator still owns
+  // the cross-field rules (isAllDay vs time+duration, recurrence end date
+  // present when recurrenceRule set) and the inbox-side processed flag.
   const doItLaterPayloadSchema = z.object({
     title: z.string().trim().min(1, "Task name is required"),
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "startDate must be YYYY-MM-DD"),
@@ -434,7 +435,12 @@ export function registerRoutes(server: Server, app: Express) {
     durationMinutes: z.number().int().positive().nullable().optional(),
     endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
     roleId: z.number().int().positive().nullable().optional(),
+    // PR #29c -- nullable link to a responsibility (UI-side picker).
+    responsibilityId: z.number().int().positive().nullable().optional(),
     color: z.string().nullable().optional(),
+    // PR #29c -- recurrence fields mirror /api/agenda-tasks contract.
+    recurrenceRule: z.string().nullable().optional(),
+    recurrenceEndDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
     notes: z.string().nullable().optional(),
   });
 
@@ -515,6 +521,19 @@ export function registerRoutes(server: Server, app: Express) {
               error: "time and durationMinutes are required when not all-day",
             });
           }
+          // PR #29c -- if recurrenceRule is set, recurrenceEndDate must also
+          // be set. Mirrors the §22a cap rule from PR #14b.
+          if (p.recurrenceRule && !p.recurrenceEndDate) {
+            return res.status(400).json({
+              error: "recurrenceEndDate is required when recurrenceRule is set",
+            });
+          }
+          // PR #29c -- all-day endDate must be >= startDate when supplied.
+          if (p.isAllDay && p.endDate && p.endDate < p.startDate) {
+            return res.status(400).json({
+              error: "endDate must be on or after startDate",
+            });
+          }
           const now = new Date().toISOString();
           const created = storage.createAgendaTask(userId, {
             origin: "standalone",
@@ -526,10 +545,11 @@ export function registerRoutes(server: Server, app: Express) {
             durationMinutes: p.isAllDay ? null : (p.durationMinutes ?? null),
             isAllDay: p.isAllDay ? 1 : 0,
             roleId: p.roleId ?? null,
+            responsibilityId: p.responsibilityId ?? null,
             color: p.color ?? null,
             status: "ready",
-            recurrenceRule: null,
-            recurrenceEndDate: null,
+            recurrenceRule: p.recurrenceRule ?? null,
+            recurrenceEndDate: p.recurrenceEndDate ?? null,
             seriesId: null,
             isOverride: 0,
             originalDate: null,
