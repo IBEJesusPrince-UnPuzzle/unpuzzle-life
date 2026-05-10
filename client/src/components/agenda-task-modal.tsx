@@ -551,7 +551,7 @@ export function AgendaTaskModal({
 
   const titleText =
     isPageMode
-      ? "Add task from inbox"
+      ? "Do It Later"
       : mode === "create"
         ? "Add task"
         : mode === "edit-virtual"
