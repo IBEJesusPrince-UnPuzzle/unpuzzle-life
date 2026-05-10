@@ -1,15 +1,27 @@
 // ProjectTasksCard — PR #26 (project tasks UI per §10)
+// PR #27 — Drag-to-reorder support (grip handle + HTML5 drag + touch pointer fallback)
 //
 // Replaces the Tasks placeholder shipped in PR #25 with the real Tasks UI:
 //
 //   - "Add task" button (creates an empty row in inline-edit mode)
 //   - "Suggest tasks" stub (UI placeholder; backend lands in Phase 8 §12)
-//   - Task rows: checkbox + title + [×] mark-for-removal
+//   - Task rows: grip + checkbox + title + [×] mark-for-removal
+//       - Long-press grip → drag to reorder (touch + mouse)
 //       - Tap row title → inline edit (Save / Cancel)
 //       - Checkbox toggles status: 'open' ↔ 'done'
 //       - Done rows render with line-through styling
 //       - Marked rows DO NOT render here — they live in MarkedForRemovalSection
 //         (single source of truth, matches PR #25 rule for support rows)
+//
+// Reorder semantics (PR #27):
+//   - Grip is hidden when row is in inline-edit mode (drag disabled).
+//   - Marked-for-removal rows aren't rendered here, so drag is naturally
+//     unavailable for them.
+//   - On drop, we PATCH sortOrder for every affected row (compact 0..n-1)
+//     and invalidate the task list query. Optimistic local override holds
+//     the new order until the server confirms.
+//   - TaskDependenciesSubCard numbered list and the sticky Next-action peek
+//     read the same query, so they auto-track the new order — no changes.
 //
 // Server contract is already in place from PR #21:
 //   GET    /api/project-tasks?projectId=N      — list tasks for a project
@@ -28,9 +40,9 @@
 // Marked-for-removal state lives in the project-edit draft hook; we read
 // it via `markedForRemoval` and call `markForRemoval` / `undoRemoval`.
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, X, Check } from "lucide-react";
+import { Plus, X, Check, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -80,14 +92,42 @@ export function ProjectTasksCard({
     queryKey: [`/api/project-tasks?projectId=${projectId}`],
   });
 
-  // The visible (non-marked) tasks, sorted.
+  // Optimistic local override of the visible-task order. When a drag
+  // completes, we set this to the new id sequence so the UI reorders
+  // immediately while the server PATCH(es) are in flight. Once the query
+  // refetch confirms, we clear the override (the server order matches).
+  //
+  // The override is just an array of task ids; we apply it on top of
+  // tasksQuery.data so newly-arrived rows from a refetch still appear
+  // in the right spot (anything not in the override falls through to the
+  // normal sortTasks ordering at the tail).
+  const [orderOverride, setOrderOverride] = useState<number[] | null>(null);
+
+  // The visible (non-marked) tasks, sorted. If an orderOverride is in
+  // effect, it wins for any ids it covers; the rest fall through to the
+  // default sortTasks order.
   const visibleTasks = useMemo(() => {
     const all = tasksQuery.data ?? [];
     const filtered = all.filter(
       t => !markedForRemoval.has(taskRemovalKey(t.id)),
     );
-    return sortTasks(filtered);
-  }, [tasksQuery.data, markedForRemoval]);
+    if (!orderOverride || orderOverride.length === 0) {
+      return sortTasks(filtered);
+    }
+    const byId = new Map(filtered.map(t => [t.id, t]));
+    const ordered: ProjectTask[] = [];
+    for (const id of orderOverride) {
+      const t = byId.get(id);
+      if (t) {
+        ordered.push(t);
+        byId.delete(id);
+      }
+    }
+    // Tail: any tasks not in the override (e.g. newly created during drag)
+    // fall back to the default sort.
+    const tail = sortTasks(Array.from(byId.values()));
+    return [...ordered, ...tail];
+  }, [tasksQuery.data, markedForRemoval, orderOverride]);
 
   // Local UI state: which task ids are currently in inline-edit mode, and
   // the working title for each. We keep the working title outside the row
@@ -178,6 +218,241 @@ export function ProjectTasksCard({
       });
     },
   });
+
+  // ----- Drag state -----
+
+  // The id of the row currently being dragged (null when not dragging).
+  // Used to style the source row and decide where to drop.
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  // The id of the row currently being hovered over as a drop target. We
+  // render a visual indicator above this row to signal where the drop
+  // will land.
+  const [dropTargetId, setDropTargetId] = useState<number | null>(null);
+  // Touch path uses pointer events. We arm the long-press timer on
+  // pointerdown and only enter drag mode if the user holds for 250ms.
+  // This keeps short taps on the grip (which we don't want — the row body
+  // handles edits) from accidentally entering drag mode, and matches
+  // common mobile reorder UX (e.g. iOS Reminders).
+  const longPressTimer = useRef<number | null>(null);
+  const touchDragRef = useRef<{
+    id: number;
+    startY: number;
+    rowEl: HTMLElement | null;
+  } | null>(null);
+
+  // Compute new id order after moving `fromId` to land on `toId`.
+  // If `fromId` and `toId` are the same, returns null (no-op).
+  const computeReorder = useCallback(
+    (fromId: number, toId: number): number[] | null => {
+      if (fromId === toId) return null;
+      const ids = visibleTasks.map(t => t.id);
+      const fromIdx = ids.indexOf(fromId);
+      const toIdx = ids.indexOf(toId);
+      if (fromIdx < 0 || toIdx < 0) return null;
+      const next = ids.slice();
+      next.splice(fromIdx, 1);
+      // After splice, the target index shifts left by 1 if fromIdx < toIdx.
+      const insertIdx = fromIdx < toIdx ? toIdx : toIdx;
+      // For drop-above-target semantics, always insert at insertIdx.
+      next.splice(insertIdx, 0, fromId);
+      // No-op detection: if the resulting order matches the original, bail.
+      if (next.every((id, i) => id === ids[i])) return null;
+      return next;
+    },
+    [visibleTasks],
+  );
+
+  // Persist a new order: PATCH sortOrder for every row that changed,
+  // then invalidate the query. Optimistic override is set immediately by
+  // the caller; we clear it after the invalidation completes.
+  async function persistOrder(newOrder: number[]) {
+    const all = tasksQuery.data ?? [];
+    const byId = new Map(all.map(t => [t.id, t]));
+    const patches: Array<Promise<unknown>> = [];
+    newOrder.forEach((id, idx) => {
+      const row = byId.get(id);
+      if (!row) return;
+      if (row.sortOrder !== idx) {
+        patches.push(
+          apiRequest("PATCH", `/api/project-tasks/${id}`, { sortOrder: idx }),
+        );
+      }
+    });
+    if (patches.length === 0) {
+      setOrderOverride(null);
+      return;
+    }
+    try {
+      await Promise.all(patches);
+      await queryClient.invalidateQueries({
+        queryKey: [`/api/project-tasks?projectId=${projectId}`],
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Couldn't reorder tasks",
+        description: parseServerError(err as Error, "Try again."),
+      });
+    } finally {
+      setOrderOverride(null);
+    }
+  }
+
+  // Apply a reorder: set optimistic override, fire-and-forget persist.
+  function applyReorder(fromId: number, toId: number) {
+    const next = computeReorder(fromId, toId);
+    if (!next) return;
+    setOrderOverride(next);
+    void persistOrder(next);
+  }
+
+  // ----- HTML5 drag handlers (desktop / mouse) -----
+
+  function onDragStart(e: React.DragEvent<HTMLElement>, taskId: number) {
+    // Only the grip handle initiates drag; if a row is in edit mode we
+    // don't render the grip, so this is gated automatically.
+    setDraggingId(taskId);
+    e.dataTransfer.effectAllowed = "move";
+    // Required by Firefox to actually start a drag.
+    try {
+      e.dataTransfer.setData("text/plain", String(taskId));
+    } catch {
+      // Some browsers throw on setData during drag; safe to ignore.
+    }
+  }
+
+  function onDragOverRow(e: React.DragEvent<HTMLElement>, taskId: number) {
+    if (draggingId === null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dropTargetId !== taskId) setDropTargetId(taskId);
+  }
+
+  function onDropRow(e: React.DragEvent<HTMLElement>, taskId: number) {
+    if (draggingId === null) return;
+    e.preventDefault();
+    const fromId = draggingId;
+    setDraggingId(null);
+    setDropTargetId(null);
+    applyReorder(fromId, taskId);
+  }
+
+  function onDragEnd() {
+    setDraggingId(null);
+    setDropTargetId(null);
+  }
+
+  // ----- Pointer-based touch fallback -----
+
+  // iOS Safari does not fire HTML5 drag events on touch, so we run a
+  // pointer-based long-press fallback. After 250ms of holding the grip,
+  // we enter drag mode; while moving, we hit-test the row under the
+  // pointer to show a drop indicator and on pointerup we apply the
+  // reorder.
+  function onGripPointerDown(
+    e: React.PointerEvent<HTMLButtonElement>,
+    taskId: number,
+  ) {
+    // Only handle touch / pen. Mouse uses HTML5 dragstart instead.
+    if (e.pointerType === "mouse") return;
+    const rowEl = (e.currentTarget.closest(
+      "[data-task-row=\"true\"]",
+    ) as HTMLElement | null);
+    touchDragRef.current = { id: taskId, startY: e.clientY, rowEl };
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+    }
+    longPressTimer.current = window.setTimeout(() => {
+      // Long-press fired — enter drag mode.
+      if (touchDragRef.current?.id === taskId) {
+        setDraggingId(taskId);
+        // Capture pointer so we keep getting move events even if the
+        // pointer leaves the grip element.
+        try {
+          (e.target as Element).setPointerCapture?.(e.pointerId);
+        } catch {
+          // Best-effort; fall through.
+        }
+      }
+      longPressTimer.current = null;
+    }, 250);
+  }
+
+  function onGripPointerMove(
+    e: React.PointerEvent<HTMLButtonElement>,
+  ) {
+    if (e.pointerType === "mouse") return;
+    const ref = touchDragRef.current;
+    if (!ref) return;
+    // Cancel the long-press if the user moves more than 8px before the
+    // timer fires — they probably meant to scroll, not drag.
+    if (longPressTimer.current !== null) {
+      if (Math.abs(e.clientY - ref.startY) > 8) {
+        window.clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+        touchDragRef.current = null;
+      }
+      return;
+    }
+    if (draggingId === null) return;
+    e.preventDefault();
+    // Hit-test which row the pointer is over.
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const rowEl = el?.closest("[data-task-row=\"true\"]") as
+      | HTMLElement
+      | null;
+    if (rowEl) {
+      const idAttr = rowEl.getAttribute("data-task-id");
+      if (idAttr) {
+        const overId = Number(idAttr);
+        if (Number.isFinite(overId) && overId !== dropTargetId) {
+          setDropTargetId(overId);
+        }
+      }
+    }
+  }
+
+  function onGripPointerUp(
+    _e: React.PointerEvent<HTMLButtonElement>,
+  ) {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    const ref = touchDragRef.current;
+    touchDragRef.current = null;
+    if (draggingId !== null && dropTargetId !== null) {
+      const fromId = draggingId;
+      const toId = dropTargetId;
+      setDraggingId(null);
+      setDropTargetId(null);
+      applyReorder(fromId, toId);
+    } else {
+      setDraggingId(null);
+      setDropTargetId(null);
+    }
+    void ref;
+  }
+
+  function onGripPointerCancel() {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    touchDragRef.current = null;
+    setDraggingId(null);
+    setDropTargetId(null);
+  }
+
+  // Cleanup any pending long-press timer if the component unmounts mid-press.
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current !== null) {
+        window.clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+      }
+    };
+  }, []);
 
   // ----- Handlers -----
 
@@ -270,12 +545,50 @@ export function ProjectTasksCard({
           {visibleTasks.map(task => {
             const isEditing = editing[task.id] !== undefined;
             const isDone = task.status === "done";
+            const isDragSource = draggingId === task.id;
+            const isDropTarget =
+              dropTargetId === task.id && draggingId !== null && draggingId !== task.id;
             return (
               <div
                 key={task.id}
-                className="flex items-start gap-2 py-1.5 px-2 rounded border bg-background"
+                data-task-row="true"
+                data-task-id={task.id}
+                className={
+                  "flex items-start gap-2 py-1.5 px-2 rounded border bg-background " +
+                  (isDragSource ? "opacity-50 " : "") +
+                  (isDropTarget ? "border-t-2 border-t-primary " : "")
+                }
+                onDragOver={e => onDragOverRow(e, task.id)}
+                onDrop={e => onDropRow(e, task.id)}
                 data-testid={`row-project-task-${task.id}`}
               >
+                {isEditing ? (
+                  // No grip while editing — reorder is disabled per locked plan.
+                  <span
+                    className="w-3.5 mt-0.5 shrink-0"
+                    aria-hidden="true"
+                    data-testid={`grip-disabled-task-${task.id}`}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    draggable
+                    onDragStart={e => onDragStart(e, task.id)}
+                    onDragEnd={onDragEnd}
+                    onPointerDown={e => onGripPointerDown(e, task.id)}
+                    onPointerMove={onGripPointerMove}
+                    onPointerUp={onGripPointerUp}
+                    onPointerCancel={onGripPointerCancel}
+                    className={
+                      "shrink-0 mt-0.5 cursor-grab touch-none text-muted-foreground hover:text-foreground " +
+                      (isDragSource ? "cursor-grabbing" : "")
+                    }
+                    aria-label={`Reorder ${task.title}`}
+                    data-testid={`grip-project-task-${task.id}`}
+                  >
+                    <GripVertical className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 <Checkbox
                   className="mt-0.5"
                   checked={isDone}
