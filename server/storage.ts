@@ -18,6 +18,8 @@ import {
   projectResponsibility,
   // Phase 2 calendar
   projectTasks, projectLinks, agendaTasks,
+  // PR #29a — Phase 8 inbox processing
+  filedNotes,
   type User, type InsertUser,
   type Invitation, type InsertInvitation,
   type Project, type InsertProject,
@@ -49,6 +51,8 @@ import {
   type ProjectTask, type InsertProjectTask,
   type ProjectLink, type InsertProjectLink,
   type AgendaTask, type InsertAgendaTask,
+  type FiledNote, type InsertFiledNote,
+  type FiledNoteTargetType,
 } from "@shared/schema";
 import { expandMaster, isoToUtcDate, utcDateToIso, type MasterRow } from "./recurrence";
 
@@ -619,6 +623,23 @@ sqlite.exec(`
     resolved_at TEXT,
     created_at TEXT NOT NULL
   );
+
+  -- PR #29a (Phase 8 — Inbox processing) — Filed notes for File It path.
+  -- See shared/schema.ts “filed_notes” block for the rationale and the
+  -- target_type enum. Index on (user_id, target_type, target_id) makes
+  -- per-entity reads cheap.
+  CREATE TABLE IF NOT EXISTS filed_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    target_type TEXT NOT NULL,
+    target_id INTEGER NOT NULL,
+    note TEXT NOT NULL,
+    tag TEXT,
+    source_inbox_item_id INTEGER REFERENCES inbox_items(id),
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS filed_notes_target_idx
+    ON filed_notes (user_id, target_type, target_id);
 `);
 
 // Insert default preferences row if none exists
@@ -692,6 +713,32 @@ export interface IStorage {
   softDeleteInboxItem(userId: number, id: number): InboxItem | undefined;
   restoreInboxItem(userId: number, id: number): InboxItem | undefined;
   deleteInboxItem(userId: number, id: number): void;
+  // PR #29a — Phase 8 Inbox processing primitives.
+  // getInboxItem returns a single row by id (used by the orchestrator to
+  // confirm ownership and short-circuit if already processed).
+  getInboxItem(userId: number, id: number): InboxItem | undefined;
+  // markInboxProcessed flips processed=1 and sets processedAs to one of the
+  // values defined in INBOX_PROCESSED_AS_VALUES. Idempotent.
+  markInboxProcessed(userId: number, id: number, processedAs: string): InboxItem | undefined;
+  // getSomedayInboxItems returns rows where processed=1 AND processedAs='someday'
+  // AND deletedAt IS NULL, ordered by createdAt desc. Powers the /someday page.
+  getSomedayInboxItems(userId: number): InboxItem[];
+  // restoreInboxFromSomeday flips processed=0 and clears processedAs so the
+  // row reappears in the unprocessed Inbox list and can be processed as
+  // something else (per locked Q1 answer 2026-05-10).
+  restoreInboxFromSomeday(userId: number, id: number): InboxItem | undefined;
+
+  // PR #29a — Filed notes CRUD (File It target).
+  // Always scoped by userId. listFiledNotes filters by target if both
+  // targetType and targetId are provided; otherwise returns all of the
+  // user's filed notes ordered by createdAt desc.
+  listFiledNotes(
+    userId: number,
+    targetType?: FiledNoteTargetType,
+    targetId?: number,
+  ): FiledNote[];
+  createFiledNote(userId: number, data: InsertFiledNote): FiledNote;
+  deleteFiledNote(userId: number, id: number): void;
 
   // Weekly Reviews
   getWeeklyReviews(userId: number): WeeklyReview[];
@@ -958,6 +1005,74 @@ export class DatabaseStorage implements IStorage {
   }
   deleteInboxItem(userId: number, id: number): void {
     db.delete(inboxItems).where(and(eq(inboxItems.id, id), eq(inboxItems.userId, userId))).run();
+  }
+
+  // PR #29a — Phase 8 Inbox processing primitives.
+  getInboxItem(userId: number, id: number): InboxItem | undefined {
+    return db.select().from(inboxItems)
+      .where(and(eq(inboxItems.id, id), eq(inboxItems.userId, userId)))
+      .get();
+  }
+  markInboxProcessed(userId: number, id: number, processedAs: string): InboxItem | undefined {
+    return db.update(inboxItems).set({
+      processed: 1,
+      processedAs,
+    }).where(and(eq(inboxItems.id, id), eq(inboxItems.userId, userId))).returning().get();
+  }
+  getSomedayInboxItems(userId: number): InboxItem[] {
+    return db.select().from(inboxItems)
+      .where(and(
+        eq(inboxItems.userId, userId),
+        eq(inboxItems.processed, 1),
+        eq(inboxItems.processedAs, "someday"),
+        isNull(inboxItems.deletedAt),
+      ))
+      .orderBy(desc(inboxItems.createdAt))
+      .all();
+  }
+  restoreInboxFromSomeday(userId: number, id: number): InboxItem | undefined {
+    // Per locked Q1 (2026-05-10): item returns to unprocessed Inbox so it
+    // can be processed as something else. Only flips the row when it is
+    // currently a someday entry; other rows are left alone (returns the
+    // current state — caller can detect by checking processedAs).
+    const current = db.select().from(inboxItems)
+      .where(and(eq(inboxItems.id, id), eq(inboxItems.userId, userId)))
+      .get();
+    if (!current) return undefined;
+    if (current.processedAs !== "someday" || current.processed !== 1) {
+      return current;
+    }
+    return db.update(inboxItems).set({
+      processed: 0,
+      processedAs: null,
+    }).where(and(eq(inboxItems.id, id), eq(inboxItems.userId, userId))).returning().get();
+  }
+
+  // PR #29a — Filed notes CRUD (File It target).
+  listFiledNotes(
+    userId: number,
+    targetType?: FiledNoteTargetType,
+    targetId?: number,
+  ): FiledNote[] {
+    const conditions = [eq(filedNotes.userId, userId)];
+    if (targetType) conditions.push(eq(filedNotes.targetType, targetType));
+    if (typeof targetId === "number") conditions.push(eq(filedNotes.targetId, targetId));
+    return db.select().from(filedNotes)
+      .where(and(...conditions))
+      .orderBy(desc(filedNotes.createdAt))
+      .all();
+  }
+  createFiledNote(userId: number, data: InsertFiledNote): FiledNote {
+    return db.insert(filedNotes).values({
+      ...data,
+      userId,
+      createdAt: new Date().toISOString(),
+    }).returning().get();
+  }
+  deleteFiledNote(userId: number, id: number): void {
+    db.delete(filedNotes)
+      .where(and(eq(filedNotes.id, id), eq(filedNotes.userId, userId)))
+      .run();
   }
 
   // Weekly Reviews
@@ -1939,6 +2054,49 @@ export class DatabaseStorage implements IStorage {
 
   // Reset (clears the surviving v8-relevant tables for this user)
   resetDatabase(userId: number): void {
+    // PR #29a — reorder for FK-safe deletion. Children must be deleted
+    // before their parents under foreign_keys=ON.
+    //   * filed_notes → inbox_items, projects, etc.  (delete first)
+    //   * agenda_tasks, project_tasks → projects, responsibilities
+    //   * project_responsibility, project_<support> → projects
+    //   * responsibility_<support>, responsibility_role → responsibilities + roles
+    //   * role_people → roles + people
+    //   * project_environment → projects (legacy)
+    //   * project_links → projects (PR #21)
+    //
+    // Then parent rows (projects, responsibilities, roles, support items,
+    // inbox_items, weekly_reviews) are safe to delete.
+
+    // 1) filed_notes (FK to inbox_items)
+    sqlite.exec(`DELETE FROM filed_notes WHERE user_id = ${userId}`);
+
+    // 2) Phase 2 calendar tables (FKs to projects/responsibilities)
+    sqlite.exec(`DELETE FROM agenda_tasks WHERE user_id = ${userId}`);
+    sqlite.exec(`DELETE FROM project_tasks WHERE user_id = ${userId}`);
+
+    // 3) project link/junction tables (FKs to projects). These have no
+    // user_id column — scope by joining to projects-of-this-user.
+    sqlite.exec(`DELETE FROM project_links WHERE project_id IN (SELECT id FROM projects WHERE user_id = ${userId})`);
+    sqlite.exec(`DELETE FROM project_responsibility WHERE project_id IN (SELECT id FROM projects WHERE user_id = ${userId})`);
+    sqlite.exec(`DELETE FROM project_people WHERE project_id IN (SELECT id FROM projects WHERE user_id = ${userId})`);
+    sqlite.exec(`DELETE FROM project_places WHERE project_id IN (SELECT id FROM projects WHERE user_id = ${userId})`);
+    sqlite.exec(`DELETE FROM project_things WHERE project_id IN (SELECT id FROM projects WHERE user_id = ${userId})`);
+    sqlite.exec(`DELETE FROM project_providers WHERE project_id IN (SELECT id FROM projects WHERE user_id = ${userId})`);
+    sqlite.exec(`DELETE FROM project_conditions WHERE project_id IN (SELECT id FROM projects WHERE user_id = ${userId})`);
+    sqlite.exec(`DELETE FROM project_environment WHERE project_id IN (SELECT id FROM projects WHERE user_id = ${userId})`);
+
+    // 4) responsibility junctions (FKs to responsibilities + support tables/roles)
+    sqlite.exec(`DELETE FROM responsibility_role WHERE responsibility_id IN (SELECT id FROM responsibilities WHERE user_id = ${userId})`);
+    sqlite.exec(`DELETE FROM responsibility_people WHERE responsibility_id IN (SELECT id FROM responsibilities WHERE user_id = ${userId})`);
+    sqlite.exec(`DELETE FROM responsibility_places WHERE responsibility_id IN (SELECT id FROM responsibilities WHERE user_id = ${userId})`);
+    sqlite.exec(`DELETE FROM responsibility_things WHERE responsibility_id IN (SELECT id FROM responsibilities WHERE user_id = ${userId})`);
+    sqlite.exec(`DELETE FROM responsibility_providers WHERE responsibility_id IN (SELECT id FROM responsibilities WHERE user_id = ${userId})`);
+    sqlite.exec(`DELETE FROM responsibility_conditions WHERE responsibility_id IN (SELECT id FROM responsibilities WHERE user_id = ${userId})`);
+
+    // 5) role-people junction (FKs to roles + environment_people)
+    sqlite.exec(`DELETE FROM role_people WHERE role_id IN (SELECT id FROM roles WHERE user_id = ${userId})`);
+
+    // 6) Now the parent rows are safe.
     const tables = [
       "projects", "inbox_items", "weekly_reviews",
       "environment_people", "environment_places", "environment_things",
@@ -1948,19 +2106,7 @@ export class DatabaseStorage implements IStorage {
     for (const table of tables) {
       sqlite.exec(`DELETE FROM ${table} WHERE user_id = ${userId}`);
     }
-    // Clean orphans in junction tables (no user_id column)
-    sqlite.exec(`DELETE FROM project_environment WHERE project_id NOT IN (SELECT id FROM projects)`);
-    sqlite.exec(`DELETE FROM role_people WHERE role_id NOT IN (SELECT id FROM roles)`);
-    sqlite.exec(`DELETE FROM responsibility_role WHERE responsibility_id NOT IN (SELECT id FROM responsibilities)`);
-    sqlite.exec(`DELETE FROM responsibility_people WHERE responsibility_id NOT IN (SELECT id FROM responsibilities)`);
-    sqlite.exec(`DELETE FROM responsibility_places WHERE responsibility_id NOT IN (SELECT id FROM responsibilities)`);
-    sqlite.exec(`DELETE FROM responsibility_things WHERE responsibility_id NOT IN (SELECT id FROM responsibilities)`);
-    sqlite.exec(`DELETE FROM responsibility_providers WHERE responsibility_id NOT IN (SELECT id FROM responsibilities)`);
-    sqlite.exec(`DELETE FROM responsibility_conditions WHERE responsibility_id NOT IN (SELECT id FROM responsibilities)`);
-    sqlite.exec(`DELETE FROM project_responsibility WHERE project_id NOT IN (SELECT id FROM projects)`);
-    // Phase 2 calendar tables — user-scoped via user_id column.
-    sqlite.exec(`DELETE FROM agenda_tasks WHERE user_id = ${userId}`);
-    sqlite.exec(`DELETE FROM project_tasks WHERE user_id = ${userId}`);
+
     // Reset preferences to defaults for this user
     sqlite.exec(`UPDATE preferences SET display_name = '', time_format = '12h', clarity_skip_ritual = 0 WHERE user_id = ${userId}`);
   }

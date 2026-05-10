@@ -452,6 +452,44 @@ export const agendaTasks = sqliteTable("agenda_tasks", {
 });
 
 // ============================================================
+// PR #29a (Phase 8 — Inbox processing) — FILED NOTES (File It target)
+// ============================================================
+// Source: session b2f73166 turn 30 (2026-05-03 23:30 UTC), File It rule:
+//   "File It creates a note. That note can be attached to:
+//    a Role / a Responsibility / a Project / a Support item."
+// Locked addition (2026-05-10): targetType also accepts agenda_task and
+//   project_task per user direction. Recurring/temp-responsibility tasks
+//   are reachable through `responsibility` (they live in the
+//   responsibilities table with projectId set, per Date-handling.docx).
+//
+// Why a separate table (not a `notes` column on each entity):
+//   * One entity can collect many filed notes over time.
+//   * The optional Tag field shown in the File It ASCII applies per-note,
+//     not per-entity.
+//   * Adding columns to 10 different tables would also require schema work
+//     on every future support sub-type. This single table absorbs all of
+//     them via (targetType, targetId).
+//
+// targetType values are validated at the API boundary against
+// FILED_NOTE_TARGET_TYPES below. targetId references the row's id within
+// the table named by targetType. The pair acts as a polymorphic key — same
+// pattern as agenda_tasks.origin / origin_id.
+export const filedNotes = sqliteTable("filed_notes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
+  targetType: text("target_type").notNull(),
+  targetId: integer("target_id").notNull(),
+  note: text("note").notNull(),
+  tag: text("tag"),
+  // Optional pointer back to the inbox item this note was filed from.
+  // Lets the Recently-processed list show "filed to <target>" without a
+  // separate join. Nullable for notes created outside the Inbox flow
+  // (e.g. directly on a Role page in a future phase).
+  sourceInboxItemId: integer("source_inbox_item_id").references(() => inboxItems.id),
+  createdAt: text("created_at").notNull(),
+});
+
+// ============================================================
 // SUPPORT REQUESTS
 // ============================================================
 
@@ -589,6 +627,9 @@ export const insertAgendaTaskSchema = createInsertSchema(agendaTasks).omit({ id:
 export const insertPreferencesSchema = createInsertSchema(preferences).omit({ id: true });
 export const insertSupportRequestSchema = createInsertSchema(supportRequests).omit({ id: true });
 
+// PR #29a — Filed notes insert schema (omit id and createdAt; the route fills createdAt).
+export const insertFiledNoteSchema = createInsertSchema(filedNotes).omit({ id: true, createdAt: true });
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Invitation = typeof invitations.$inferSelect;
@@ -681,3 +722,49 @@ export type InsertPreferences = z.infer<typeof insertPreferencesSchema>;
 
 export type SupportRequest = typeof supportRequests.$inferSelect;
 export type InsertSupportRequest = z.infer<typeof insertSupportRequestSchema>;
+
+// PR #29a — Filed notes types and target-type enum.
+export type FiledNote = typeof filedNotes.$inferSelect;
+export type InsertFiledNote = z.infer<typeof insertFiledNoteSchema>;
+export const FILED_NOTE_TARGET_TYPES = [
+  "role",
+  "responsibility",
+  "project",
+  "agenda_task",
+  "project_task",
+  "support_person",
+  "support_place",
+  "support_thing",
+  "support_provider",
+  "support_condition",
+] as const;
+export type FiledNoteTargetType = typeof FILED_NOTE_TARGET_TYPES[number];
+
+// PR #29a — Inbox processing actions (Tier 1 lock, b2f73166:3286-3291).
+// Order in this array intentionally matches the menu order in the spec.
+export const INBOX_PROCESS_ACTIONS = [
+  "do_it_now",
+  "do_it_later",
+  "add_to_project",
+  "file_it",
+  "wonder_it",
+  "trash_it",
+] as const;
+export type InboxProcessAction = typeof INBOX_PROCESS_ACTIONS[number];
+
+// PR #29a — processedAs values written by the orchestrator.
+//   do_it_now    -> 'done'
+//   do_it_later  -> 'task'      (an agenda_task was created)
+//   add_to_project -> 'project' (a project_task was created)
+//   file_it      -> 'filed'
+//   wonder_it    -> 'someday'
+//   trash_it     -> 'trash'     (mirrors existing soft-delete path)
+export const INBOX_PROCESSED_AS_VALUES = [
+  "done",
+  "task",
+  "project",
+  "filed",
+  "someday",
+  "trash",
+] as const;
+export type InboxProcessedAs = typeof INBOX_PROCESSED_AS_VALUES[number];

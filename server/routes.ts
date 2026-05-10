@@ -33,6 +33,11 @@ import {
   AGENDA_STATUSES,
   AGENDA_VIEWS,
   PROJECT_TASK_STATUSES,
+  // PR #29a — Phase 8 Inbox processing
+  FILED_NOTE_TARGET_TYPES,
+  INBOX_PROCESS_ACTIONS,
+  type FiledNoteTargetType,
+  type InboxProcessAction,
 } from "@shared/schema";
 import { validateRecurrenceRule } from "./recurrence";
 import { z } from "zod";
@@ -389,6 +394,289 @@ export function registerRoutes(server: Server, app: Express) {
   app.delete("/api/inbox/:id", (req, res) => {
     const userId = getEffectiveUserId(req);
     storage.deleteInboxItem(userId, Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // PR #29a (Phase 8) — INBOX PROCESSING ORCHESTRATOR + SOMEDAY
+  // ============================================================
+  // Tier 1 source: session b2f73166 turn 30 (2026-05-03 23:30 UTC).
+  // Six actions in fixed order: do_it_now / do_it_later / add_to_project /
+  // file_it / wonder_it / trash_it.
+  //
+  // Locked semantics (2026-05-10):
+  //   do_it_now    -> mark inbox item processed=1, processedAs='done'.
+  //                   No downstream record. (Q7 lock)
+  //   do_it_later  -> create an agenda_task from payload, set processedAs='task'.
+  //                   Reuses POST /api/agenda-tasks contract (PR #14b).
+  //                   The dedicated screen lands in PR #29c — this orchestrator
+  //                   accepts the same body schema so the UI can post directly.
+  //   add_to_project -> create a project_task with sortOrder, processedAs='project'.
+  //                     Reorder UX (PR #27 drag) is client-side; the request
+  //                     just sends the final desired sortOrder integer.
+  //   file_it      -> create a filed_notes row, processedAs='filed'.
+  //   wonder_it    -> processedAs='someday' only. /someday list reads it.
+  //   trash_it     -> mirror the existing soft-delete flow (sets deletedAt).
+  //
+  // Validation strategy: per-action narrow zod parse. The body comes in two
+  // parts: { action, payload }. We pick the schema by action.
+
+  // do_it_later body — minimal subset of agenda_task fields. We reuse the
+  // permissive insertAgendaTaskSchema and let the agenda-tasks code path
+  // handle the heavy validation by calling storage.createAgendaTask. Note:
+  // PR #29c will replace this with a richer schema once the hybrid form
+  // exists; for now the orchestrator passes through what the client sends.
+  const doItLaterPayloadSchema = z.object({
+    title: z.string().trim().min(1, "Task name is required"),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "startDate must be YYYY-MM-DD"),
+    isAllDay: z.boolean().default(false),
+    time: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+    durationMinutes: z.number().int().positive().nullable().optional(),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    roleId: z.number().int().positive().nullable().optional(),
+    color: z.string().nullable().optional(),
+    notes: z.string().nullable().optional(),
+  });
+
+  const addToProjectPayloadSchema = z.object({
+    projectId: z.number().int().positive(),
+    taskName: z.string().trim().min(1, "Task name is required"),
+    // sortOrder — the final integer the client computed after drag-reorder.
+    // When omitted, the orchestrator computes "last" (max + 1) on the server.
+    sortOrder: z.number().int().nullable().optional(),
+    notes: z.string().nullable().optional(),
+  });
+
+  const fileItPayloadSchema = z.object({
+    targetType: z.enum(FILED_NOTE_TARGET_TYPES as unknown as [FiledNoteTargetType, ...FiledNoteTargetType[]]),
+    targetId: z.number().int().positive(),
+    note: z.string().trim().min(1, "Note is required"),
+    tag: z.string().trim().nullable().optional(),
+  });
+
+  // Master orchestrator. Validates the row exists and isn't already processed,
+  // dispatches by action, and returns { item, created } where `created` is the
+  // downstream record (or null for do_it_now / wonder_it / trash_it).
+  app.post("/api/inbox/:id/process", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid inbox id" });
+    }
+
+    const action = req.body?.action as InboxProcessAction | undefined;
+    if (!action || !INBOX_PROCESS_ACTIONS.includes(action)) {
+      return res.status(400).json({
+        error: `action must be one of: ${INBOX_PROCESS_ACTIONS.join(", ")}`,
+      });
+    }
+
+    const item = storage.getInboxItem(userId, id);
+    if (!item) return res.status(404).json({ error: "Inbox item not found" });
+
+    // Idempotency guard — don't re-process an already-processed row except for
+    // trash, which can be safely re-soft-deleted (sets deletedAt regardless).
+    if (item.processed === 1 && action !== "trash_it") {
+      return res.status(409).json({
+        error: "Inbox item is already processed",
+        item,
+      });
+    }
+
+    try {
+      switch (action) {
+        case "do_it_now": {
+          // Locked Q7: mark complete. No downstream record.
+          const updated = storage.markInboxProcessed(userId, id, "done");
+          return res.json({ item: updated, created: null });
+        }
+
+        case "wonder_it": {
+          const updated = storage.markInboxProcessed(userId, id, "someday");
+          return res.json({ item: updated, created: null });
+        }
+
+        case "trash_it": {
+          // Reuse existing soft-delete behavior (also sets processedAs='trash').
+          const updated = storage.softDeleteInboxItem(userId, id);
+          return res.json({ item: updated, created: null });
+        }
+
+        case "do_it_later": {
+          const parsed = doItLaterPayloadSchema.safeParse(req.body?.payload);
+          if (!parsed.success) {
+            return res.status(400).json({ error: parsed.error.message });
+          }
+          const p = parsed.data;
+          // Time/duration cross-field rule for non-all-day rows. Mirrors the
+          // agenda-tasks POST guard.
+          if (!p.isAllDay && (p.time == null || p.durationMinutes == null)) {
+            return res.status(400).json({
+              error: "time and durationMinutes are required when not all-day",
+            });
+          }
+          const now = new Date().toISOString();
+          const created = storage.createAgendaTask(userId, {
+            origin: "standalone",
+            originId: null,
+            title: p.title,
+            startDate: p.startDate,
+            endDate: p.isAllDay ? (p.endDate ?? null) : null,
+            time: p.isAllDay ? null : (p.time ?? null),
+            durationMinutes: p.isAllDay ? null : (p.durationMinutes ?? null),
+            isAllDay: p.isAllDay ? 1 : 0,
+            roleId: p.roleId ?? null,
+            color: p.color ?? null,
+            status: "ready",
+            recurrenceRule: null,
+            recurrenceEndDate: null,
+            seriesId: null,
+            isOverride: 0,
+            originalDate: null,
+            isCancelled: 0,
+            notes: p.notes ?? null,
+            createdAt: now,
+            updatedAt: now,
+          });
+          const updated = storage.markInboxProcessed(userId, id, "task");
+          return res.json({ item: updated, created });
+        }
+
+        case "add_to_project": {
+          const parsed = addToProjectPayloadSchema.safeParse(req.body?.payload);
+          if (!parsed.success) {
+            return res.status(400).json({ error: parsed.error.message });
+          }
+          const p = parsed.data;
+          // Compute sortOrder when the client didn't supply one. Per locked
+          // rule (b2f73166:3403-3406): "The new task is added last by default.
+          // Before saving, the user can reorder the project task list."
+          // The client always sends the post-reorder sortOrder; this fallback
+          // covers programmatic callers.
+          let sortOrder = p.sortOrder ?? null;
+          if (sortOrder == null) {
+            const existing = storage.getProjectTasks(userId, p.projectId);
+            const maxSort = existing.reduce((m, t) => {
+              const v = t.sortOrder;
+              return typeof v === "number" && v > m ? v : m;
+            }, 0);
+            sortOrder = maxSort + 1;
+          }
+          const created = storage.createProjectTask(userId, {
+            projectId: p.projectId,
+            title: p.taskName,
+            notes: p.notes ?? null,
+            status: "open",
+            sortOrder,
+            startDate: null,
+            endDate: null,
+            isAllDay: 0,
+            recurrenceRule: null,
+            recurrenceEndDate: null,
+            createdAt: new Date().toISOString(),
+          });
+          const updated = storage.markInboxProcessed(userId, id, "project");
+          return res.json({ item: updated, created });
+        }
+
+        case "file_it": {
+          const parsed = fileItPayloadSchema.safeParse(req.body?.payload);
+          if (!parsed.success) {
+            return res.status(400).json({ error: parsed.error.message });
+          }
+          const p = parsed.data;
+          const created = storage.createFiledNote(userId, {
+            targetType: p.targetType,
+            targetId: p.targetId,
+            note: p.note,
+            tag: p.tag ?? null,
+            sourceInboxItemId: id,
+          });
+          const updated = storage.markInboxProcessed(userId, id, "filed");
+          return res.json({ item: updated, created });
+        }
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[inbox process] action=${action} id=${id}:`, msg);
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // GET /api/inbox/someday — list of wondered items (Q1 lock).
+  app.get("/api/inbox/someday", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.getSomedayInboxItems(userId));
+  });
+
+  // POST /api/inbox/:id/restore-from-someday — "Move back to Inbox" action
+  // on the /someday page. Flips processed=0, clears processedAs.
+  app.post("/api/inbox/:id/restore-from-someday", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid inbox id" });
+    }
+    const result = storage.restoreInboxFromSomeday(userId, id);
+    if (!result) return res.status(404).json({ error: "Inbox item not found" });
+    res.json(result);
+  });
+
+  // ============================================================
+  // PR #29a (Phase 8) — FILED NOTES (File It)
+  // ============================================================
+  // GET /api/filed-notes
+  //   Optional query params: targetType, targetId. When both are present,
+  //   results are filtered to that single entity. When neither is present,
+  //   returns the user's full notes list (newest first).
+  app.get("/api/filed-notes", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const rawType = typeof req.query.targetType === "string" ? req.query.targetType : undefined;
+    const rawId = typeof req.query.targetId === "string" ? Number(req.query.targetId) : undefined;
+    let targetType: FiledNoteTargetType | undefined;
+    if (rawType !== undefined) {
+      if (!FILED_NOTE_TARGET_TYPES.includes(rawType as FiledNoteTargetType)) {
+        return res.status(400).json({
+          error: `targetType must be one of: ${FILED_NOTE_TARGET_TYPES.join(", ")}`,
+        });
+      }
+      targetType = rawType as FiledNoteTargetType;
+    }
+    const targetId = typeof rawId === "number" && Number.isFinite(rawId) ? rawId : undefined;
+    res.json(storage.listFiledNotes(userId, targetType, targetId));
+  });
+
+  // POST /api/filed-notes — standalone create (used by File It flow when
+  // the user files a note outside the orchestrator path, e.g. from a future
+  // entity-page "Add note" button).
+  app.post("/api/filed-notes", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const schema = z.object({
+      targetType: z.enum(FILED_NOTE_TARGET_TYPES as unknown as [FiledNoteTargetType, ...FiledNoteTargetType[]]),
+      targetId: z.number().int().positive(),
+      note: z.string().trim().min(1, "Note is required"),
+      tag: z.string().trim().nullable().optional(),
+      sourceInboxItemId: z.number().int().positive().nullable().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    const created = storage.createFiledNote(userId, {
+      targetType: parsed.data.targetType,
+      targetId: parsed.data.targetId,
+      note: parsed.data.note,
+      tag: parsed.data.tag ?? null,
+      sourceInboxItemId: parsed.data.sourceInboxItemId ?? null,
+    });
+    res.json(created);
+  });
+
+  app.delete("/api/filed-notes/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+    storage.deleteFiledNote(userId, id);
     res.json({ ok: true });
   });
 
