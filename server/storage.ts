@@ -925,8 +925,16 @@ export interface IStorage {
   getProjectTasks(userId: number, projectId?: number): ProjectTask[];
   getProjectTask(userId: number, id: number): ProjectTask | undefined;
   createProjectTask(userId: number, data: InsertProjectTask): ProjectTask;
+  // PR #29i — updateProjectTask now reverse-syncs the new title onto every
+  // linked agenda_tasks row (origin='project', originId=:id) in the same
+  // transaction when data.title is a string. Counterpart to PR #29g's
+  // forward sync; together they keep the chip and the project task in lockstep.
   updateProjectTask(userId: number, id: number, data: Partial<InsertProjectTask>): ProjectTask | undefined;
   deleteProjectTask(userId: number, id: number): void;
+  // PR #29i — mirror a project_task title onto every linked agenda chip.
+  // Returns the number of agenda_tasks rows updated. Safe to call directly
+  // (it's also wrapped inside updateProjectTask's tx for atomic renames).
+  syncAgendaTitlesForProjectTask(userId: number, projectTaskId: number, newTitle: string): number;
 
   // PR #23 — Project related links/files (§10 "Add link" rows)
   getProjectLinks(userId: number, projectId: number): ProjectLink[];
@@ -1974,10 +1982,39 @@ export class DatabaseStorage implements IStorage {
   createProjectTask(userId: number, data: InsertProjectTask): ProjectTask {
     return db.insert(projectTasks).values({ ...data, userId }).returning().get();
   }
+  // PR #29i — wrapped in a tx so the project_task PATCH and the linked
+  // agenda title sync commit atomically. When data.title is provided, every
+  // agenda_tasks row with origin='project' and originId=:id gets the same
+  // title. The project task is the source of truth for linked chips, so the
+  // sync is unconditional (Q4 = A): chip-side title overrides get overwritten
+  // on every project rename. PR #29g's forward sync (chip → project) routes
+  // through this same path — the sync becomes a no-op there (title already
+  // matches), so no infinite loop is possible.
   updateProjectTask(userId: number, id: number, data: Partial<InsertProjectTask>): ProjectTask | undefined {
-    return db.update(projectTasks).set(data)
-      .where(and(eq(projectTasks.id, id), eq(projectTasks.userId, userId)))
-      .returning().get();
+    const tx = sqlite.transaction(() => {
+      const updated = db.update(projectTasks).set(data)
+        .where(and(eq(projectTasks.id, id), eq(projectTasks.userId, userId)))
+        .returning().get();
+      if (updated && typeof data.title === "string") {
+        this.syncAgendaTitlesForProjectTask(userId, id, data.title);
+      }
+      return updated;
+    });
+    return tx();
+  }
+  // PR #29i — see updateProjectTask comment above. Exposed on IStorage so
+  // tests / future callers can trigger a sync without going through PATCH.
+  syncAgendaTitlesForProjectTask(userId: number, projectTaskId: number, newTitle: string): number {
+    const res = db
+      .update(agendaTasks)
+      .set({ title: newTitle })
+      .where(and(
+        eq(agendaTasks.userId, userId),
+        eq(agendaTasks.origin, "project"),
+        eq(agendaTasks.originId, projectTaskId),
+      ))
+      .run();
+    return Number(res.changes ?? 0);
   }
   deleteProjectTask(userId: number, id: number): void {
     db.delete(projectTasks).where(and(eq(projectTasks.id, id), eq(projectTasks.userId, userId))).run();
