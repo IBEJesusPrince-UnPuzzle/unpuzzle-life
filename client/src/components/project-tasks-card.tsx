@@ -210,6 +210,14 @@ export function ProjectTasksCard({
       void queryClient.invalidateQueries({
         queryKey: [`/api/project-tasks?projectId=${projectId}`],
       });
+      // PR #29j — keep linked agenda chips in sync with PR #29i
+      // reverse-title-sync. The server already wrote the new title to
+      // every agenda_tasks row with origin='project' and
+      // originId=:taskId; this just tells any open agenda view to
+      // refetch and pick it up.
+      void queryClient.invalidateQueries({ queryKey: ["/api/agenda"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/agenda-tasks"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/agenda-window"] });
     },
     onError: (err: Error) => {
       toast({
