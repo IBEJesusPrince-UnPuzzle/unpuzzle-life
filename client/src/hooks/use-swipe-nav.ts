@@ -57,6 +57,24 @@ export function useSwipeNav(opts: SwipeNavOptions) {
     [disabled],
   );
 
+  // PR #37 — capture the pointer on the container so the swipe survives a
+  // finger that drifts onto a child element mid-gesture (chips, hour cells).
+  // Without setPointerCapture the OS may re-target pointermove to the child
+  // and we lose the gesture entirely on mobile.
+  const capturePointer = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (disabled) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      try {
+        (e.currentTarget as Element).setPointerCapture(e.pointerId);
+      } catch {
+        // Some browsers throw if the pointer is already captured elsewhere
+        // (e.g. inside a Radix overlay). Safe to ignore — swipe still works.
+      }
+    },
+    [disabled],
+  );
+
   const onPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const s = stateRef.current;
@@ -99,10 +117,23 @@ export function useSwipeNav(opts: SwipeNavOptions) {
     stateRef.current = null;
   }, []);
 
+  // PR #37 — combine pointerdown handlers so the host doesn't need to know
+  // about pointer-capture plumbing. Container should also be styled with
+  // touch-action: pan-y so mobile browsers delegate vertical scroll to the
+  // platform but let our horizontal pointer events through.
+  const onPointerDownCombined = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      onPointerDown(e);
+      capturePointer(e);
+    },
+    [onPointerDown, capturePointer],
+  );
+
   return {
-    onPointerDown,
+    onPointerDown: onPointerDownCombined,
     onPointerMove,
     onPointerUp,
     onPointerCancel,
+    style: { touchAction: "pan-y" as const },
   };
 }

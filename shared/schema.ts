@@ -17,6 +17,11 @@ export const users = sqliteTable("users", {
   // Phase 2 (§23): per-user last selected Agenda view, follows them across devices.
   // 'day' | '3day' | 'week' | 'month'
   agendaDefaultView: text("agenda_default_view").notNull().default("day"),
+  // PR #37 (Google-parity pinch-zoom on time-grid views): hour-row pixel
+  // height shared across Day / 3-Day / Week. Clamp 28–112 px/h, default
+  // 56 px/h (unchanged from the pre-PR #37 constant). Month view ignores
+  // this since it has no time grid.
+  agendaHourHeightPx: integer("agenda_hour_height_px").notNull().default(56),
   createdAt: text("created_at").notNull(),
   lastLoginAt: text("last_login_at"),
 });
