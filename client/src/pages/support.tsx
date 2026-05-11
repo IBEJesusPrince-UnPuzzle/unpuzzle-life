@@ -309,9 +309,9 @@ function SupportMakeupRow({
   count: number;
   to: string;
 }) {
-  // Until PR #22 builds the flat list pages, these rows render disabled
-  // (no Link wrapper). Visual chevron is dimmed to match.
-  const enabled = false;
+  // PR #33 flipped this on. Rows wrap in a <Link> to /support/:type which
+  // resolves to the parameterized SupportTypeListPage.
+  const enabled = true;
   const content = (
     <div
       className={
