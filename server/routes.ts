@@ -462,8 +462,11 @@ export function registerRoutes(server: Server, app: Express) {
     durationMinutes: z.number().int().positive().nullable().optional(),
     endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
     roleId: z.number().int().positive().nullable().optional(),
-    // PR #29c -- nullable link to a responsibility (UI-side picker).
-    responsibilityId: z.number().int().positive().nullable().optional(),
+    // PR #30a -- the Responsibility dropdown was removed from Do It Later
+    // per RESOLVED-1 (§22a wins over §19). The field is no longer parsed
+    // here; if an older client still posts a responsibilityId zod will
+    // silently drop it (default non-strict parse) and the insert below
+    // writes null. Standalone tasks do not link to responsibilities.
     color: z.string().nullable().optional(),
     // PR #29c -- recurrence fields mirror /api/agenda-tasks contract.
     recurrenceRule: z.string().nullable().optional(),
@@ -632,7 +635,10 @@ export function registerRoutes(server: Server, app: Express) {
             durationMinutes: p.isAllDay ? null : (p.durationMinutes ?? null),
             isAllDay: p.isAllDay ? 1 : 0,
             roleId: p.roleId ?? null,
-            responsibilityId: p.responsibilityId ?? null,
+            // PR #30a -- no responsibility link on Do It Later tasks. The
+            // agenda_tasks.responsibility_id column still exists for legacy
+            // rows but new inbox-spawned rows always write null here.
+            responsibilityId: null,
             color: p.color ?? null,
             status: "ready",
             recurrenceRule: p.recurrenceRule ?? null,
@@ -1602,6 +1608,239 @@ export function registerRoutes(server: Server, app: Express) {
     const result = storage.getAgendaTask(userId, Number(req.params.id));
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
+  });
+
+  // ----------------------------------------------------------------------
+  // PR #30a — Today card popup data join.
+  // Returns the agenda_tasks row plus everything the AgendaTaskViewModal
+  // (PR #30a) needs to render its three card variants without issuing N
+  // follow-up requests from the client:
+  //   * origin='responsibility' — linked responsibility name + role names
+  //     (via responsibility_role junction) + the responsibility's own
+  //     People/Places/Things/Providers/Conditions, joined to environment_*
+  //     for name + state + relationship_type, plus the responsibility's
+  //     linked project (first row by id) + that project's next-action
+  //     project_task (status='open', sortOrder NULLs-last).
+  //   * origin='project'         — the project_tasks row → its project (name)
+  //     → the project's OWN supports per §10 (Linked supports list) → the
+  //     project's linked responsibilities (names, primary first) → the next
+  //     open project_task in this project after the current row by
+  //     sortOrder. Per RESOLVED-2 the project task subline shows the
+  //     project name + responsibility names; per RESOLVED-2 the Support
+  //     check reads from the project's supports, not the responsibility's.
+  //   * origin='standalone'      — only the agenda row plus its roleId
+  //     resolved to a role name. There is no task_support table in the
+  //     schema (see RESOLVED-1 / §22a notes), so supports come back as an
+  //     empty array and the client renders "(none)".
+  // Support rows are always returned in the order: people, places, things,
+  // providers, conditions — matching the locked Support module ordering.
+  app.get("/api/agenda-tasks/:id/card", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid agenda task id" });
+    }
+    const task = storage.getAgendaTask(userId, id);
+    if (!task) return res.status(404).json({ error: "Not found" });
+
+    // Common helper — collect the five support categories for a parent id
+    // (either a responsibility or a project) and normalize them into a flat
+    // list of { type, name, state, relationshipType, importance } objects.
+    // The environment_* tables vary only in their FK column name, but all
+    // five carry { id, name, state } so the join shape is uniform.
+    const SUPPORT_TYPES: Array<"people" | "places" | "things" | "providers" | "conditions"> =
+      ["people", "places", "things", "providers", "conditions"];
+
+    type CardSupport = {
+      type: "people" | "places" | "things" | "providers" | "conditions";
+      id: number;
+      name: string;
+      state: string;
+      relationshipType: string;
+      importance: string;
+    };
+
+    // Build per-type id→env lookup once. The list-getters return user-scoped
+    // rows; we index them by id so the join below doesn't issue N queries.
+    const envByType: Record<"people" | "places" | "things" | "providers" | "conditions", Map<number, { name: string; state: string }>> = {
+      people: new Map(storage.getEnvironmentPeople(userId).map((r) => [r.id, { name: r.name, state: r.state }])),
+      places: new Map(storage.getEnvironmentPlaces(userId).map((r) => [r.id, { name: r.name, state: r.state }])),
+      things: new Map(storage.getEnvironmentThings(userId).map((r) => [r.id, { name: r.name, state: r.state }])),
+      providers: new Map(storage.getEnvironmentProviders(userId).map((r) => [r.id, { name: r.name, state: r.state }])),
+      conditions: new Map(storage.getEnvironmentConditions(userId).map((r) => [r.id, { name: r.name, state: r.state }])),
+    };
+
+    function collectSupports(
+      kind: "responsibility" | "project",
+      parentId: number,
+    ): CardSupport[] {
+      const out: CardSupport[] = [];
+      for (const t of SUPPORT_TYPES) {
+        const links: any[] = kind === "responsibility"
+          ? storage.getResponsibilitySupports(parentId, t)
+          : storage.getProjectSupports(parentId, t);
+        if (!links.length) continue;
+        // Each link row carries a foreign key into environment_<t>; look
+        // up the environment record for name + state via the prebuilt map.
+        const fkCol = t === "people"
+          ? "personId"
+          : t === "places"
+          ? "placeId"
+          : t === "things"
+          ? "thingId"
+          : t === "providers"
+          ? "providerId"
+          : "conditionId";
+        for (const link of links) {
+          const supportId: number = link[fkCol];
+          const env = envByType[t].get(supportId);
+          if (!env) continue;
+          out.push({
+            type: t,
+            id: supportId,
+            name: env.name,
+            state: env.state,
+            relationshipType: link.relationshipType,
+            importance: link.importance,
+          });
+        }
+      }
+      return out;
+    }
+
+    if (task.origin === "responsibility" && task.originId != null) {
+      // No single-row responsibility getter exists; getResponsibilityWithSchedule
+      // returns { responsibility, schedule } and short-circuits on ownership.
+      const respWrap = storage.getResponsibilityWithSchedule(userId, task.originId);
+      const resp = respWrap?.responsibility;
+      if (!resp) {
+        // The agenda row points at a responsibility that no longer exists.
+        // Return the task with empty join data; the client renders "(none)".
+        return res.json({ task, kind: "responsibility", responsibility: null, roles: [], supports: [], linkedProject: null });
+      }
+      // Roles via the responsibility_role junction → resolve role names.
+      const links = storage.getResponsibilityRoles(resp.id);
+      const allRoles = storage.getRoles(userId);
+      const roleNameById = new Map(allRoles.map((r) => [r.id, r.name]));
+      const roles = links
+        .map((l) => roleNameById.get(l.roleId))
+        .filter((n): n is string => typeof n === "string");
+
+      const supports = collectSupports("responsibility", resp.id);
+
+      // Linked project — prefer the responsibility's direct projectId
+      // backlink (§2 "project may link to a responsibility"), then fall
+      // back to scanning project_responsibility for older rows that only
+      // wrote the junction. When multiple projects link, we surface the
+      // first by id and ignore the rest (single-project line per ASCII).
+      const projects = storage.getProjects(userId);
+      let linkedProject: { id: number; title: string; status: string; nextAction: string | null } | null = null;
+      const respLinkedProjectId = (resp as any).projectId ?? null;
+      let projectMatch = respLinkedProjectId != null
+        ? projects.find((p) => p.id === respLinkedProjectId) ?? null
+        : null;
+      if (!projectMatch) {
+        for (const p of projects) {
+          const pr = storage.getProjectResponsibilities(p.id);
+          if (pr.some((row) => row.responsibilityId === resp.id)) {
+            projectMatch = p;
+            break;
+          }
+        }
+      }
+      if (projectMatch) {
+        // Next-action: first status='open' project_task by sortOrder
+        // (NULLs-last), then by id as tiebreaker.
+        const tasks = storage.getProjectTasks(userId, projectMatch.id);
+        const open = tasks.filter((t) => t.status === "open");
+        open.sort((a, b) => {
+          const aS = a.sortOrder == null ? Number.MAX_SAFE_INTEGER : a.sortOrder;
+          const bS = b.sortOrder == null ? Number.MAX_SAFE_INTEGER : b.sortOrder;
+          if (aS !== bS) return aS - bS;
+          return a.id - b.id;
+        });
+        linkedProject = {
+          id: projectMatch.id,
+          title: projectMatch.title,
+          status: projectMatch.status ?? "active",
+          nextAction: open[0]?.title ?? null,
+        };
+      }
+
+      return res.json({
+        task,
+        kind: "responsibility",
+        responsibility: { id: resp.id, name: resp.name },
+        roles,
+        supports,
+        linkedProject,
+      });
+    }
+
+    if (task.origin === "project" && task.originId != null) {
+      const projectTask = storage.getProjectTask(userId, task.originId);
+      if (!projectTask) {
+        return res.json({ task, kind: "project", project: null, projectTask: null, responsibilities: [], supports: [], nextAction: null });
+      }
+      const projects = storage.getProjects(userId);
+      const project = projects.find((p) => p.id === projectTask.projectId) ?? null;
+      if (!project) {
+        return res.json({ task, kind: "project", project: null, projectTask, responsibilities: [], supports: [], nextAction: null });
+      }
+      // Linked responsibilities, primary first. project_responsibility
+      // carries isPrimary; we sort isPrimary=1 ahead of the rest, then by
+      // id for stable order.
+      const prLinks = storage.getProjectResponsibilities(project.id);
+      const allResps = storage.getResponsibilities(userId);
+      const respById = new Map(allResps.map((r) => [r.id, r]));
+      const linkedResps = prLinks
+        .map((l) => ({ link: l, resp: respById.get(l.responsibilityId) }))
+        .filter((x): x is { link: typeof prLinks[number]; resp: typeof allResps[number] } => x.resp != null)
+        .sort((a, b) => {
+          if (a.link.isPrimary !== b.link.isPrimary) {
+            return b.link.isPrimary - a.link.isPrimary;
+          }
+          return a.link.id - b.link.id;
+        })
+        .map(({ resp }) => ({ id: resp.id, name: resp.name }));
+
+      const supports = collectSupports("project", project.id);
+
+      // Next action: next status='open' task in THIS project, by sortOrder
+      // (NULLs-last), excluding the current row itself. If the current row
+      // is the last open task, nextAction is null and the client omits the
+      // Next action block (per ASCII variant 5 note).
+      const tasks = storage.getProjectTasks(userId, project.id);
+      const open = tasks.filter((t) => t.status === "open" && t.id !== projectTask.id);
+      open.sort((a, b) => {
+        const aS = a.sortOrder == null ? Number.MAX_SAFE_INTEGER : a.sortOrder;
+        const bS = b.sortOrder == null ? Number.MAX_SAFE_INTEGER : b.sortOrder;
+        if (aS !== bS) return aS - bS;
+        return a.id - b.id;
+      });
+
+      return res.json({
+        task,
+        kind: "project",
+        project: { id: project.id, title: project.title, status: project.status ?? "active" },
+        projectTask: { id: projectTask.id, title: projectTask.title },
+        responsibilities: linkedResps,
+        supports,
+        nextAction: open[0]?.title ?? null,
+      });
+    }
+
+    // origin='standalone' — only resolve the role (if any). No task_support
+    // table exists; supports come back empty and the client renders "(none)".
+    const role = task.roleId != null
+      ? storage.getRoles(userId).find((r) => r.id === task.roleId) ?? null
+      : null;
+    return res.json({
+      task,
+      kind: "standalone",
+      role: role ? { id: role.id, name: role.name } : null,
+      supports: [],
+    });
   });
   app.post("/api/agenda-tasks", (req, res) => {
     const userId = getEffectiveUserId(req);

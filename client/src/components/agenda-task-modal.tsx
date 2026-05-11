@@ -20,9 +20,12 @@
 // PR #29c (Phase 8 Inbox processing) — same component now ALSO renders as a
 // full page (displayMode="page") for the Do It Later inbox flow. In page mode:
 //   * The <Dialog> chrome is omitted; the page wrapper supplies its own.
-//   * Below Color, we render Role + Responsibility dropdowns and a stubbed
-//     [+ Add support details] toggle (locked hybrid ASCII; the actual
-//     support pivots ship in a follow-up PR).
+//   * Below Color, we render a Role dropdown and a stubbed [+ Add support
+//     details] toggle (locked hybrid ASCII; the actual support pivots
+//     ship in a follow-up PR).
+//   * PR #30a: the Responsibility dropdown was removed entirely
+//     (RESOLVED-1 in pinned-questions.md — §22a wins over §19: standalone
+//     tasks do not link to responsibilities). The Role picker stays.
 //   * Save posts to /api/inbox/:id/process action=do_it_later instead of
 //     /api/agenda-tasks, then navigates back to /inbox via onSaved.
 //   * Edit / delete / scope dialog paths are unreachable in page mode (Do
@@ -268,12 +271,13 @@ export function AgendaTaskModal({
   const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
   const [scopeIntent, setScopeIntent] = useState<"save" | "delete">("save");
 
-  // PR #29c — page-mode-only state: role + responsibility pickers, support
-  // toggle. roleId/responsibilityId default to null so existing dialog-mode
-  // callers see no behavior change (these fields are simply not rendered in
-  // dialog mode and not sent in the dialog-mode mutation payload).
+  // PR #29c — page-mode-only state: role picker, support toggle.
+  // roleId defaults to null so existing dialog-mode callers see no behavior
+  // change (this field is simply not rendered in dialog mode and not sent in
+  // the dialog-mode mutation payload).
+  // PR #30a: the responsibilityId state was removed alongside its dropdown
+  // (RESOLVED-1: §22a wins over §19). Do not re-add without spec change.
   const [roleId, setRoleId] = useState<number | null>(null);
-  const [responsibilityId, setResponsibilityId] = useState<number | null>(null);
 
   // PR #29e — page-mode-only state for the [+ Add to project] collapsible.
   // Collapsed by default; auto-expands when referenceProjectId is set on the
@@ -287,21 +291,12 @@ export function AgendaTaskModal({
   const [projectId, setProjectId] = useState<number | null>(null);
   const [orderOverride, setOrderOverride] = useState<number[] | null>(null);
 
-  // PR #29c — page-mode data fetches for Role / Responsibility pickers.
-  // Guarded by isPageMode so dialog-mode (Agenda) never issues these
-  // queries. responsibility_roles is the junction the schema uses to link
-  // responsibilities to roles; responsibilities have NO direct role_id
-  // column, so we client-side filter via the junction.
+  // PR #29c — page-mode data fetch for the Role picker.
+  // Guarded by isPageMode so dialog-mode (Agenda) never issues this query.
+  // PR #30a: the responsibilities + responsibility-roles queries were
+  // removed alongside the Responsibility dropdown.
   const rolesQuery = useQuery<Array<{ id: number; name: string }>>({
     queryKey: ["/api/roles"],
-    enabled: isPageMode,
-  });
-  const responsibilitiesQuery = useQuery<Array<{ id: number; name: string }>>({
-    queryKey: ["/api/responsibilities"],
-    enabled: isPageMode,
-  });
-  const respRolesQuery = useQuery<Array<{ responsibilityId: number; roleId: number }>>({
-    queryKey: ["/api/responsibility-roles"],
     enabled: isPageMode,
   });
 
@@ -374,16 +369,8 @@ export function AgendaTaskModal({
     projectsQuery.data,
   ]);
 
-  // Responsibilities filtered by the currently-picked Role. Null role => empty.
-  const filteredResponsibilities = useMemo(() => {
-    if (!isPageMode || roleId == null) return [];
-    const allowedIds = new Set(
-      (respRolesQuery.data ?? [])
-        .filter((rr) => rr.roleId === roleId)
-        .map((rr) => rr.responsibilityId),
-    );
-    return (responsibilitiesQuery.data ?? []).filter((r) => allowedIds.has(r.id));
-  }, [isPageMode, roleId, respRolesQuery.data, responsibilitiesQuery.data]);
+  // PR #30a: filteredResponsibilities memo removed alongside the
+  // Responsibility dropdown.
 
   // Reset/seed whenever the modal opens or the editing target changes.
   useEffect(() => {
@@ -446,9 +433,9 @@ export function AgendaTaskModal({
       setRecurrenceOption("none");
       setCustomRuleSnapshot(null);
       setRecurrenceEndDate("");
-      // PR #29c — reset role/responsibility on each fresh open in page mode.
+      // PR #29c — reset role on each fresh open in page mode.
+      // PR #30a: responsibilityId reset removed alongside its dropdown.
       setRoleId(null);
-      setResponsibilityId(null);
       // PR #29e — reset the Add to project collapsible. The auto-expand
       // effect below re-opens it if referenceProjectId is set.
       setAddToProjectExpanded(false);
@@ -765,7 +752,8 @@ export function AgendaTaskModal({
         recurrenceRule: string | null | undefined;
         recurrenceEndDate: string | null | undefined;
         roleId: number | null;
-        responsibilityId: number | null;
+        // PR #30a: responsibilityId removed from the do_it_later payload
+        // (RESOLVED-1). The server-side schema no longer parses this field.
         projectId?: number;
         sortOrder?: number;
       } = {
@@ -780,7 +768,6 @@ export function AgendaTaskModal({
         recurrenceRule: base.recurrenceRule,
         recurrenceEndDate: base.recurrenceEndDate,
         roleId,
-        responsibilityId,
       };
       // PR #29f -- when the collapsible [+ Add to project] section is
       // expanded AND the user has actually picked a project, thread the
@@ -1373,10 +1360,12 @@ export function AgendaTaskModal({
             <ColorPicker value={color} onChange={setColor} />
           </div>
 
-          {/* PR #29c — page-mode-only: Role + Responsibility + stub support
-              toggle. Renders below Color, above Notes (locked hybrid ASCII).
-              The [+ Add support details] button stubs to a toast — the
-              actual support pivots ship in a follow-up PR. */}
+          {/* PR #29c — page-mode-only: Role picker + stub support toggle.
+              Renders below Color, above Notes (locked hybrid ASCII). The
+              [+ Add support details] button stubs to a toast — the actual
+              support pivots ship in a follow-up PR.
+              PR #30a: the Responsibility dropdown was removed entirely
+              (RESOLVED-1 — §22a wins over §19). Role stays. */}
           {isPageMode && (
             <>
               <div className="space-y-1.5">
@@ -1388,36 +1377,12 @@ export function AgendaTaskModal({
                     const v = e.target.value;
                     const next = v === "" ? null : Number(v);
                     setRoleId(next);
-                    // Changing role invalidates the responsibility pick.
-                    setResponsibilityId(null);
                   }}
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   data-testid="select-task-role"
                 >
                   <option value="">Choose role…</option>
                   {(rolesQuery.data ?? []).map((r) => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="task-responsibility">Responsibility</Label>
-                <select
-                  id="task-responsibility"
-                  value={responsibilityId == null ? "" : String(responsibilityId)}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setResponsibilityId(v === "" ? null : Number(v));
-                  }}
-                  disabled={roleId == null}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
-                  data-testid="select-task-responsibility"
-                >
-                  <option value="">
-                    {roleId == null ? "Choose a role first…" : "Choose responsibility…"}
-                  </option>
-                  {filteredResponsibilities.map((r) => (
                     <option key={r.id} value={r.id}>{r.name}</option>
                   ))}
                 </select>
