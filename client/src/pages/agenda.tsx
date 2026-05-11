@@ -67,7 +67,7 @@ import { useAgendaUrlState, type AgendaView } from "@/hooks/use-agenda-url-state
 
 export default function AgendaPage() {
   // URL is the source of truth for date/view/overlay/popup (PR #30b).
-  const { state: url, replace: urlReplace, push: urlPush, back: urlBack, clearPopup: urlClearPopup } = useAgendaUrlState();
+  const { state: url, replace: urlReplace, push: urlPush, back: urlBack, popPopupThen: urlPopPopupThen } = useAgendaUrlState();
 
   const date = url.d;
   const view: AgendaView = url.v ?? "day";
@@ -332,7 +332,7 @@ export default function AgendaPage() {
         onOpenChange={handleViewOpenChange}
         item={viewing}
         onEdit={openEdit}
-        onNavigateAway={urlClearPopup}
+        onNavigateAway={urlPopPopupThen}
       />
 
       <AgendaMonthDayOverlay
