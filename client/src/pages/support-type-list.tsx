@@ -17,7 +17,7 @@
 // Per-type config (label, icon, helper line, singular) is centralized in
 // TYPE_CONFIG below; the rest of the page is type-agnostic.
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, Redirect } from "wouter";
 import {
@@ -120,39 +120,6 @@ function isSupportType(s: string | undefined): s is SupportType {
   );
 }
 
-// Returns the height (px) of the soft keyboard currently covering the
-// viewport, or 0 when nothing is covering. Uses VisualViewport (supported
-// on every mobile browser we ship to). The bottom sheet applies this as a
-// translateY so the Name input + Save/Cancel stay above the keyboard
-// without the user having to dismiss it.
-//
-// Falls back to 0 when VisualViewport isn't available (older desktop
-// browsers, SSR) — in those environments there's no on-screen keyboard
-// to worry about anyway.
-function useKeyboardInset(): number {
-  const [inset, setInset] = useState(0);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const recompute = () => {
-      // window.innerHeight is the layout viewport; vv.height is the visual
-      // viewport (excludes keyboard). Their difference is the keyboard's
-      // on-screen height. Clamp to >= 0 so a brief negative reading during
-      // orientation changes can't push the sheet downward.
-      const next = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      setInset(next);
-    };
-    recompute();
-    vv.addEventListener("resize", recompute);
-    vv.addEventListener("scroll", recompute);
-    return () => {
-      vv.removeEventListener("resize", recompute);
-      vv.removeEventListener("scroll", recompute);
-    };
-  }, []);
-  return inset;
-}
 
 interface RouteProps {
   params: { type?: string };
@@ -341,7 +308,6 @@ function SupportEntryEditSheet({
 
   const [name, setName] = useState(initialName);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const keyboardInset = useKeyboardInset();
 
   // Pull the link summary (counts + names) for the "Used by" rollup. Same
   // endpoint the delete dialog uses, so the cache is shared.
@@ -426,16 +392,8 @@ function SupportEntryEditSheet({
         <SheetContent
           side="bottom"
           className="sm:max-w-md sm:mx-auto rounded-t-xl max-h-[85dvh] overflow-y-auto"
-          // Translate the sheet upward by the soft keyboard's height so the
-          // Name input + Save/Cancel stay visible while typing. Only applied
-          // when the keyboard is actually open — leaving the style unset
-          // lets the SheetContent's built-in slide-in-from-bottom animation
-          // run normally on mount (an inline transform would override it).
-          style={
-            keyboardInset > 0
-              ? { transform: `translateY(-${keyboardInset}px)` }
-              : undefined
-          }
+          // PR #35: keyboard-aware translateY now lives in the shared
+          // SheetContent primitive — every side="bottom" sheet inherits it.
           data-testid="sheet-support-entry-edit"
         >
           <SheetHeader>
