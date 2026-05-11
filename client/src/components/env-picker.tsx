@@ -76,7 +76,9 @@ interface EnvItem {
 // call sites that pass `responsibilityId` continue to work unchanged because
 // `parentType` defaults to "responsibility" and `parentId` falls back to
 // `responsibilityId`.
-type ParentType = "responsibility" | "project";
+// PR #32 added "agendaTask" so the same picker drives all three parent
+// surfaces (responsibility-edit, project-edit, agenda-task page-mode).
+type ParentType = "responsibility" | "project" | "agendaTask";
 
 interface EnvPickerProps {
   /** @deprecated Pass parentType="responsibility" + parentId instead. */
@@ -93,9 +95,12 @@ interface EnvPickerProps {
 }
 
 function parentBasePath(parentType: ParentType, parentId: number): string {
-  return parentType === "project"
-    ? `/api/projects/${parentId}`
-    : `/api/responsibilities/${parentId}`;
+  switch (parentType) {
+    case "project":    return `/api/projects/${parentId}`;
+    case "agendaTask": return `/api/agenda-tasks/${parentId}`;
+    case "responsibility":
+    default:           return `/api/responsibilities/${parentId}`;
+  }
 }
 
 // Server error bodies look like `409: {"error":"…"}` after the throw helper
