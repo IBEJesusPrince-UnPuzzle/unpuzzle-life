@@ -17,6 +17,16 @@
 //      every event renders at width = 1/clusterLaneCount and at left =
 //      laneIndex / clusterLaneCount.
 //
+// PR #36 — Short-chip visual-overlap clustering (§20a clarification):
+//   Cluster + lane math use `visualEndMin` (caller-supplied) when present
+//   instead of `endMin`. visualEndMin = max(endMin, startMin +
+//   minDurationForView) so a 10-min chip rendered at the 22px floor
+//   correctly clusters with a 1h chip starting at the 10-min chip's true
+//   end time. Renderer height calc is independent and still uses endMin
+//   (already clamped to MIN_CHIP_HEIGHT_PX via Math.max in each view).
+//   No marker on the inflated portion — Google parity. Chip body text
+//   ("3:30 AM · 10m") is the source of truth for the user.
+//
 // Open question (deferred): Google's "expand" trick (later events fill
 // gaps left by earlier ones) is not implemented — width is uniform per
 // cluster. This is the cleaner default and matches the spec's "like
@@ -26,6 +36,7 @@ export type Timed = {
   id: number;
   startMin: number; // minutes since 00:00
   endMin: number;   // minutes since 00:00 (exclusive)
+  visualEndMin?: number; // PR #36 — optional, defaults to endMin
 };
 
 export type Packed<T extends Timed> = T & {
@@ -36,14 +47,26 @@ export type Packed<T extends Timed> = T & {
 export function packLanes<T extends Timed>(items: T[]): Packed<T>[] {
   if (items.length === 0) return [];
 
-  // 1. Sort by start asc, then by length desc.
+  // visualEnd resolver — PR #36. Default to endMin when caller didn't
+  // pass visualEndMin so existing call sites (none today, but future)
+  // keep their pre-PR #36 behavior.
+  const visEnd = (it: T): number =>
+    it.visualEndMin != null && it.visualEndMin > it.endMin
+      ? it.visualEndMin
+      : it.endMin;
+
+  // 1. Sort by start asc, then by visual-length desc (longer chips lock
+  //    into lower lanes when starts tie).
   const sorted = [...items].sort(
     (a, b) =>
       a.startMin - b.startMin ||
-      b.endMin - b.startMin - (a.endMin - a.startMin)
+      visEnd(b) - b.startMin - (visEnd(a) - a.startMin)
   );
 
-  // 2. Greedy lane assignment. lanes[i] = endMin of last event placed in lane i.
+  // 2. Greedy lane assignment. lanes[i] = visualEnd of last event placed
+  //    in lane i. Using visualEnd here is what makes a short chip that's
+  //    been inflated for readability still block the next chip from
+  //    re-using its lane (Google parity).
   const lanes: number[] = [];
   const lane = new Map<number, number>(); // itemId -> lane index
 
@@ -51,13 +74,13 @@ export function packLanes<T extends Timed>(items: T[]): Packed<T>[] {
     let placed = -1;
     for (let i = 0; i < lanes.length; i++) {
       if (lanes[i] <= it.startMin) {
-        lanes[i] = it.endMin;
+        lanes[i] = visEnd(it);
         placed = i;
         break;
       }
     }
     if (placed === -1) {
-      lanes.push(it.endMin);
+      lanes.push(visEnd(it));
       placed = lanes.length - 1;
     }
     lane.set(it.id, placed);
@@ -73,6 +96,9 @@ export function packLanes<T extends Timed>(items: T[]): Packed<T>[] {
   let currentClusterMaxLane = -1;
 
   for (const it of sorted) {
+    // Cluster boundary uses visualEnd — short chips that have been
+    // inflated to the min readable height correctly cluster with the
+    // chips they visually overlap (PR #36).
     if (currentCluster === -1 || it.startMin >= currentClusterEnd) {
       // Close out previous cluster.
       if (currentCluster !== -1) {
@@ -80,11 +106,11 @@ export function packLanes<T extends Timed>(items: T[]): Packed<T>[] {
       }
       // Start a new cluster.
       currentCluster = clusterCounter++;
-      currentClusterEnd = it.endMin;
+      currentClusterEnd = visEnd(it);
       currentClusterMaxLane = lane.get(it.id) ?? 0;
     } else {
       // Extend the current cluster.
-      currentClusterEnd = Math.max(currentClusterEnd, it.endMin);
+      currentClusterEnd = Math.max(currentClusterEnd, visEnd(it));
       currentClusterMaxLane = Math.max(
         currentClusterMaxLane,
         lane.get(it.id) ?? 0

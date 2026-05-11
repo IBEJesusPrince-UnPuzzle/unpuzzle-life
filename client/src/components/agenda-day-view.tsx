@@ -72,6 +72,13 @@ export function AgendaDayView({ date, onSelect }: Props) {
   // Pack timed items into lanes. packLanes uses `id` for bookkeeping;
   // virtual instances of the same series share an id, so we feed a
   // synthetic numeric key based on array index.
+  //
+  // PR #36 — visualEndMin = max(endMin, startMin + minDurationForView).
+  // For Day view the chip floor is MIN_CARD_HEIGHT_PX (22px) and the grid
+  // is HOUR_HEIGHT_PX (56px/h), so the visual floor in minutes is
+  // 22/56 * 60 ≈ 23.57. Short chips that get inflated to 22px will
+  // correctly cluster with chips that start within that inflated window.
+  const MIN_VISUAL_MINUTES = (MIN_CARD_HEIGHT_PX / HOUR_HEIGHT_PX) * 60;
   const packed = useMemo(() => {
     const inputs = timed
       .map((it, idx) => {
@@ -79,11 +86,12 @@ export function AgendaDayView({ date, onSelect }: Props) {
         const startMin = h * 60 + m;
         const dur = it.durationMinutes && it.durationMinutes > 0 ? it.durationMinutes : 30;
         const endMin = Math.min(24 * 60, startMin + dur);
-        return { id: idx, startMin, endMin, item: it };
+        const visualEndMin = Math.min(24 * 60, Math.max(endMin, startMin + MIN_VISUAL_MINUTES));
+        return { id: idx, startMin, endMin, visualEndMin, item: it };
       })
       .filter((x) => x.endMin > x.startMin);
     return packLanes(inputs);
-  }, [timed]);
+  }, [timed, MIN_VISUAL_MINUTES]);
 
   // Current-time line — render only on today, refresh once a minute.
   const isToday = date === toIsoDate(new Date());
