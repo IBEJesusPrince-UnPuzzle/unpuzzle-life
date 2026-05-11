@@ -6,6 +6,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useKeyboardInset } from "@/hooks/use-keyboard-inset"
 
 const Sheet = SheetPrimitive.Root
 
@@ -56,22 +57,40 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
-  <SheetPortal>
-    <SheetOverlay />
-    <SheetPrimitive.Content
-      ref={ref}
-      className={cn(sheetVariants({ side }), className)}
-      {...props}
-    >
-      {children}
-      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </SheetPrimitive.Close>
-    </SheetPrimitive.Content>
-  </SheetPortal>
-))
+>(({ side = "right", className, children, style, ...props }, ref) => {
+  // PR #35: For bottom-anchored sheets, translate the sheet upward by the
+  // soft keyboard's height so its content stays visible while typing. The
+  // hook returns 0 when no keyboard is open or VisualViewport isn't
+  // available — in that case we leave the transform unset so the built-in
+  // slide-in-from-bottom animation runs normally on mount (an inline
+  // transform: translateY(0) would override the slide keyframes).
+  //
+  // Only applied to side="bottom". Top / left / right sheets aren't covered
+  // by the keyboard, so their inset is irrelevant.
+  const keyboardInset = useKeyboardInset()
+  const mergedStyle =
+    side === "bottom" && keyboardInset > 0
+      ? { ...style, transform: `translateY(-${keyboardInset}px)` }
+      : style
+
+  return (
+    <SheetPortal>
+      <SheetOverlay />
+      <SheetPrimitive.Content
+        ref={ref}
+        className={cn(sheetVariants({ side }), className)}
+        style={mergedStyle}
+        {...props}
+      >
+        {children}
+        <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </SheetPrimitive.Close>
+      </SheetPrimitive.Content>
+    </SheetPortal>
+  )
+})
 SheetContent.displayName = SheetPrimitive.Content.displayName
 
 const SheetHeader = ({
