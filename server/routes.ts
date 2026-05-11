@@ -2032,6 +2032,24 @@ export function registerRoutes(server: Server, app: Express) {
     res.json({ view });
   });
 
+  // PR #37 — pinch-zoom hour-row height (shared across Day / 3-Day / Week).
+  // Clamp 28–112 px/h. Default 56 px/h matches the pre-PR #37 constant.
+  app.get("/api/agenda-hour-height", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json({ hourHeightPx: storage.getAgendaHourHeightPx(userId) });
+  });
+  app.patch("/api/agenda-hour-height", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const raw = (req.body || {}).hourHeightPx;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) {
+      return res.status(400).json({ error: "hourHeightPx must be a number" });
+    }
+    const clamped = Math.min(112, Math.max(28, Math.round(n)));
+    storage.setAgendaHourHeightPx(userId, clamped);
+    res.json({ hourHeightPx: clamped });
+  });
+
   // ============================================================
   // RESET
   // ============================================================

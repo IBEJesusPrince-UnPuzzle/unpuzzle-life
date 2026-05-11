@@ -35,7 +35,7 @@ import {
 } from "@/lib/agenda-utils";
 import { findColor } from "@/lib/agenda-colors";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
-import { CurrentTimeLine, HOUR_HEIGHT_PX } from "@/components/agenda-time-grid-shared";
+import { CurrentTimeLine, useAgendaZoom, usePinchZoom } from "@/components/agenda-time-grid-shared";
 import { AgendaAllDayStrip } from "@/components/agenda-all-day-strip";
 
 const LEFT_GUTTER_PX = 48;
@@ -136,6 +136,8 @@ export function AgendaWeekStickyShell({
 // -----------------------------------------------------------------------------
 export function AgendaWeekView({ date, onSelect }: Props) {
   const { from, to } = weekRange(date);
+  const { hourHeightPx } = useAgendaZoom();
+  const pinchHandlers = usePinchZoom();
 
   const { data: items = [] } = useQuery<AgendaWindowItem[]>({
     queryKey: ["/api/agenda", { from, to }],
@@ -150,7 +152,7 @@ export function AgendaWeekView({ date, onSelect }: Props) {
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
 
-  const totalHeight = HOUR_HEIGHT_PX * 24;
+  const totalHeight = hourHeightPx * 24;
   const hours = Array.from({ length: 24 }, (_, h) => h);
 
   return (
@@ -163,6 +165,7 @@ export function AgendaWeekView({ date, onSelect }: Props) {
           height: `${totalHeight}px`,
         }}
         data-testid="week-time-grid"
+        {...pinchHandlers}
       >
         {/* Gutter (narrower than Day/3 Days because columns are tighter) */}
         <div className="relative">
@@ -171,7 +174,7 @@ export function AgendaWeekView({ date, onSelect }: Props) {
               key={h}
               className="absolute left-0 right-0 pr-1 text-right text-[9px] text-muted-foreground tabular-nums whitespace-nowrap"
               style={{
-                top: `${h * HOUR_HEIGHT_PX - 6}px`,
+                top: `${h * hourHeightPx - 6}px`,
                 ...(h === 0 ? { top: "2px" } : null),
               }}
             >
@@ -185,6 +188,7 @@ export function AgendaWeekView({ date, onSelect }: Props) {
             iso={d}
             items={items.filter((it) => it.startDate === d)}
             onSelect={onSelect}
+            hourHeightPx={hourHeightPx}
           />
         ))}
       </div>
@@ -196,10 +200,12 @@ function WeekColumn({
   iso,
   items,
   onSelect,
+  hourHeightPx,
 }: {
   iso: string;
   items: AgendaWindowItem[];
   onSelect: (item: AgendaWindowItem) => void;
+  hourHeightPx: number;
 }) {
   const todayIso = toIsoDate(new Date());
   const isToday = iso === todayIso;
@@ -213,7 +219,7 @@ function WeekColumn({
   // minimum visual height in minutes so packLanes can cluster a 10-min
   // chip with its 1h neighbor that starts at the 10-min chip's true end.
   const MIN_CHIP_HEIGHT_PX = 16;
-  const MIN_VISUAL_MINUTES = (MIN_CHIP_HEIGHT_PX / HOUR_HEIGHT_PX) * 60;
+  const MIN_VISUAL_MINUTES = (MIN_CHIP_HEIGHT_PX / hourHeightPx) * 60;
 
   const packed = useMemo(() => {
     const inputs = timed
@@ -237,17 +243,17 @@ function WeekColumn({
         <div
           key={h}
           className="absolute left-0 right-0 border-t border-border/60"
-          style={{ top: `${h * HOUR_HEIGHT_PX}px` }}
+          style={{ top: `${h * hourHeightPx}px` }}
         />
       ))}
 
       {packed.map((p) => {
         const it = p.item;
         const c = findColor(it.color);
-        const top = (p.startMin / 60) * HOUR_HEIGHT_PX;
+        const top = (p.startMin / 60) * hourHeightPx;
         const height = Math.max(
           MIN_CHIP_HEIGHT_PX,
-          ((p.endMin - p.startMin) / 60) * HOUR_HEIGHT_PX - 2,
+          ((p.endMin - p.startMin) / 60) * hourHeightPx - 2,
         );
         const widthPct = 100 / p.laneCount;
         const leftPct = p.lane * widthPct;

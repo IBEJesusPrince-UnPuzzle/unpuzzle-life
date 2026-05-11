@@ -39,9 +39,9 @@ import {
   formatDurationLabel,
 } from "@/lib/agenda-utils";
 import { findColor } from "@/lib/agenda-colors";
+import { useAgendaZoom, usePinchZoom } from "@/components/agenda-time-grid-shared";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 
-const HOUR_HEIGHT_PX = 56; // 56px / hour, ~14px / 15min — matches mobile Google Calendar density.
 const MIN_CARD_HEIGHT_PX = 22;
 const GUTTER_WIDTH_PX = 60;
 
@@ -51,6 +51,8 @@ type Props = {
 };
 
 export function AgendaDayView({ date, onSelect }: Props) {
+  const { hourHeightPx } = useAgendaZoom();
+  const pinchHandlers = usePinchZoom();
   const { data: items = [] } = useQuery<AgendaWindowItem[]>({
     queryKey: ["/api/agenda", { from: date, to: date }],
     queryFn: async () => {
@@ -78,7 +80,7 @@ export function AgendaDayView({ date, onSelect }: Props) {
   // is HOUR_HEIGHT_PX (56px/h), so the visual floor in minutes is
   // 22/56 * 60 ≈ 23.57. Short chips that get inflated to 22px will
   // correctly cluster with chips that start within that inflated window.
-  const MIN_VISUAL_MINUTES = (MIN_CARD_HEIGHT_PX / HOUR_HEIGHT_PX) * 60;
+  const MIN_VISUAL_MINUTES = (MIN_CARD_HEIGHT_PX / hourHeightPx) * 60;
   const packed = useMemo(() => {
     const inputs = timed
       .map((it, idx) => {
@@ -108,7 +110,7 @@ export function AgendaDayView({ date, onSelect }: Props) {
     return () => clearInterval(id);
   }, [isToday]);
 
-  const totalHeight = HOUR_HEIGHT_PX * 24;
+  const totalHeight = hourHeightPx * 24;
   const hours = Array.from({ length: 24 }, (_, h) => h);
 
   return (
@@ -122,6 +124,7 @@ export function AgendaDayView({ date, onSelect }: Props) {
           height: `${totalHeight}px`,
         }}
         data-testid="day-time-grid"
+        {...pinchHandlers}
       >
         {/* Gutter — hour labels stacked at exact pixel offsets */}
         <div className="relative">
@@ -130,7 +133,7 @@ export function AgendaDayView({ date, onSelect }: Props) {
               key={h}
               className="absolute left-0 right-0 pr-2 text-right text-[10px] text-muted-foreground tabular-nums"
               style={{
-                top: `${h * HOUR_HEIGHT_PX - 6}px`,
+                top: `${h * hourHeightPx - 6}px`,
                 // first label clips against the top of the grid; nudge it down so
                 // "12:00 AM" sits below the all-day band edge instead of being half-cut.
                 ...(h === 0 ? { top: "2px" } : null),
@@ -148,7 +151,7 @@ export function AgendaDayView({ date, onSelect }: Props) {
             <div
               key={h}
               className="absolute left-0 right-0 border-t border-border/60"
-              style={{ top: `${h * HOUR_HEIGHT_PX}px` }}
+              style={{ top: `${h * hourHeightPx}px` }}
             />
           ))}
 
@@ -156,10 +159,10 @@ export function AgendaDayView({ date, onSelect }: Props) {
           {packed.map((p) => {
             const it = p.item;
             const c = findColor(it.color);
-            const top = (p.startMin / 60) * HOUR_HEIGHT_PX;
+            const top = (p.startMin / 60) * hourHeightPx;
             const height = Math.max(
               MIN_CARD_HEIGHT_PX,
-              ((p.endMin - p.startMin) / 60) * HOUR_HEIGHT_PX - 2,
+              ((p.endMin - p.startMin) / 60) * hourHeightPx - 2,
             );
             const widthPct = 100 / p.laneCount;
             const leftPct = p.lane * widthPct;
@@ -199,7 +202,7 @@ export function AgendaDayView({ date, onSelect }: Props) {
           {isToday && (
             <div
               className="absolute left-0 right-0 pointer-events-none z-10"
-              style={{ top: `${(nowMin / 60) * HOUR_HEIGHT_PX}px` }}
+              style={{ top: `${(nowMin / 60) * hourHeightPx}px` }}
               data-testid="line-current-time"
             >
               <div className="relative">

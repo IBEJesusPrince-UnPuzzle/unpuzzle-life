@@ -152,6 +152,12 @@ tryMigration("agenda_tasks.is_cancelled", `ALTER TABLE agenda_tasks ADD COLUMN i
 // for the locked rationale.
 tryMigration("agenda_tasks.responsibility_id", `ALTER TABLE agenda_tasks ADD COLUMN responsibility_id INTEGER`);
 
+// PR #37 — users gains agenda_hour_height_px so the pinch-zoom hour-row
+// height persists across sessions, shared across Day / 3-Day / Week.
+// Existing users backfill to the default (56 px/h, same as the pre-PR #37
+// constant), so render is unchanged until they pinch.
+tryMigration("users.agenda_hour_height_px", `ALTER TABLE users ADD COLUMN agenda_hour_height_px INTEGER NOT NULL DEFAULT 56`);
+
 // PR #21 — Project v2 schema (§10). All additions are nullable so existing
 // project rows backfill as NULL. UI lands in PR #22; this PR is schema + API only.
 tryMigration("projects.outcome_done",     `ALTER TABLE projects ADD COLUMN outcome_done TEXT`);
@@ -315,6 +321,7 @@ sqlite.exec(`
     status TEXT NOT NULL DEFAULT 'active',
     invited_by INTEGER,
     agenda_default_view TEXT NOT NULL DEFAULT 'day',
+    agenda_hour_height_px INTEGER NOT NULL DEFAULT 56,
     created_at TEXT NOT NULL,
     last_login_at TEXT
   );
@@ -1038,6 +1045,8 @@ export interface IStorage {
   // Phase 2: agenda default view
   getAgendaDefaultView(userId: number): string;
   setAgendaDefaultView(userId: number, view: string): void;
+  getAgendaHourHeightPx(userId: number): number;
+  setAgendaHourHeightPx(userId: number, hourHeightPx: number): void;
 
   // Reset
   resetDatabase(userId: number): void;
@@ -2640,6 +2649,17 @@ export class DatabaseStorage implements IStorage {
   }
   setAgendaDefaultView(userId: number, view: string): void {
     db.update(users).set({ agendaDefaultView: view }).where(eq(users.id, userId)).run();
+  }
+
+  // PR #37 — pinch-zoom hour-row height (shared across Day / 3-Day / Week).
+  // Clamp 28–112 px/h enforced at the route layer; this method trusts its
+  // caller to pass a clamped value.
+  getAgendaHourHeightPx(userId: number): number {
+    const u = db.select().from(users).where(eq(users.id, userId)).get();
+    return u?.agendaHourHeightPx ?? 56;
+  }
+  setAgendaHourHeightPx(userId: number, hourHeightPx: number): void {
+    db.update(users).set({ agendaHourHeightPx: hourHeightPx }).where(eq(users.id, userId)).run();
   }
 
   // Reset (clears the surviving v8-relevant tables for this user)
