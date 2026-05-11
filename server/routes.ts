@@ -872,11 +872,10 @@ export function registerRoutes(server: Server, app: Express) {
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
-  app.delete("/api/environment/people/:id", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    storage.deleteEnvironmentPerson(userId, Number(req.params.id));
-    res.json({ ok: true });
-  });
+  // DELETE /api/environment/people/:id — superseded by the generic
+  // DELETE /api/environment/:type/:id?cascade=true handler (PR #33).
+  // Removed because the bare-delete it was doing 500'd whenever links
+  // existed (FK constraint), and no client called it.
 
   // ============================================================
   // ENVIRONMENT: PLACES
@@ -898,11 +897,7 @@ export function registerRoutes(server: Server, app: Express) {
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
-  app.delete("/api/environment/places/:id", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    storage.deleteEnvironmentPlace(userId, Number(req.params.id));
-    res.json({ ok: true });
-  });
+  // DELETE /api/environment/places/:id — superseded by generic handler (PR #33).
 
   // ============================================================
   // ENVIRONMENT: THINGS
@@ -924,11 +919,7 @@ export function registerRoutes(server: Server, app: Express) {
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
-  app.delete("/api/environment/things/:id", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    storage.deleteEnvironmentThing(userId, Number(req.params.id));
-    res.json({ ok: true });
-  });
+  // DELETE /api/environment/things/:id — superseded by generic handler (PR #33).
 
   // ============================================================
   // PROJECT ENVIRONMENT (junction)
@@ -1231,11 +1222,7 @@ export function registerRoutes(server: Server, app: Express) {
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
-  app.delete("/api/environment/providers/:id", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    storage.deleteEnvironmentProvider(userId, Number(req.params.id));
-    res.json({ ok: true });
-  });
+  // DELETE /api/environment/providers/:id — superseded by generic handler (PR #33).
 
   // ----- Environment Conditions -----
   app.get("/api/environment/conditions", (req, res) => {
@@ -1255,11 +1242,7 @@ export function registerRoutes(server: Server, app: Express) {
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
-  app.delete("/api/environment/conditions/:id", (req, res) => {
-    const userId = getEffectiveUserId(req);
-    storage.deleteEnvironmentCondition(userId, Number(req.params.id));
-    res.json({ ok: true });
-  });
+  // DELETE /api/environment/conditions/:id — superseded by generic handler (PR #33).
 
   // ----- Support state setter (works for all 5 categories) -----
   // PATCH /api/environment/{type}/:id/state  body: { state: '...' }
@@ -1274,6 +1257,58 @@ export function registerRoutes(server: Server, app: Express) {
     const result = storage.setSupportState(type, userId, Number(id), state);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
+  });
+
+  // ----- PR #33: Support Makeup management — link summary + cascade delete -----
+  // GET /api/environment/:type/link-counts
+  //   Bulk per-entry link counts for one support type. Powers the
+  //   /support/:type list page's sub-line in one call instead of N+1.
+  //   Returns [{ id, count }] for every entry of that type owned by the
+  //   caller (zero-count entries included so the list can render
+  //   "Not used yet").
+  app.get("/api/environment/:type/link-counts", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const { type } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    res.json(storage.getEnvironmentLinkCounts(userId, type));
+  });
+
+  // GET /api/environment/:type/:id/link-summary
+  //   Returns the count of junction rows across all 3 parents
+  //   (responsibilities, projects, agendaTasks) that reference this env entry.
+  //   The /support/:type edit sheet's "Used by" rollup and the delete dialog's
+  //   pre-flight count both consume this. 404 when the entry doesn't exist or
+  //   doesn't belong to the caller.
+  app.get("/api/environment/:type/:id/link-summary", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const { type, id } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    const summary = storage.getEnvironmentLinkSummary(userId, type, Number(id));
+    if (!summary) return res.status(404).json({ error: "Not found" });
+    res.json(summary);
+  });
+
+  // DELETE /api/environment/:type/:id?cascade=true
+  //   Single destructive path: removes every junction row across the 3 parents
+  //   (15 tables total) and then the env entry itself. Returns the per-parent
+  //   counts so the client can build a summary toast.
+  //
+  //   The existing per-type DELETE handlers above only cascade to the
+  //   responsibility_* junctions (legacy behavior from §3); this new endpoint
+  //   is the full cross-parent cascade and is intentionally distinct.
+  //
+  //   We require ?cascade=true as an explicit opt-in so a stray DELETE without
+  //   the flag can't silently take out projects + agenda task links.
+  app.delete("/api/environment/:type/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const { type, id } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    if (req.query.cascade !== "true") {
+      return res.status(400).json({ error: "cascade=true query param required" });
+    }
+    const summary = storage.deleteEnvironmentWithCascade(userId, type, Number(id));
+    if (!summary) return res.status(404).json({ error: "Not found" });
+    res.json({ ok: true, summary });
   });
 
   // ----- Responsibility ↔ Role junction -----
