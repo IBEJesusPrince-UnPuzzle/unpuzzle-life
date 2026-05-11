@@ -68,7 +68,9 @@ interface EnvItem {
 // call sites that pass `responsibilityId` continue to work unchanged because
 // `parentType` defaults to "responsibility" and `parentId` falls back to
 // `responsibilityId`.
-type ParentType = "responsibility" | "project";
+// PR #32 added "agendaTask" so the same component drives the agenda-task
+// page-mode form with zero behavior changes for the other two parents.
+type ParentType = "responsibility" | "project" | "agendaTask";
 
 interface SupportSectionProps {
   /** @deprecated Pass parentType="responsibility" + parentId instead. */
@@ -89,16 +91,24 @@ interface SupportSectionProps {
 }
 
 function parentBasePath(parentType: ParentType, parentId: number): string {
-  return parentType === "project"
-    ? `/api/projects/${parentId}`
-    : `/api/responsibilities/${parentId}`;
+  switch (parentType) {
+    case "project":    return `/api/projects/${parentId}`;
+    case "agendaTask": return `/api/agenda-tasks/${parentId}`;
+    case "responsibility":
+    default:           return `/api/responsibilities/${parentId}`;
+  }
 }
 
 function removalKeyPrefix(parentType: ParentType): string {
   // Marked-for-removal keys must be distinct per parent so the parent page's
-  // flush regex (resp-edit uses /^resp-support:.../, proj-edit uses /^proj-support:.../)
-  // doesn't cross-fire.
-  return parentType === "project" ? "proj-support" : "resp-support";
+  // flush regex (resp-edit uses /^resp-support:.../, proj-edit uses /^proj-support:.../,
+  // agenda-task page uses /^agenda-support:.../) doesn't cross-fire.
+  switch (parentType) {
+    case "project":    return "proj-support";
+    case "agendaTask": return "agenda-support";
+    case "responsibility":
+    default:           return "resp-support";
+  }
 }
 
 const FK_FIELD: Record<SupportType, string> = {
@@ -297,7 +307,9 @@ export function SupportSection({
             const rowTestId =
               parentType === "project"
                 ? `row-proj-support-${supportType}-${row.linkId}`
-                : `row-resp-support-${supportType}-${row.linkId}`;
+                : parentType === "agendaTask"
+                  ? `row-agenda-support-${supportType}-${row.linkId}`
+                  : `row-resp-support-${supportType}-${row.linkId}`;
             return (
               <div
                 key={row.linkId}

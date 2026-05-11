@@ -81,6 +81,18 @@ import {
   type StandardOption,
 } from "@/lib/recurrence-form";
 import type { AgendaTask, Project, ProjectTask } from "@shared/schema";
+// PR #32 — Support module on agenda tasks.
+// Two wrappers: AgendaTaskSupportDraft (create flow, local state) and
+// AgendaTaskSupportLive (edit flow, talks to /api/agenda-tasks/:id/support/:type).
+// Renders inside isPageMode block on BOTH create and edit. SupportDraft is
+// the parent-owned shape we flush after the agenda_task POST returns its id.
+import {
+  AgendaTaskSupportDraft,
+  AgendaTaskSupportLive,
+  emptySupportDraft,
+  type SupportDraft,
+} from "@/components/agenda-task-support-draft";
+import type { SupportType } from "@/components/env-picker";
 
 // =============================================================================
 // PR 29e — Add to project collapsible (folded from inbox-add-to-project page).
@@ -291,6 +303,34 @@ export function AgendaTaskModal({
   const [projectId, setProjectId] = useState<number | null>(null);
   const [orderOverride, setOrderOverride] = useState<number[] | null>(null);
 
+  // PR #32 — page-mode support module state.
+  //
+  // supportDraft: only used in CREATE flow (standalone create + Do It Later).
+  //   Picks accumulate here; after the agenda_task POST returns the new id we
+  //   flush these IDs to /api/agenda-tasks/:id/support/:type as POSTs.
+  //
+  // supportMarkedForRemoval: only used in EDIT flow. SupportSection adds keys
+  //   shaped "agenda-support:<type>:<linkId>" when the user taps the trash on
+  //   a row. The flush on Save iterates this set and fires DELETEs.
+  //   (Adds + relationship edits in edit flow write through immediately via
+  //   SupportSection's own mutations, mirroring responsibility-edit.)
+  const [supportDraft, setSupportDraft] = useState<SupportDraft>(emptySupportDraft);
+  const [supportMarkedForRemoval, setSupportMarkedForRemoval] = useState<Set<string>>(new Set());
+  const markSupportForRemoval = (key: string) => {
+    setSupportMarkedForRemoval(prev => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+  };
+  const undoSupportRemoval = (key: string) => {
+    setSupportMarkedForRemoval(prev => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
+
   // PR #29c — page-mode data fetch for the Role picker.
   // Guarded by isPageMode so dialog-mode (Agenda) never issues this query.
   // PR #30a: the responsibilities + responsibility-roles queries were
@@ -417,6 +457,10 @@ export function AgendaTaskModal({
         setCustomRuleSnapshot(null);
       }
       setRecurrenceEndDate(editing.recurrenceEndDate ?? "");
+      // PR #32 — reset support state when opening an edit. SupportSection
+      // re-fetches links from the API; the removal pen starts empty.
+      setSupportDraft(emptySupportDraft);
+      setSupportMarkedForRemoval(new Set());
     } else {
       // PR #29c — in page mode, seed Title from the inbox item's content.
       setTitle(isPageMode ? (defaultTitle ?? "") : "");
@@ -441,6 +485,9 @@ export function AgendaTaskModal({
       setAddToProjectExpanded(false);
       setProjectId(null);
       setOrderOverride(null);
+      // PR #32 — fresh create starts with no support picks queued.
+      setSupportDraft(emptySupportDraft);
+      setSupportMarkedForRemoval(new Set());
     }
   }, [open, editing, defaultDate, isPageMode, defaultTitle]);
 
@@ -561,6 +608,75 @@ export function AgendaTaskModal({
     (mode === "edit-virtual" ||
       (mode === "edit-real" && !!editing.recurrenceRule && editing.isOverride !== 1));
 
+  // PR #32 — Support flush helpers (two-phase save, client orchestrates).
+  //
+  // flushSupportDraft: POST every queued (type, envId) pair to
+  //   /api/agenda-tasks/:newTaskId/support/:type. Called after the agenda_task
+  //   POST returns its id (create flow only — Do It Later and standalone
+  //   page-mode create both end up here). relationshipType + importance are
+  //   omitted; the server defaults handle them, and SupportSection's row UI
+  //   lets the user adjust afterwards.
+  //
+  // flushSupportRemovals: DELETE every link whose key is in
+  //   supportMarkedForRemoval. Called after the agenda_task PATCH succeeds on
+  //   the edit flow. Keys are shaped "agenda-support:<type>:<linkId>".
+  //
+  // Both helpers swallow individual row failures with a toast so a single
+  // server hiccup never aborts the agenda save the user already committed.
+  // Order matches responsibility-edit / project-edit: parent save first,
+  // support flush second, cache invalidation last (handled in onSuccess).
+  async function flushSupportDraft(newTaskId: number) {
+    const types: SupportType[] = ["people", "places", "things", "providers", "conditions"];
+    const fkField: Record<SupportType, string> = {
+      people: "personId",
+      places: "placeId",
+      things: "thingId",
+      providers: "providerId",
+      conditions: "conditionId",
+    };
+    for (const type of types) {
+      const ids = supportDraft[type];
+      for (const envId of ids) {
+        try {
+          await apiRequest(
+            "POST",
+            `/api/agenda-tasks/${newTaskId}/support/${type}`,
+            { [fkField[type]]: envId },
+          );
+        } catch (e: any) {
+          toast({
+            title: `Could not link ${type.slice(0, -1)}`,
+            description: String(e?.message ?? e),
+            variant: "destructive",
+          });
+        }
+      }
+    }
+  }
+  async function flushSupportRemovals(taskId: number) {
+    // Key shape: "agenda-support:<type>:<linkId>"
+    for (const key of Array.from(supportMarkedForRemoval)) {
+      const parts = key.split(":");
+      if (parts.length !== 3 || parts[0] !== "agenda-support") continue;
+      const type = parts[1];
+      const linkId = Number(parts[2]);
+      if (!Number.isFinite(linkId)) continue;
+      try {
+        await apiRequest(
+          "DELETE",
+          `/api/agenda-tasks/${taskId}/support/${type}/${linkId}`,
+          undefined,
+        );
+      } catch (e: any) {
+        toast({
+          title: "Could not remove link",
+          description: String(e?.message ?? e),
+          variant: "destructive",
+        });
+      }
+    }
+  }
+
   // PR #15 — execute Save with a scope. Always invoked through saveMutation.
   // For non-recurring tasks scope is irrelevant and ignored (mode steers).
   // For recurring tasks scope drives one of three branches:
@@ -600,6 +716,12 @@ export function AgendaTaskModal({
           // silently. Fires after the agenda PATCH so a 404 on the agenda
           // row never leaves a partial update.
           await syncProjectTitle();
+          // PR #32 — flush queued support removals on edit. Adds in edit
+          // flow already wrote through via SupportSection's own mutation;
+          // the removal pen is the only deferred work.
+          if (isPageMode) {
+            await flushSupportRemovals(editing.id);
+          }
           return r.json();
         }
         // Create
@@ -608,7 +730,14 @@ export function AgendaTaskModal({
           origin: "standalone" as const,
         };
         const r = await apiRequest("POST", "/api/agenda-tasks", payload);
-        return r.json();
+        const created = await r.json();
+        // PR #32 — flush queued support picks on standalone create. Only
+        // page-mode create has a draft to flush (dialog-mode Agenda + Task
+        // never rendered the support module, so supportDraft stays empty).
+        if (isPageMode && created && typeof created.id === "number") {
+          await flushSupportDraft(created.id);
+        }
+        return created;
       }
 
       // Recurring branches — scope is required by the time we get here.
@@ -794,7 +923,16 @@ export function AgendaTaskModal({
         `/api/inbox/${inboxItemId}/process`,
         { action: "do_it_later", payload },
       );
-      return r.json();
+      const body = await r.json();
+      // PR #32 — flush queued support picks. The orchestrator returns the
+      // brand-new agenda_task row in `body.created`; its id is what the new
+      // support pivot rows point at. If `created` is missing or has no id
+      // (shouldn't happen for do_it_later, but the response shape allows
+      // null for other inbox actions), we skip the flush rather than throw.
+      if (body && body.created && typeof body.created.id === "number") {
+        await flushSupportDraft(body.created.id);
+      }
+      return body;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
@@ -1403,23 +1541,27 @@ export function AgendaTaskModal({
                 </select>
               </div>
 
-              <div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    toast({
-                      title: "Coming in next PR",
-                      description:
-                        "Linking People / Places / Things / Providers / Conditions ships in PR 29d.",
-                    })
-                  }
-                  data-testid="button-add-support-details"
-                >
-                  + Add support details
-                </Button>
-              </div>
+              {/* PR #32 — Support module. Renders on every isPageMode path:
+                  - CREATE (standalone Agenda + Task in page mode + Do It Later)
+                    uses the Draft wrapper. Picks held in local state; flushed
+                    to the new agenda_task after the parent POST returns id.
+                  - EDIT (page-mode edit of an existing agenda_task) uses the
+                    Live wrapper backed by SupportSection (parentType="agendaTask").
+                  The five categories ship together to match the
+                  responsibility-edit pattern (locked). */}
+              {editing?.id ? (
+                <AgendaTaskSupportLive
+                  agendaTaskId={editing.id}
+                  markedForRemoval={supportMarkedForRemoval}
+                  markForRemoval={markSupportForRemoval}
+                  undoRemoval={undoSupportRemoval}
+                />
+              ) : (
+                <AgendaTaskSupportDraft
+                  draft={supportDraft}
+                  setDraft={setSupportDraft}
+                />
+              )}
             </>
           )}
 

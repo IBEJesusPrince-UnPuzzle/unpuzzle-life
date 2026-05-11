@@ -1440,6 +1440,53 @@ export function registerRoutes(server: Server, app: Express) {
     res.json({ ok: true });
   });
 
+  // ----- Agenda Task ↔ Support junctions (PR #32) -----
+  // Mirrors the responsibility and project support routes exactly. Same
+  // dispatch by :type, same fk-field mapping, same validateRelImp, same
+  // PATCH semantics. The shared SupportSection UI component drives all three
+  // parents (responsibility, project, agendaTask) by passing parentType.
+  app.get("/api/agenda-tasks/:id/support/:type", (req, res) => {
+    const { type, id } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    res.json(storage.getAgendaTaskSupports(Number(id), type));
+  });
+  app.post("/api/agenda-tasks/:id/support/:type", (req, res) => {
+    const { type, id } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    const fkField = supportFkField[type];
+    const fkValue = req.body?.[fkField];
+    if (typeof fkValue !== "number") {
+      return res.status(400).json({ error: `${fkField} (number) is required` });
+    }
+    const validationErr = validateRelImp(req.body);
+    if (validationErr) return res.status(400).json({ error: validationErr });
+    const data: any = {
+      agendaTaskId: Number(id),
+      [fkField]: fkValue,
+    };
+    if (req.body.relationshipType !== undefined) data.relationshipType = req.body.relationshipType;
+    if (req.body.importance !== undefined) data.importance = req.body.importance;
+    res.json(storage.linkAgendaTaskSupport(type, data));
+  });
+  app.patch("/api/agenda-tasks/:taskId/support/:type/:linkId", (req, res) => {
+    const { type, linkId } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    const validationErr = validateRelImp(req.body);
+    if (validationErr) return res.status(400).json({ error: validationErr });
+    const result = storage.updateAgendaTaskSupportLink(type, Number(linkId), {
+      relationshipType: req.body.relationshipType,
+      importance: req.body.importance,
+    });
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+  app.delete("/api/agenda-tasks/:taskId/support/:type/:linkId", (req, res) => {
+    const { type, linkId } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    storage.unlinkAgendaTaskSupport(type, Number(linkId));
+    res.json({ ok: true });
+  });
+
   // ----- Project ↔ Responsibility junction -----
   app.get("/api/projects/:id/responsibilities", (req, res) => {
     res.json(storage.getProjectResponsibilities(Number(req.params.id)));
