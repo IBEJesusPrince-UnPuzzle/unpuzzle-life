@@ -58,7 +58,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ColorPicker } from "@/components/color-picker";
-import { parseDuration, durationToMinutes } from "@/lib/duration";
 import { CustomRecurrenceDialog } from "@/components/custom-recurrence-dialog";
 import {
   RecurrenceScopeDialog,
@@ -75,6 +74,60 @@ import {
   type StandardOption,
 } from "@/lib/recurrence-form";
 import type { AgendaTask } from "@shared/schema";
+
+// =============================================================================
+// PR 29d — Google date/time parity helpers.
+//
+// The UI now thinks in (startDate, startTime, endDate, endTime). The DB still
+// stores (startDate, time, durationMinutes, endDate). These helpers translate
+// between the two layers without touching the schema.
+//
+// - timeToMinutes("HH:MM")           → minutes since midnight (0–1439)
+// - minutesToTime(n)                  → "HH:MM" (n mod 1440)
+// - addMinutesToDateTime(date,t,m)    → { date, time } after adding m minutes,
+//                                        rolling date forward as needed
+// - computeDurationMinutes(sd,st,ed,et) → minutes between two datetimes (≥0)
+// =============================================================================
+
+function timeToMinutes(hhmm: string): number {
+  const m = /^(\d{2}):(\d{2})$/.exec(hhmm ?? "");
+  if (!m) return 0;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+function minutesToTime(total: number): string {
+  const wrapped = ((total % 1440) + 1440) % 1440;
+  const h = Math.floor(wrapped / 60);
+  const mm = wrapped % 60;
+  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+function addMinutesToDateTime(
+  startDate: string,
+  startTime: string,
+  minutesToAdd: number,
+): { date: string; time: string } {
+  const startMin = timeToMinutes(startTime);
+  const total = startMin + minutesToAdd;
+  const dayShift = Math.floor(total / 1440);
+  const newTime = minutesToTime(total);
+  const newDate = dayShift === 0 ? startDate : addDaysIso(startDate, dayShift);
+  return { date: newDate, time: newTime };
+}
+
+function computeDurationMinutes(
+  startDate: string,
+  startTime: string,
+  endDate: string,
+  endTime: string,
+): number {
+  // Date difference in days * 1440 + (endTime - startTime). Returns >= 0.
+  const startBase = new Date(startDate + "T00:00:00").getTime();
+  const endBase = new Date(endDate + "T00:00:00").getTime();
+  const dayDiff = Math.round((endBase - startBase) / 86400000);
+  const min = dayDiff * 1440 + (timeToMinutes(endTime) - timeToMinutes(startTime));
+  return Math.max(0, min);
+}
 
 // The window endpoint enriches AgendaTask with these virtual-instance fields.
 export type AgendaWindowItem = AgendaTask & {
@@ -136,13 +189,16 @@ export function AgendaTaskModal({
   // Form state.
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(defaultDate);
-  // Phase 3c — multi-day all-day events. Empty string means "single-day"
-  // (sent to the server as null). Only meaningful when isAllDay is true.
-  const [endDate, setEndDate] = useState("");
+  // PR 29d — endDate is ALWAYS set (Google parity). Defaults to == date
+  // (single-day). Phase 3c's "empty means single-day" shorthand removed.
+  const [endDate, setEndDate] = useState(defaultDate);
   const [isAllDay, setIsAllDay] = useState(false);
   const [time, setTime] = useState("09:00");
-  const [durValue, setDurValue] = useState("30");
-  const [durUnit, setDurUnit] = useState<"min" | "hr">("min");
+  // PR 29d — endTime is the new source of truth for the UI. durationMinutes
+  // remains the DB column; we compute it from (start, end) on save and
+  // compute endTime from (start, durationMinutes) on load. Default new
+  // event = start + 60 min (Q2-B).
+  const [endTime, setEndTime] = useState("10:00");
   const [color, setColor] = useState(DEFAULT_AGENDA_COLOR_HEX);
   const [notes, setNotes] = useState("");
 
@@ -213,15 +269,31 @@ export function AgendaTaskModal({
     if (editing) {
       setTitle(editing.title ?? "");
       setDate(editing.startDate);
-      // Seed end-date from the row only when it differs from start (otherwise
-      // leave blank so the UI shows "single-day" by default).
-      const seedEnd = editing.endDate && editing.endDate !== editing.startDate ? editing.endDate : "";
+      // PR 29d — endDate is ALWAYS set in the UI. Default to == startDate
+      // (treats legacy null endDate rows as single-day). When the row has a
+      // distinct endDate (multi-day all-day), use it.
+      const seedEnd =
+        editing.endDate && editing.endDate !== editing.startDate
+          ? editing.endDate
+          : editing.startDate;
       setEndDate(seedEnd);
       setIsAllDay(editing.isAllDay === 1);
-      setTime(editing.time ?? "09:00");
-      const dur = parseDuration(editing.durationMinutes);
-      setDurValue(dur.value);
-      setDurUnit(dur.unit);
+      const seedTime = editing.time ?? "09:00";
+      setTime(seedTime);
+      // PR 29d — compute endTime from (startTime + durationMinutes) so the
+      // UI shows what the row actually represents. All-day rows get the
+      // baseline 09:00–10:00 stub so toggling all-day off has sensible values.
+      const dur = editing.durationMinutes ?? 60;
+      if (editing.isAllDay === 1 || dur <= 0) {
+        setEndTime("10:00");
+      } else {
+        const { time: et } = addMinutesToDateTime(
+          editing.startDate,
+          seedTime,
+          dur,
+        );
+        setEndTime(et);
+      }
       setColor(editing.color ?? DEFAULT_AGENDA_COLOR_HEX);
       setNotes(editing.notes ?? "");
       // PR #14 — recurrence seeding.
@@ -240,11 +312,13 @@ export function AgendaTaskModal({
       // PR #29c — in page mode, seed Title from the inbox item's content.
       setTitle(isPageMode ? (defaultTitle ?? "") : "");
       setDate(defaultDate);
-      setEndDate("");
+      // PR 29d — endDate defaults to == startDate (single-day). endTime
+      // defaults to start + 60 min (Q2-B).
+      setEndDate(defaultDate);
       setIsAllDay(false);
       setTime("09:00");
-      setDurValue("30");
-      setDurUnit("min");
+      const { time: defaultEnd } = addMinutesToDateTime(defaultDate, "09:00", 60);
+      setEndTime(defaultEnd);
       setColor(DEFAULT_AGENDA_COLOR_HEX);
       setNotes("");
       setRecurrenceOption("none");
@@ -269,10 +343,18 @@ export function AgendaTaskModal({
   }
 
   function buildPayload() {
-    const durationMinutes = isAllDay ? null : durationToMinutes(durValue, durUnit);
-    // Phase 3c — endDate is only sent when isAllDay AND the user picked
-    // an end > start. Otherwise it's null. The server enforces these rules
-    // again as a defense in depth.
+    // PR 29d — derive durationMinutes from (start, end) when not all-day.
+    // The DB column is unchanged; the UI is the only thing that thinks in
+    // end-time. When all-day, duration is null (Phase 3c semantics).
+    const durationMinutes = isAllDay
+      ? null
+      : computeDurationMinutes(date, time, endDate, endTime);
+    // PR 29d — endDate is now ALWAYS present in form state. We send it to
+    // the server only when it represents a multi-day span (endDate > date,
+    // and all-day). For single-day all-day we send null to match the
+    // existing Phase 3c contract (server interprets null as endDate==start).
+    // For timed events, durationMinutes already captures the time-of-day
+    // delta, so endDate of a same-day timed event is implicit.
     const payloadEndDate =
       isAllDay && endDate && endDate > date ? endDate : null;
     const rule = activeRule();
@@ -558,9 +640,12 @@ export function AgendaTaskModal({
           ? "Edit this occurrence"
           : "Edit task";
 
-  // Phase 3c — disable Save if the user typed an end date that's earlier than
-  // the start date. (Empty endDate means single-day and is always valid.)
-  const endDateValid = !isAllDay || !endDate || endDate >= date;
+  // PR 29d — endDate is always set. Require endDate >= startDate regardless
+  // of all-day. For timed events the same-day case with endTime > startTime
+  // is the common path; cross-midnight is handled by the time onChange
+  // handler (Q5-A auto-rolls endDate). Either way endDate >= startDate is
+  // the only structural requirement.
+  const endDateValid = endDate >= date;
 
   // PR #14 — recurrence-end validation (only enforced when option != none
   // and we're NOT in edit-virtual mode, where recurrence fields are hidden).
@@ -802,24 +887,20 @@ export function AgendaTaskModal({
             />
           </div>
 
-          {/* Date (becomes "Start date" when all-day with multi-day support) */}
-          <div className="space-y-1.5">
-            <Label htmlFor="task-date">{isAllDay ? "Start date" : "Date"}</Label>
-            <Input
-              id="task-date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              data-testid="input-task-date"
-            />
-          </div>
-
-          {/* All-day toggle */}
+          {/* PR 29d — All-day toggle. Moved to be the first row of the
+              date/time block to match Google's screenshot. */}
           <div className="flex items-center gap-2">
             <Checkbox
               id="task-all-day"
               checked={isAllDay}
-              onCheckedChange={(v) => setIsAllDay(v === true)}
+              onCheckedChange={(v) => {
+                const next = v === true;
+                setIsAllDay(next);
+                if (next) {
+                  // Going all-day: collapse end to single-day default.
+                  setEndDate(date);
+                }
+              }}
               data-testid="checkbox-task-all-day"
             />
             <Label htmlFor="task-all-day" className="cursor-pointer">
@@ -827,12 +908,54 @@ export function AgendaTaskModal({
             </Label>
           </div>
 
-          {/* End date — only when all-day. Empty means single-day. (Phase 3c) */}
-          {isAllDay && (
-            <div className="space-y-1.5">
-              <Label htmlFor="task-end-date">
-                End date <span className="text-muted-foreground text-xs">— leave blank for single day</span>
-              </Label>
+          {/* PR 29d — Starts row. Date (always) + Time (only when not
+              all-day). The time input sits to the right of the date on a
+              single row. Mobile keeps the same two-column ratio. */}
+          <div className="space-y-1.5">
+            <Label htmlFor="task-date">Starts</Label>
+            <div className={isAllDay ? "" : "grid grid-cols-[1fr_9rem] gap-2 items-center"}>
+              <Input
+                id="task-date"
+                type="date"
+                value={date}
+                onChange={(e) => {
+                  const nextStart = e.target.value;
+                  setDate(nextStart);
+                  // Keep endDate >= startDate. If user moves start past end,
+                  // pull end forward to match (single-day after the change).
+                  if (endDate && nextStart && endDate < nextStart) {
+                    setEndDate(nextStart);
+                  }
+                  // If endDate was previously == old start (single-day), keep it
+                  // == new start so the row stays single-day.
+                  if (!isAllDay && endDate === date) {
+                    setEndDate(nextStart);
+                  }
+                }}
+                data-testid="input-task-date"
+              />
+              {!isAllDay && (
+                <Input
+                  id="task-time"
+                  type="time"
+                  value={time}
+                  className="w-full"
+                  onChange={(e) => {
+                    setTime(e.target.value);
+                  }}
+                  data-testid="input-task-time"
+                />
+              )}
+            </div>
+          </div>
+
+          {/* PR 29d — Ends row. Date (always visible, defaults to startDate)
+              + Time (only when not all-day). Cross-midnight: when the user
+              picks an endTime <= startTime on the SAME date, endDate auto-
+              advances to startDate + 1 day (Q5-A). */}
+          <div className="space-y-1.5">
+            <Label htmlFor="task-end-date">Ends</Label>
+            <div className={isAllDay ? "" : "grid grid-cols-[1fr_9rem] gap-2 items-center"}>
               <Input
                 id="task-end-date"
                 type="date"
@@ -841,51 +964,33 @@ export function AgendaTaskModal({
                 onChange={(e) => setEndDate(e.target.value)}
                 data-testid="input-task-end-date"
               />
-              {!endDateValid && (
-                <p className="text-xs text-destructive" data-testid="text-end-date-error">
-                  End date must be on or after the start date.
-                </p>
+              {!isAllDay && (
+                <Input
+                  id="task-end-time"
+                  type="time"
+                  value={endTime}
+                  className="w-full"
+                  onChange={(e) => {
+                    const nextEnd = e.target.value;
+                    setEndTime(nextEnd);
+                    // Q5-A — cross-midnight auto-roll. If end is on the same
+                    // date as start but the time is at-or-before start, roll
+                    // endDate forward by one day. Only triggers when the user
+                    // hasn't already manually set a different end date.
+                    if (endDate === date && nextEnd <= time) {
+                      setEndDate(addDaysIso(date, 1));
+                    }
+                  }}
+                  data-testid="input-task-end-time"
+                />
               )}
             </div>
-          )}
-
-          {/* Time + duration (hidden when all-day) */}
-          {!isAllDay && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="task-time">Start time</Label>
-                <Input
-                  id="task-time"
-                  type="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  data-testid="input-task-time"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Duration</Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    min={1}
-                    value={durValue}
-                    onChange={(e) => setDurValue(e.target.value)}
-                    className="flex-1"
-                    data-testid="input-task-duration-value"
-                  />
-                  <select
-                    value={durUnit}
-                    onChange={(e) => setDurUnit(e.target.value as "min" | "hr")}
-                    className="rounded-md border border-input bg-background px-2 text-sm"
-                    data-testid="select-task-duration-unit"
-                  >
-                    <option value="min">min</option>
-                    <option value="hr">hr</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          )}
+            {!endDateValid && (
+              <p className="text-xs text-destructive" data-testid="text-end-date-error">
+                End date must be on or after the start date.
+              </p>
+            )}
+          </div>
 
           {/* Recurrence (PR #14) — hidden in edit-virtual mode (Google parity:
               "Only this event" can't change the recurrence rule; that lives on
