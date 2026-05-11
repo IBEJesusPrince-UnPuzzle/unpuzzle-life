@@ -102,18 +102,34 @@ export function useAgendaUrlState() {
     window.history.back();
   }, []);
 
-  // Drop the popup (task/master) from the URL WITHOUT pushing a new entry.
-  // Used right before navigating to /projects/:id or /responsibilities/:id
-  // so browser Back from there returns to the layer underneath the popup
-  // (overlay or bare agenda) rather than re-showing the popup itself.
-  const clearPopup = useCallback(() => {
+  // Drop the popup (task/master) from the URL and run `next` right after the
+  // pop completes. We use history.back() (not replaceState) so the entry that
+  // pushed the popup onto the stack is genuinely removed — not replaced with
+  // a near-duplicate — keeping the browser Back stack at one entry per
+  // visible layer. This is what callers use right before pushing
+  // /projects/:id or /responsibilities/:id so that Back from the destination
+  // returns to the underlying layer (overlay or bare agenda) in a single tap.
+  const popPopupThen = useCallback((next: () => void) => {
     setState((prev) => {
-      const merged = { ...prev, task: null, master: null };
-      const search = buildSearch(merged);
-      window.history.replaceState(null, "", `${window.location.pathname}${search}${window.location.hash}`);
-      return merged;
+      // Only call history.back() if the URL actually carries popup state.
+      // If somehow `next` is invoked without an open popup (defensive), just
+      // run the callback inline so we don't pop something the caller didn't
+      // intend to drop.
+      if (prev.task == null && prev.master == null) {
+        next();
+        return prev;
+      }
+      const onPop = () => {
+        window.removeEventListener("popstate", onPop);
+        next();
+      };
+      window.addEventListener("popstate", onPop);
+      window.history.back();
+      // Mirror in React state immediately so the popup unmounts on this tick;
+      // popstate will rerun readSearch() but the merged value matches.
+      return { ...prev, task: null, master: null };
     });
   }, []);
 
-  return useMemo(() => ({ state, replace, push, back, clearPopup }), [state, replace, push, back, clearPopup]);
+  return useMemo(() => ({ state, replace, push, back, popPopupThen }), [state, replace, push, back, popPopupThen]);
 }

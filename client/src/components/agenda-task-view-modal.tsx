@@ -71,12 +71,14 @@ type Props = {
   /** Parent dismisses this popup and opens the edit modal on the same row. */
   onEdit: (item: AgendaWindowItem) => void;
   /**
-   * PR #30b — invoked right before the popup navigates to /projects/:id or
-   * /responsibilities/:id. Parent uses this to drop the popup state from the
-   * URL (replaceState) so browser Back from the destination lands on the
-   * layer underneath (overlay or bare agenda), not back on this popup.
+   * PR #30b — invoked when the popup is about to push a new route
+   * (/projects/:id or /responsibilities/:id). The parent pops the popup
+   * entry off the history stack and then runs the supplied callback so
+   * the destination push lands on top of the layer that was underneath
+   * the popup (overlay or bare agenda). One Back from the destination
+   * therefore returns to that layer directly — no duplicate entries.
    */
-  onNavigateAway?: () => void;
+  onNavigateAway?: (next: () => void) => void;
 };
 
 type CardSupport = {
@@ -421,19 +423,21 @@ export function AgendaTaskViewModal({
   }
 
   function handleOpenResponsibility(id: number) {
-    // PR #30b — collapse the popup state in the URL before pushing the new
-    // route so Back from /responsibilities/:id returns to the agenda layer
-    // beneath the popup (Google parity).
-    if (onNavigateAway) onNavigateAway();
-    navigate(`/responsibilities/${id}`);
+    // PR #30b — pop the popup entry off the history stack before pushing
+    // the destination route so Back from /responsibilities/:id returns to
+    // the agenda layer that was underneath the popup, in ONE tap.
+    const push = () => navigate(`/responsibilities/${id}`);
+    if (onNavigateAway) onNavigateAway(push);
+    else push();
   }
 
   function handleOpenProject(id: number) {
-    if (onNavigateAway) onNavigateAway();
-    // Hit the edit route directly so we skip the /projects/:id → :id/edit
-    // redirect, which adds a second history entry and forces the user to
-    // press Back twice. (PR #30b)
-    navigate(`/projects/${id}/edit`);
+    // Hit /projects/:id/edit directly so we skip the wouter Redirect that
+    // /projects/:id triggers — a redirect would insert an extra history
+    // entry and force the user to press Back twice. (PR #30b)
+    const push = () => navigate(`/projects/${id}/edit`);
+    if (onNavigateAway) onNavigateAway(push);
+    else push();
   }
 
   // Whether the [View details] / [Hide details] toggle should render at
