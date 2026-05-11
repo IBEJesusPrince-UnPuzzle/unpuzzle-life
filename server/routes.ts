@@ -442,6 +442,14 @@ export function registerRoutes(server: Server, app: Express) {
     recurrenceRule: z.string().nullable().optional(),
     recurrenceEndDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
     notes: z.string().nullable().optional(),
+    // PR #29f -- optional project linkage from the collapsible [+ Add to project]
+    // section on the AgendaTaskModal page-mode form (PR #29e UI). When projectId
+    // is set we dual-write: insert a project_tasks row first, then the agenda_tasks
+    // row with origin='project' + originId pointing at the new project_tasks.id.
+    // sortOrder is the integer position the user landed on after dragging the
+    // [new] row inside the preview list (Q9-C: end-of-list when no drag).
+    projectId: z.number().int().positive().nullable().optional(),
+    sortOrder: z.number().int().nullable().optional(),
   });
 
   const addToProjectPayloadSchema = z.object({
@@ -534,10 +542,62 @@ export function registerRoutes(server: Server, app: Express) {
               error: "endDate must be on or after startDate",
             });
           }
+
+          // PR #29f -- optional project linkage (Q1 locked: dual-write,
+          // origin='project'). When the client supplied a projectId, we
+          // insert the project_tasks row FIRST, then thread its id into the
+          // agenda_tasks row as originId. The agenda row is the canonical
+          // chip the user sees on the calendar; the project_tasks row is
+          // what shows up inside the project's task list (already sorted by
+          // sortOrder, NULLs-last, from PR #21).
+          //
+          // Q4 locked: the client's dropdown projectId wins silently. The
+          // referenceProjectId on the inbox item is only a UI auto-expand
+          // hint -- it is NOT checked here.
+          let projectTaskRow: ReturnType<typeof storage.createProjectTask> | null = null;
+          if (p.projectId != null) {
+            // Ownership guard -- confirm the project belongs to this user.
+            // Mirrors the implicit guard add_to_project relies on (its
+            // payload demands a positive projectId and the create call is
+            // user-scoped, but we add an explicit lookup here so we can
+            // return a clean 404 instead of an insert-time FK error).
+            const ownProjects = storage.getProjects(userId);
+            if (!ownProjects.some((pr) => pr.id === p.projectId)) {
+              return res.status(404).json({ error: "Project not found" });
+            }
+            // sortOrder fallback -- mirror the add_to_project orchestrator
+            // (Q9-C: silent end-of-list placement when no drag). The PR #29e
+            // client always supplies the post-drag value via newRowIndex.
+            let sortOrder = p.sortOrder ?? null;
+            if (sortOrder == null) {
+              const existing = storage.getProjectTasks(userId, p.projectId);
+              const maxSort = existing.reduce((m, t) => {
+                const v = t.sortOrder;
+                return typeof v === "number" && v > m ? v : m;
+              }, 0);
+              sortOrder = maxSort + 1;
+            }
+            projectTaskRow = storage.createProjectTask(userId, {
+              projectId: p.projectId,
+              title: p.title,
+              notes: p.notes ?? null,
+              status: "open",
+              sortOrder,
+              startDate: null,
+              endDate: null,
+              isAllDay: 0,
+              recurrenceRule: null,
+              recurrenceEndDate: null,
+              createdAt: new Date().toISOString(),
+            });
+          }
+
           const now = new Date().toISOString();
           const created = storage.createAgendaTask(userId, {
-            origin: "standalone",
-            originId: null,
+            // PR #29f -- when a project was picked we point at it through the
+            // existing polymorphic origin pattern. Otherwise stay 'standalone'.
+            origin: projectTaskRow ? "project" : "standalone",
+            originId: projectTaskRow ? projectTaskRow.id : null,
             title: p.title,
             startDate: p.startDate,
             endDate: p.isAllDay ? (p.endDate ?? null) : null,
@@ -558,8 +618,13 @@ export function registerRoutes(server: Server, app: Express) {
             createdAt: now,
             updatedAt: now,
           });
+          // PR #29f -- when both rows exist the inbox item is processedAs
+          // 'task' (the user's primary intent was scheduling). The project
+          // side is durable but auxiliary. This matches the locked Q3 stance
+          // that project-linked agenda chips edit through the agenda surface
+          // (deferred to PR #29g).
           const updated = storage.markInboxProcessed(userId, id, "task");
-          return res.json({ item: updated, created });
+          return res.json({ item: updated, created, projectTask: projectTaskRow });
         }
 
         case "add_to_project": {

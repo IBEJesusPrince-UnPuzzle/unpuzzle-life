@@ -279,8 +279,10 @@ export function AgendaTaskModal({
   // Collapsed by default; auto-expands when referenceProjectId is set on the
   // inbox item (Q5-C). orderOverride is the user's dragged order of the
   // preview rows; null means "natural order" (existing tasks sorted, new row
-  // at the bottom). The chosen position becomes the sortOrder we'd write to
-  // the new project task. Schema wiring is deferred to PR 29f (Q6-A).
+  // at the bottom). PR #29f wired the schema: on Save the inboxSaveMutation
+  // threads { projectId, sortOrder: newRowIndex } into the do_it_later payload
+  // and the server dual-writes a project_tasks row + an agenda_tasks row with
+  // origin='project' + originId pointing at it.
   const [addToProjectExpanded, setAddToProjectExpanded] = useState(false);
   const [projectId, setProjectId] = useState<number | null>(null);
   const [orderOverride, setOrderOverride] = useState<number[] | null>(null);
@@ -448,8 +450,9 @@ export function AgendaTaskModal({
   }, [projectTasksQuery.data, title, orderOverride]);
 
   // Drag-to-reorder hook. onCommit captures the new id order in local state
-  // only; no PATCH fires until Save (and Save in this PR doesn't yet write
-  // project linkage — schema wiring deferred to PR 29f per Q6-A).
+  // only; no PATCH fires until Save. PR #29f — on Save the new row's index
+  // in this dragged order becomes the sortOrder we ship to the server, which
+  // then dual-writes the project_tasks row + agenda_tasks origin='project'.
   const dragHandle = useDraggableReorder<ProjectPreviewRow>({
     items: previewRows,
     onCommit: (next) => setOrderOverride(next),
@@ -634,7 +637,26 @@ export function AgendaTaskModal({
       // Reuse buildPayload() so recurrence + color + endDate semantics match
       // the Agenda + Task flow exactly. Add the inbox-only fields on top.
       const base = buildPayload();
-      const payload = {
+      // PR #29f -- payload type widened to carry the optional project
+      // linkage fields. The server schema makes both optional + nullable so
+      // unset means "agenda-only, no project link" (the original PR #29c
+      // behavior).
+      const payload: {
+        title: string;
+        startDate: string;
+        isAllDay: boolean;
+        time: string | null | undefined;
+        durationMinutes: number | null | undefined;
+        endDate: string | null | undefined;
+        color: string | null | undefined;
+        notes: string | null | undefined;
+        recurrenceRule: string | null | undefined;
+        recurrenceEndDate: string | null | undefined;
+        roleId: number | null;
+        responsibilityId: number | null;
+        projectId?: number;
+        sortOrder?: number;
+      } = {
         title: (base.title ?? "").trim(),
         startDate: base.startDate,
         isAllDay: base.isAllDay === 1,
@@ -648,15 +670,26 @@ export function AgendaTaskModal({
         roleId,
         responsibilityId,
       };
-      // PR #29e — TODO(PR 29f): the user can now pick a project + drag the
-      // new row's position inside the collapsible [+ Add to project] section
-      // (locked Q5-C / Q9-C). Save currently records ONLY the agenda_task
-      // row — the project linkage (projectId, sortOrder = newRowIndex) is
-      // intentionally NOT sent yet. The schema change to add project_id +
-      // sortOrder columns on agenda_tasks plus a UNION in the agenda query
-      // ships in PR 29f (Q6-A deferred). When that lands, extend `payload`
-      // here with `{ projectId, sortOrder: newRowIndex }` when the section
-      // is expanded AND projectId !== null.
+      // PR #29f -- when the collapsible [+ Add to project] section is
+      // expanded AND the user has actually picked a project, thread the
+      // dual-write fields through. Server-side this triggers the
+      // project_tasks insert + agenda_tasks origin='project' linkage
+      // (Q1 locked: dual-write, origin='project' pattern). When the section
+      // is collapsed OR no project picked, payload stays exactly as it was
+      // in PR #29c -- agenda-only save (Q2 locked: default 09:00 still
+      // counts as the user's choice, so no special-casing here).
+      //
+      // Q4 locked: the dropdown projectId wins silently. The inbox item's
+      // referenceProjectId only seeded the auto-expand; we never resend it.
+      if (addToProjectExpanded && projectId !== null) {
+        payload.projectId = projectId;
+        // Q9-C locked: if the user never dragged, newRowIndex resolves to
+        // end-of-list silently. The server's NULLs-last sortOrder rule
+        // (PR #21) means we could also send nothing and let the server
+        // pick max+1, but sending the explicit index keeps the chosen
+        // visual position stable.
+        payload.sortOrder = newRowIndex;
+      }
       const r = await apiRequest(
         "POST",
         `/api/inbox/${inboxItemId}/process`,
@@ -667,8 +700,14 @@ export function AgendaTaskModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
       queryClient.invalidateQueries({ queryKey: ["/api/agenda"] });
-      // PR #29e TODO(PR 29f): when project linkage is wired, also invalidate
-      // `/api/project-tasks?projectId=${projectId}` here.
+      // PR #29f -- project linkage is now wired, so when a project was
+      // picked we also invalidate that project's task list so the chip
+      // appears at the chosen sortOrder position immediately.
+      if (addToProjectExpanded && projectId !== null) {
+        queryClient.invalidateQueries({
+          queryKey: [`/api/project-tasks?projectId=${projectId}`],
+        });
+      }
       if (onSaved) onSaved();
     },
     onError: (e: any) => {
@@ -1263,8 +1302,11 @@ export function AgendaTaskModal({
               only. Collapsed by default; auto-expands when referenceProjectId
               is set on the inbox item (Q5-C). Section is below Notes per the
               locked ASCII (workspace/pr29c-amend-add-to-project-ascii.md).
-              Schema wiring (project_id + sortOrder on agenda_tasks) is
-              deferred to PR 29f — see TODO in inboxSaveMutation. */}
+              PR #29f — schema wiring landed: on Save the inboxSaveMutation
+              threads { projectId, sortOrder: newRowIndex } into the do_it_later
+              payload, and the server dual-writes a project_tasks row + an
+              agenda_tasks row with origin='project' + originId pointing at it
+              (Q1 dual-write lock). */}
           {isPageMode && !addToProjectExpanded && (
             <div>
               <Button
