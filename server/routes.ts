@@ -323,10 +323,37 @@ export function registerRoutes(server: Server, app: Express) {
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
+  // PR #29h — GET count of agenda_tasks linked to this project via its
+  // project_tasks rows. Drives the radio visibility in the delete dialog.
+  app.get("/api/projects/:id/linked-agenda-count", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const projectId = Number(req.params.id);
+    if (!Number.isFinite(projectId) || projectId <= 0) {
+      return res.status(400).json({ error: "Invalid project id" });
+    }
+    // Ownership check — don't leak counts for projects the user can't see.
+    const exists = storage.getProjects(userId).some(p => p.id === projectId);
+    if (!exists) return res.status(404).json({ error: "Not found" });
+    const count = storage.getLinkedAgendaCountForProject(userId, projectId);
+    res.json({ count });
+  });
+
+  // PR #29h — cascade delete. mode='delete' (default) hard-deletes linked
+  // agenda chips; mode='preserve' flips them to standalone. Both modes
+  // cascade all 8 project-child tables and null inbox refs.
   app.delete("/api/projects/:id", (req, res) => {
     const userId = getEffectiveUserId(req);
-    storage.deleteProject(userId, Number(req.params.id));
-    res.json({ ok: true });
+    const projectId = Number(req.params.id);
+    if (!Number.isFinite(projectId) || projectId <= 0) {
+      return res.status(400).json({ error: "Invalid project id" });
+    }
+    const rawMode = String(req.query.mode ?? "delete");
+    if (rawMode !== "delete" && rawMode !== "preserve") {
+      return res.status(400).json({ error: "mode must be 'delete' or 'preserve'" });
+    }
+    const summary = storage.deleteProject(userId, projectId, rawMode);
+    if (summary.project === 0) return res.status(404).json({ error: "Not found" });
+    res.json({ ok: true, summary });
   });
 
   // ============================================================

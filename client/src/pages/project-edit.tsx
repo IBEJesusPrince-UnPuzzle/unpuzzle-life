@@ -57,6 +57,10 @@ import { EditPageUndoBar } from "@/components/edit-page-undo-bar";
 import { CollapsibleStickyHeader } from "@/components/collapsible-sticky-header";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { MarkedForRemovalSection } from "@/components/marked-for-removal-section";
+import {
+  ProjectDeleteDialog,
+  type ProjectDeleteSummary,
+} from "@/components/project-delete-dialog";
 import { ProjectTasksCard, taskRemovalKey } from "@/components/project-tasks-card";
 import { TaskDependenciesSubCard } from "@/components/task-dependencies-sub-card";
 import { ProjectProgressSubCard } from "@/components/project-progress-sub-card";
@@ -597,6 +601,9 @@ export default function ProjectEditPage({
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  // PR #29h — destructive delete dialog open state.
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const idParam = params?.id;
   const id = Number(idParam);
@@ -1305,9 +1312,62 @@ export default function ProjectEditPage({
           markedForRemoval={markedForRemoval}
           undoRemoval={undoRemoval}
         />
+
+        {/* PR #29h — Danger zone. Sits below everything else; only renders
+            when we have a real persisted project to delete. */}
+        {project ? (
+          <div
+            className="mt-6 border-t pt-4"
+            data-testid="section-danger-zone"
+          >
+            <div className="text-xs font-medium text-muted-foreground mb-2">
+              Danger zone
+            </div>
+            <Button
+              variant="destructive"
+              onClick={() => setDeleteDialogOpen(true)}
+              data-testid="button-project-delete"
+            >
+              Delete project
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <EditPageUndoBar count={removalCount} onUndoAll={clearRemovals} />
+
+      {/* PR #29h — confirmation dialog. Mounted when we have a project so
+          the dialog has a stable id and title to display. */}
+      {project ? (
+        <ProjectDeleteDialog
+          projectId={project.id}
+          projectTitle={project.title}
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          onDeleted={(summary: ProjectDeleteSummary) => {
+            // Toast copy depends on the cascade shape.
+            if (summary.mode === "preserve") {
+              const n = summary.agendaTasksPreserved;
+              toast({
+                title: "Project deleted",
+                description:
+                  n > 0
+                    ? `${n} agenda task${n === 1 ? "" : "s"} kept as standalone.`
+                    : "No linked agenda tasks needed preserving.",
+              });
+            } else {
+              const n = summary.agendaTasksDeleted;
+              toast({
+                title:
+                  n > 0
+                    ? `Project and ${n} linked task${n === 1 ? "" : "s"} deleted`
+                    : "Project deleted",
+              });
+            }
+            setLocation("/projects");
+          }}
+        />
+      ) : null}
     </div>
   );
 }
