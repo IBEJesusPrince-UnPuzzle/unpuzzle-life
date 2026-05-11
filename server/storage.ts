@@ -951,6 +951,36 @@ export interface IStorage {
   updateEnvironmentCondition(userId: number, id: number, data: Partial<InsertEnvironmentCondition>): EnvironmentCondition | undefined;
   deleteEnvironmentCondition(userId: number, id: number): void;
 
+  // PR #33: Support Makeup management (link summary + cascade delete).
+  // The single entry points the /support/:type pages use.
+  //
+  // Returns per-parent counts + a small list of {id, name} for the edit
+  // sheet's "Used by" rollup. The delete dialog only reads the counts;
+  // the list is purely cosmetic for the rollup.
+  getEnvironmentLinkSummary(
+    userId: number,
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+    id: number,
+  ): {
+    responsibilities: { count: number; items: { id: number; name: string }[] };
+    projects: { count: number; items: { id: number; name: string }[] };
+    agendaTasks: { count: number; items: { id: number; name: string }[] };
+  } | null;
+  deleteEnvironmentWithCascade(
+    userId: number,
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+    id: number,
+  ): { responsibilities: number; projects: number; agendaTasks: number; envDeleted: number } | null;
+
+  // Bulk per-entry link counts for one support type. Powers the
+  // /support/:type list page's "Used in N places" / "Not used yet" sub-line
+  // in one round trip instead of N+1 calls to getEnvironmentLinkSummary.
+  // Sum is across all 3 parents (responsibilities + projects + agendaTasks).
+  getEnvironmentLinkCounts(
+    userId: number,
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+  ): { id: number; count: number }[];
+
   // Phase 1: Support state setter (works for all 5 support categories)
   setSupportState(supportType: "people" | "places" | "things" | "providers" | "conditions", userId: number, id: number, state: string): any;
 
@@ -2060,6 +2090,221 @@ export class DatabaseStorage implements IStorage {
   ): void {
     const t = this.agendaTaskSupportTable(supportType);
     db.delete(t).where(eq(t.id, id)).run();
+  }
+
+  // ============================================================
+  // PR #33: SUPPORT MAKEUP MANAGEMENT (link summary + cascade delete)
+  // ============================================================
+  //
+  // The /support/<type> management page needs two operations the existing
+  // per-type deletes don't cover:
+  //
+  //   1. Counting how many parent rows (responsibilities, projects, agenda
+  //      tasks) reference a given env entry. Drives the confirmation dialog
+  //      copy ("linked to 1 responsibility, 1 project, 1 agenda task").
+  //
+  //   2. Cascading the delete across all 3 parent kinds. The pre-PR #33
+  //      deleteEnvironmentPerson/Place/Thing/Provider/Condition cascade only
+  //      cascaded to the responsibility_* junction, leaving project_* and
+  //      agenda_task_* dangling. PR #33 introduces the explicit cascade path
+  //      so the Support Makeup pages can guarantee "delete this person and
+  //      every link to it everywhere" in one call.
+  //
+  // Both methods dispatch by support type to the right 3 tables. The env
+  // entry's ownership is verified at the entry level (env tables are
+  // user-scoped, so an unowned id returns null and the route 404s).
+
+  // Helper: the env table for a support type (used for ownership check).
+  private envTableForType(supportType: "people" | "places" | "things" | "providers" | "conditions"): any {
+    switch (supportType) {
+      case "people":     return environmentPeople;
+      case "places":     return environmentPlaces;
+      case "things":     return environmentThings;
+      case "providers":  return environmentProviders;
+      case "conditions": return environmentConditions;
+    }
+  }
+
+  // Helper: the FK column name on every junction table for a support type.
+  // responsibility_people.personId, project_people.personId, etc. all share
+  // the same field name across the 3 parents, so one string drives all 3 joins.
+  private envFkFieldForType(supportType: "people" | "places" | "things" | "providers" | "conditions"): string {
+    switch (supportType) {
+      case "people":     return "personId";
+      case "places":     return "placeId";
+      case "things":     return "thingId";
+      case "providers":  return "providerId";
+      case "conditions": return "conditionId";
+    }
+  }
+
+  // Count junction rows that reference a given env entry. Grouped by parent
+  // kind because the dialog renders three separate lines. Returns null when
+  // the env entry doesn't exist or doesn't belong to userId (the route maps
+  // that to a 404).
+  getEnvironmentLinkSummary(
+    userId: number,
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+    id: number,
+  ): {
+    responsibilities: { count: number; items: { id: number; name: string }[] };
+    projects: { count: number; items: { id: number; name: string }[] };
+    agendaTasks: { count: number; items: { id: number; name: string }[] };
+  } | null {
+    const envT = this.envTableForType(supportType);
+    const owned = db.select().from(envT)
+      .where(and(eq(envT.id, id), eq(envT.userId, userId)))
+      .get();
+    if (!owned) return null;
+
+    const fkField = this.envFkFieldForType(supportType);
+    const respT = this.respSupportTable(supportType);
+    const projT = this.projSupportTable(supportType);
+    const agendaT = this.agendaTaskSupportTable(supportType);
+
+    // Pull junction rows for each parent kind, then resolve to parent rows
+    // so the edit sheet's "Used by" rollup can render names. Each junction
+    // row is unique per (parent, env) by upstream design, but we count rows
+    // (not distinct parents) so a hypothetical duplicate still surfaces
+    // accurately. The cascade delete removes every row regardless.
+    const respLinks = db.select().from(respT).where(eq(respT[fkField], id)).all();
+    const projLinks = db.select().from(projT).where(eq(projT[fkField], id)).all();
+    const agendaLinks = db.select().from(agendaT).where(eq(agendaT[fkField], id)).all();
+
+    // Resolve responsibility names. Junction's parent FK is
+    // responsibilityId (not respId) for all 5 support tables — see schema.
+    const respIds = respLinks.map((r: any) => r.responsibilityId);
+    const respRows = respIds.length
+      ? db.select({ id: responsibilities.id, name: responsibilities.name })
+          .from(responsibilities)
+          .where(and(eq(responsibilities.userId, userId), inArray(responsibilities.id, respIds)))
+          .all()
+      : [];
+
+    // Projects: junction FK is projectId, display name is `title`.
+    const projIds = projLinks.map((r: any) => r.projectId);
+    const projRows = projIds.length
+      ? db.select({ id: projects.id, title: projects.title })
+          .from(projects)
+          .where(and(eq(projects.userId, userId), inArray(projects.id, projIds)))
+          .all()
+      : [];
+
+    // Agenda tasks: junction FK is agendaTaskId, display name is `title`.
+    // Title can be null for non-standalone tasks (resolved upstream from
+    // the linked responsibility/project); we fall back to the literal
+    // string "Untitled" so the rollup never renders an empty bullet.
+    const agendaIds = agendaLinks.map((r: any) => r.agendaTaskId);
+    const agendaRows = agendaIds.length
+      ? db.select({ id: agendaTasks.id, title: agendaTasks.title })
+          .from(agendaTasks)
+          .where(and(eq(agendaTasks.userId, userId), inArray(agendaTasks.id, agendaIds)))
+          .all()
+      : [];
+
+    return {
+      responsibilities: {
+        count: respLinks.length,
+        items: respRows.map((r: any) => ({ id: r.id, name: r.name })),
+      },
+      projects: {
+        count: projLinks.length,
+        items: projRows.map((r: any) => ({ id: r.id, name: r.title })),
+      },
+      agendaTasks: {
+        count: agendaLinks.length,
+        items: agendaRows.map((r: any) => ({
+          id: r.id,
+          name: r.title ?? "Untitled",
+        })),
+      },
+    };
+  }
+
+  // Cascade delete: removes every junction row across the 3 parents, then
+  // the env entry itself. Returns the counts (so the route can build a
+  // toast like "Sarah deleted (1 responsibility, 1 project, 1 agenda task
+  // unlinked)."). Returns null when the env entry doesn't exist or doesn't
+  // belong to userId.
+  //
+  // Order: junction rows first, then the env entry. If something goes wrong
+  // mid-cascade we'd rather leave the env entry alive than have orphan
+  // junction rows pointing at a deleted id.
+  deleteEnvironmentWithCascade(
+    userId: number,
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+    id: number,
+  ): { responsibilities: number; projects: number; agendaTasks: number; envDeleted: number } | null {
+    const envT = this.envTableForType(supportType);
+    const owned = db.select().from(envT)
+      .where(and(eq(envT.id, id), eq(envT.userId, userId)))
+      .get();
+    if (!owned) return null;
+
+    const fkField = this.envFkFieldForType(supportType);
+    const respT = this.respSupportTable(supportType);
+    const projT = this.projSupportTable(supportType);
+    const agendaT = this.agendaTaskSupportTable(supportType);
+
+    // Snapshot counts before the deletes (Drizzle's .delete().run() doesn't
+    // return affected-row count uniformly across drivers, and we want stable
+    // numbers for the response). Counts come from the same query the
+    // link-summary endpoint uses so the dialog's pre-flight count and the
+    // post-delete toast can't disagree.
+    const respCount = db.select().from(respT).where(eq(respT[fkField], id)).all().length;
+    const projCount = db.select().from(projT).where(eq(projT[fkField], id)).all().length;
+    const agendaCount = db.select().from(agendaT).where(eq(agendaT[fkField], id)).all().length;
+
+    db.delete(respT).where(eq(respT[fkField], id)).run();
+    db.delete(projT).where(eq(projT[fkField], id)).run();
+    db.delete(agendaT).where(eq(agendaT[fkField], id)).run();
+    db.delete(envT).where(and(eq(envT.id, id), eq(envT.userId, userId))).run();
+
+    return {
+      responsibilities: respCount,
+      projects: projCount,
+      agendaTasks: agendaCount,
+      envDeleted: 1,
+    };
+  }
+
+  // Bulk count: for every env entry of `supportType` belonging to userId,
+  // returns its combined link count across all 3 parent junctions. The
+  // /support/:type list page calls this once per page mount and matches
+  // against entries by id locally. Entries with zero links are included
+  // with count: 0 so the list sub-line can show "Not used yet".
+  getEnvironmentLinkCounts(
+    userId: number,
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+  ): { id: number; count: number }[] {
+    const envT = this.envTableForType(supportType);
+    const fkField = this.envFkFieldForType(supportType);
+    const respT = this.respSupportTable(supportType);
+    const projT = this.projSupportTable(supportType);
+    const agendaT = this.agendaTaskSupportTable(supportType);
+
+    const entries = db.select({ id: envT.id }).from(envT).where(eq(envT.userId, userId)).all();
+    if (entries.length === 0) return [];
+
+    // Pull every junction row owned (transitively) by this user, then tally
+    // per env id locally. Cheaper than N selects + simpler than building a
+    // join expression that has to flow through the parent table just to
+    // re-enforce the userId filter (env entries already carry user_id).
+    const tally = new Map<number, number>();
+    for (const e of entries) tally.set(e.id, 0);
+
+    const respRows = db.select({ envId: respT[fkField] }).from(respT).all();
+    const projRows = db.select({ envId: projT[fkField] }).from(projT).all();
+    const agendaRows = db.select({ envId: agendaT[fkField] }).from(agendaT).all();
+
+    for (const r of [...respRows, ...projRows, ...agendaRows]) {
+      const cur = tally.get(r.envId);
+      // Only count rows that belong to this user's env entries. Cross-user
+      // junction rows (shouldn't exist, but defensive) get skipped.
+      if (cur !== undefined) tally.set(r.envId, cur + 1);
+    }
+
+    return entries.map(e => ({ id: e.id, count: tally.get(e.id) ?? 0 }));
   }
 
   // ============================================================
