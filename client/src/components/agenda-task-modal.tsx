@@ -33,7 +33,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Trash2 } from "lucide-react";
+import { GripVertical, Trash2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -59,6 +59,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ColorPicker } from "@/components/color-picker";
 import { CustomRecurrenceDialog } from "@/components/custom-recurrence-dialog";
+import { useDraggableReorder } from "@/hooks/use-draggable-reorder";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   RecurrenceScopeDialog,
   type RecurrenceScope,
@@ -73,7 +77,38 @@ import {
   ruleToOption,
   type StandardOption,
 } from "@/lib/recurrence-form";
-import type { AgendaTask } from "@shared/schema";
+import type { AgendaTask, Project, ProjectTask } from "@shared/schema";
+
+// =============================================================================
+// PR 29e — Add to project collapsible (folded from inbox-add-to-project page).
+//
+// Sentinel id used in the preview list to mark the not-yet-created task. We
+// pick a number that can never collide with a real ProjectTask.id (those
+// start at 1 and are positive). useDraggableReorder is generic over
+// DraggableItem which only requires { id: number }, so this works.
+// =============================================================================
+const NEW_TASK_ID = -1;
+
+interface ProjectPreviewRow {
+  id: number; // real ProjectTask.id, or NEW_TASK_ID
+  title: string;
+  isNew: boolean;
+}
+
+function sortExistingProjectTasks(rows: ProjectTask[]): ProjectTask[] {
+  return [...rows].sort((a, b) => {
+    const aHas = typeof a.sortOrder === "number";
+    const bHas = typeof b.sortOrder === "number";
+    if (aHas && bHas) {
+      if (a.sortOrder !== b.sortOrder) return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+    } else if (aHas) {
+      return -1;
+    } else if (bHas) {
+      return 1;
+    }
+    return a.id - b.id;
+  });
+}
 
 // =============================================================================
 // PR 29d — Google date/time parity helpers.
@@ -151,6 +186,11 @@ type Props = {
   // Seed the title from the inbox row's content. (Could derive in the page
   // wrapper, but passing it here keeps state ownership in the form.)
   defaultTitle?: string;
+  // PR #29e — when the inbox item was captured with a project hint
+  // (inbox_items.reference_project_id), pass it here so the [+ Add to
+  // project] collapsible auto-expands and prefills the project picker
+  // (Q5-C locked). Page-mode only; ignored in dialog mode.
+  referenceProjectId?: number | null;
   // Called after a successful Save in page mode so the page can navigate
   // back to /inbox and invalidate the inbox list cache.
   onSaved?: () => void;
@@ -170,6 +210,7 @@ export function AgendaTaskModal({
   displayMode = "dialog",
   inboxItemId,
   defaultTitle,
+  referenceProjectId,
   onSaved,
   onCancel,
 }: Props) {
@@ -234,6 +275,16 @@ export function AgendaTaskModal({
   const [roleId, setRoleId] = useState<number | null>(null);
   const [responsibilityId, setResponsibilityId] = useState<number | null>(null);
 
+  // PR #29e — page-mode-only state for the [+ Add to project] collapsible.
+  // Collapsed by default; auto-expands when referenceProjectId is set on the
+  // inbox item (Q5-C). orderOverride is the user's dragged order of the
+  // preview rows; null means "natural order" (existing tasks sorted, new row
+  // at the bottom). The chosen position becomes the sortOrder we'd write to
+  // the new project task. Schema wiring is deferred to PR 29f (Q6-A).
+  const [addToProjectExpanded, setAddToProjectExpanded] = useState(false);
+  const [projectId, setProjectId] = useState<number | null>(null);
+  const [orderOverride, setOrderOverride] = useState<number[] | null>(null);
+
   // PR #29c — page-mode data fetches for Role / Responsibility pickers.
   // Guarded by isPageMode so dialog-mode (Agenda) never issues these
   // queries. responsibility_roles is the junction the schema uses to link
@@ -250,6 +301,25 @@ export function AgendaTaskModal({
   const respRolesQuery = useQuery<Array<{ responsibilityId: number; roleId: number }>>({
     queryKey: ["/api/responsibility-roles"],
     enabled: isPageMode,
+  });
+
+  // PR #29e — page-mode-only project picker + existing tasks for the
+  // selected project. Both gated by isPageMode so dialog mode never fires.
+  const projectsQuery = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
+    enabled: isPageMode,
+  });
+  const projectTasksEnabled = isPageMode && projectId !== null;
+  const projectTasksQuery = useQuery<ProjectTask[]>({
+    queryKey: [`/api/project-tasks?projectId=${projectId ?? 0}`],
+    queryFn: async () => {
+      const r = await apiRequest(
+        "GET",
+        `/api/project-tasks?projectId=${projectId}`,
+      );
+      return r.json();
+    },
+    enabled: projectTasksEnabled,
   });
 
   // Responsibilities filtered by the currently-picked Role. Null role => empty.
@@ -327,8 +397,72 @@ export function AgendaTaskModal({
       // PR #29c — reset role/responsibility on each fresh open in page mode.
       setRoleId(null);
       setResponsibilityId(null);
+      // PR #29e — reset the Add to project collapsible. The auto-expand
+      // effect below re-opens it if referenceProjectId is set.
+      setAddToProjectExpanded(false);
+      setProjectId(null);
+      setOrderOverride(null);
     }
   }, [open, editing, defaultDate, isPageMode, defaultTitle]);
+
+  // PR #29e — Q5-C auto-expand: when the inbox item was captured with a
+  // referenceProjectId, open the collapsible on mount and prefill the
+  // project picker. Runs once per open / referenceProjectId change.
+  useEffect(() => {
+    if (!open) return;
+    if (!isPageMode) return;
+    if (referenceProjectId != null) {
+      setAddToProjectExpanded(true);
+      setProjectId(referenceProjectId);
+    }
+  }, [open, isPageMode, referenceProjectId]);
+
+  // Changing project resets the local drag order so the new project's
+  // tasks render in their natural order with the new row at the bottom.
+  useEffect(() => {
+    setOrderOverride(null);
+  }, [projectId]);
+
+  // PR #29e — preview rows: sorted existing tasks + new row at the bottom,
+  // then apply any local drag override.
+  const previewRows: ProjectPreviewRow[] = useMemo(() => {
+    const sorted = sortExistingProjectTasks(projectTasksQuery.data ?? []);
+    const base: ProjectPreviewRow[] = [
+      ...sorted.map((t) => ({ id: t.id, title: t.title, isNew: false })),
+      { id: NEW_TASK_ID, title: title.trim() || "(new task)", isNew: true },
+    ];
+    if (!orderOverride) return base;
+    const byId = new Map(base.map((r) => [r.id, r]));
+    const ordered: ProjectPreviewRow[] = [];
+    orderOverride.forEach((id) => {
+      const r = byId.get(id);
+      if (r) {
+        ordered.push(r);
+        byId.delete(id);
+      }
+    });
+    base.forEach((r) => {
+      if (byId.has(r.id)) ordered.push(r);
+    });
+    return ordered;
+  }, [projectTasksQuery.data, title, orderOverride]);
+
+  // Drag-to-reorder hook. onCommit captures the new id order in local state
+  // only; no PATCH fires until Save (and Save in this PR doesn't yet write
+  // project linkage — schema wiring deferred to PR 29f per Q6-A).
+  const dragHandle = useDraggableReorder<ProjectPreviewRow>({
+    items: previewRows,
+    onCommit: (next) => setOrderOverride(next),
+  });
+
+  // PR #29e — the sortOrder we'd send on Save = index of the new row in
+  // the preview. Q9-C (locked): when the user never dragged the new row,
+  // orderOverride stays null and the new row is at the bottom, so newRowIndex
+  // resolves to end-of-list silently — no warning, no block.
+  const newRowIndex = useMemo(() => {
+    const idx = previewRows.findIndex((r) => r.id === NEW_TASK_ID);
+    return idx >= 0 ? idx : previewRows.length - 1;
+  }, [previewRows]);
 
   // Compute the active RRULE for the current form state.
   //   - none → null
@@ -514,6 +648,15 @@ export function AgendaTaskModal({
         roleId,
         responsibilityId,
       };
+      // PR #29e — TODO(PR 29f): the user can now pick a project + drag the
+      // new row's position inside the collapsible [+ Add to project] section
+      // (locked Q5-C / Q9-C). Save currently records ONLY the agenda_task
+      // row — the project linkage (projectId, sortOrder = newRowIndex) is
+      // intentionally NOT sent yet. The schema change to add project_id +
+      // sortOrder columns on agenda_tasks plus a UNION in the agenda query
+      // ships in PR 29f (Q6-A deferred). When that lands, extend `payload`
+      // here with `{ projectId, sortOrder: newRowIndex }` when the section
+      // is expanded AND projectId !== null.
       const r = await apiRequest(
         "POST",
         `/api/inbox/${inboxItemId}/process`,
@@ -524,6 +667,8 @@ export function AgendaTaskModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
       queryClient.invalidateQueries({ queryKey: ["/api/agenda"] });
+      // PR #29e TODO(PR 29f): when project linkage is wired, also invalidate
+      // `/api/project-tasks?projectId=${projectId}` here.
       if (onSaved) onSaved();
     },
     onError: (e: any) => {
@@ -1113,6 +1258,148 @@ export function AgendaTaskModal({
               data-testid="textarea-task-notes"
             />
           </div>
+
+          {/* PR #29e — [+ Add to project] collapsible (locked Q2-C). Page mode
+              only. Collapsed by default; auto-expands when referenceProjectId
+              is set on the inbox item (Q5-C). Section is below Notes per the
+              locked ASCII (workspace/pr29c-amend-add-to-project-ascii.md).
+              Schema wiring (project_id + sortOrder on agenda_tasks) is
+              deferred to PR 29f — see TODO in inboxSaveMutation. */}
+          {isPageMode && !addToProjectExpanded && (
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setAddToProjectExpanded(true)}
+                data-testid="button-add-to-project-expand"
+              >
+                + Add to project
+              </Button>
+            </div>
+          )}
+
+          {isPageMode && addToProjectExpanded && (
+            <div
+              className="space-y-3 rounded-md border border-border bg-muted/30 p-3"
+              data-testid="section-add-to-project"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Add to project</span>
+              </div>
+
+              {/* Project picker */}
+              <div className="space-y-1.5">
+                <Label htmlFor="add-to-project-select">Project</Label>
+                <Select
+                  value={projectId === null ? "" : String(projectId)}
+                  onValueChange={(v) => setProjectId(v ? Number(v) : null)}
+                >
+                  <SelectTrigger
+                    id="add-to-project-select"
+                    data-testid="select-add-to-project"
+                  >
+                    <SelectValue placeholder="Select a project…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(projectsQuery.data ?? []).map((p) => (
+                      <SelectItem
+                        key={p.id}
+                        value={String(p.id)}
+                        data-testid={`option-add-to-project-${p.id}`}
+                      >
+                        {p.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Draggable preview list — only shown when a project is
+                  picked. Reuses the shared useDraggableReorder hook (PR #27
+                  + PR #29c) with NEW_TASK_ID=-1 as the sentinel for the
+                  not-yet-created row. */}
+              {projectId !== null && (
+                <div className="space-y-1.5">
+                  <Label>Reorder — drag to position new task</Label>
+                  {projectTasksQuery.isLoading ? (
+                    <p className="text-xs text-muted-foreground">
+                      Loading tasks…
+                    </p>
+                  ) : (
+                    <ul
+                      className="space-y-1.5"
+                      data-testid="list-add-to-project-preview"
+                    >
+                      {previewRows.map((row) => {
+                        const isDragging = dragHandle.draggingId === row.id;
+                        const isDropTarget =
+                          dragHandle.dropTargetId === row.id &&
+                          dragHandle.draggingId !== null &&
+                          dragHandle.draggingId !== row.id;
+                        return (
+                          <li
+                            key={row.id}
+                            data-task-row="true"
+                            data-task-id={row.id}
+                            data-testid={`preview-row-${row.isNew ? "new" : row.id}`}
+                            onDragOver={(e) => dragHandle.onDragOverRow(e, row.id)}
+                            onDrop={(e) => dragHandle.onDropRow(e, row.id)}
+                            className={[
+                              "flex items-center gap-2 rounded-md border bg-card px-2 py-2 text-sm",
+                              isDragging ? "opacity-50" : "",
+                              isDropTarget ? "border-primary" : "border-border",
+                            ].filter(Boolean).join(" ")}
+                          >
+                            <button
+                              type="button"
+                              draggable
+                              onDragStart={(e) => dragHandle.onDragStart(e, row.id)}
+                              onDragEnd={dragHandle.onDragEnd}
+                              onPointerDown={(e) => dragHandle.onGripPointerDown(e, row.id)}
+                              onPointerMove={dragHandle.onGripPointerMove}
+                              onPointerUp={dragHandle.onGripPointerUp}
+                              onPointerCancel={dragHandle.onGripPointerCancel}
+                              aria-label="Drag to reorder"
+                              data-testid={`grip-preview-${row.isNew ? "new" : row.id}`}
+                              className="cursor-grab touch-none p-1 text-muted-foreground hover:text-foreground"
+                            >
+                              <GripVertical className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="flex-1 truncate">{row.title}</span>
+                            {row.isNew && (
+                              <span
+                                className="ml-1 inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
+                                data-testid="badge-new"
+                              >
+                                new
+                              </span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setAddToProjectExpanded(false);
+                    setProjectId(null);
+                    setOrderOverride(null);
+                  }}
+                  data-testid="button-add-to-project-hide"
+                >
+                  − Hide project
+                </Button>
+              </div>
+            </div>
+          )}
 
       {mode === "edit-virtual" && (
         <p className="text-xs text-muted-foreground">

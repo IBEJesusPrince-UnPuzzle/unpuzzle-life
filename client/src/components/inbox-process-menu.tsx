@@ -8,9 +8,10 @@
 // Trash It here reuses POST /api/inbox/:id/process action=trash_it (which
 // itself delegates to soft-delete) so all six paths share one orchestrator.
 //
-// Do It Later and Add to Project route to dedicated pages built in PR #29c.
-// Until 29c lands, those two buttons are disabled with a "Coming in PR #29c"
-// hint so the locked menu order stays visible without breaking the flow.
+// Do It Later routes to a dedicated page built in PR #29c. PR #29e folded
+// the former "Add to Project" path into the Do It Later screen as a
+// collapsible section below Notes, so the menu now lists five buttons +
+// the destructive Trash It action.
 import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -78,10 +79,6 @@ export function InboxProcessMenu({ item, open, onOpenChange }: InboxProcessMenuP
     onOpenChange(false);
     navigate(`/inbox/process/${item.id}/do-it-later`);
   };
-  const goAddToProject = () => {
-    onOpenChange(false);
-    navigate(`/inbox/process/${item.id}/add-to-project`);
-  };
   const goFileIt = () => {
     onOpenChange(false);
     navigate(`/inbox/process/${item.id}/file-it`);
@@ -135,14 +132,6 @@ export function InboxProcessMenu({ item, open, onOpenChange }: InboxProcessMenuP
               data-testid="button-process-do-it-later"
             >
               Do It Later
-            </Button>
-            <Button
-              variant="secondary"
-              className="justify-start h-11"
-              onClick={goAddToProject}
-              data-testid="button-process-add-to-project"
-            >
-              Add to Project
             </Button>
             <Button
               variant="secondary"

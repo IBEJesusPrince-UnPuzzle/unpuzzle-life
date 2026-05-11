@@ -39,8 +39,9 @@
 // Used by:
 //   - client/src/components/project-tasks-card.tsx (PR #27; onCommit
 //     PATCHes /api/project-tasks/:id)
-//   - client/src/pages/inbox-add-to-project.tsx (PR #29c; onCommit updates
-//     local React state for the pre-save preview)
+//   - client/src/components/agenda-task-modal.tsx (PR #29e; onCommit
+//     updates local React state for the Do It Later "Add to project"
+//     pre-save preview, with NEW_TASK_ID=-1 as the in-flight sentinel)
 
 import { useCallback, useEffect, useRef, useState } from "react";
 

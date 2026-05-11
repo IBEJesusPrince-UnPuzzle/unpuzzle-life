@@ -13,7 +13,6 @@ import { ReportIssueButton } from "@/components/report-issue-button";
 import InboxPage from "@/pages/inbox";
 import InboxFileItPage from "@/pages/inbox-file-it";
 import InboxDoItLaterPage from "@/pages/inbox-do-it-later";
-import InboxAddToProjectPage from "@/pages/inbox-add-to-project";
 import SomedayPage from "@/pages/someday";
 import ReviewPage from "@/pages/review";
 import DataPage from "@/pages/data";
@@ -85,7 +84,6 @@ function AppRouter() {
       <Route path="/inbox" component={InboxPage} />
       <Route path="/inbox/process/:id/file-it" component={InboxFileItPage} />
       <Route path="/inbox/process/:id/do-it-later" component={InboxDoItLaterPage} />
-      <Route path="/inbox/process/:id/add-to-project" component={InboxAddToProjectPage} />
       <Route path="/someday" component={SomedayPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/dev/edit-page-demo" component={DevEditPageDemoRoute} />
