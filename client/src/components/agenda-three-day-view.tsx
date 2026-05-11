@@ -210,6 +210,12 @@ function ThreeDayColumn({
     [items],
   );
 
+  // PR #36 — short-chip visual-overlap clustering. Compute the
+  // minimum visual height in minutes so packLanes can cluster a 10-min
+  // chip with its 1h neighbor that starts at the 10-min chip's true end.
+  const MIN_CHIP_HEIGHT_PX = 18;
+  const MIN_VISUAL_MINUTES = (MIN_CHIP_HEIGHT_PX / HOUR_HEIGHT_PX) * 60;
+
   const packed = useMemo(() => {
     const inputs = timed
       .map((it, idx) => {
@@ -217,14 +223,14 @@ function ThreeDayColumn({
         const startMin = h * 60 + m;
         const dur = it.durationMinutes && it.durationMinutes > 0 ? it.durationMinutes : 30;
         const endMin = Math.min(24 * 60, startMin + dur);
-        return { id: idx, startMin, endMin, item: it };
+        const visualEndMin = Math.min(24 * 60, Math.max(endMin, startMin + MIN_VISUAL_MINUTES));
+        return { id: idx, startMin, endMin, visualEndMin, item: it };
       })
       .filter((x) => x.endMin > x.startMin);
     return packLanes(inputs);
-  }, [timed]);
+  }, [timed, MIN_VISUAL_MINUTES]);
 
   const hours = Array.from({ length: 24 }, (_, h) => h);
-  const MIN_CHIP_HEIGHT_PX = 18;
 
   return (
     <div className="relative border-l">
