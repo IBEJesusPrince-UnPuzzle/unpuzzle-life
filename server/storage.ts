@@ -176,6 +176,12 @@ tryMigration("project_tasks.start_date",               `ALTER TABLE project_task
 tryMigration("project_tasks.end_date",                 `ALTER TABLE project_tasks ADD COLUMN end_date TEXT`);
 tryMigration("project_tasks.is_all_day",               `ALTER TABLE project_tasks ADD COLUMN is_all_day INTEGER NOT NULL DEFAULT 0`);
 
+// PR #30b — Agenda task-type visibility (Google parity, per-user server state).
+// Three booleans on the existing preferences row; all default 1 (on).
+tryMigration("preferences.show_responsibility", `ALTER TABLE preferences ADD COLUMN show_responsibility INTEGER NOT NULL DEFAULT 1`);
+tryMigration("preferences.show_project_task",  `ALTER TABLE preferences ADD COLUMN show_project_task INTEGER NOT NULL DEFAULT 1`);
+tryMigration("preferences.show_standalone",    `ALTER TABLE preferences ADD COLUMN show_standalone INTEGER NOT NULL DEFAULT 1`);
+
 // PR #24 — Rename agenda_tasks.date → start_date.
 // Migration strategy: dual-column transitional. Add the new column, backfill
 // from the legacy `date` column on existing rows, then dual-write at every
@@ -376,7 +382,10 @@ sqlite.exec(`
     user_id INTEGER NOT NULL DEFAULT 1,
     display_name TEXT NOT NULL DEFAULT '',
     time_format TEXT NOT NULL DEFAULT '12h',
-    clarity_skip_ritual INTEGER NOT NULL DEFAULT 0
+    clarity_skip_ritual INTEGER NOT NULL DEFAULT 0,
+    show_responsibility INTEGER NOT NULL DEFAULT 1,
+    show_project_task INTEGER NOT NULL DEFAULT 1,
+    show_standalone INTEGER NOT NULL DEFAULT 1
   );
 
   CREATE TABLE IF NOT EXISTS environment_people (
@@ -779,8 +788,8 @@ export interface IStorage {
   updateWeeklyReview(userId: number, id: number, data: Partial<InsertWeeklyReview>): WeeklyReview | undefined;
 
   // Preferences
-  getPreferences(userId: number): { displayName: string; timeFormat: string; claritySkipRitual: boolean };
-  updatePreferences(userId: number, data: { displayName?: string; timeFormat?: string; claritySkipRitual?: boolean }): { displayName: string; timeFormat: string; claritySkipRitual: boolean };
+  getPreferences(userId: number): { displayName: string; timeFormat: string; claritySkipRitual: boolean; showResponsibility: boolean; showProjectTask: boolean; showStandalone: boolean };
+  updatePreferences(userId: number, data: { displayName?: string; timeFormat?: string; claritySkipRitual?: boolean; showResponsibility?: boolean; showProjectTask?: boolean; showStandalone?: boolean }): { displayName: string; timeFormat: string; claritySkipRitual: boolean; showResponsibility: boolean; showProjectTask: boolean; showStandalone: boolean };
 
   // V2: Environment People
   getEnvironmentPeople(userId: number): EnvironmentPerson[];
@@ -1291,25 +1300,38 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Preferences
-  getPreferences(userId: number): { displayName: string; timeFormat: string; claritySkipRitual: boolean } {
+  getPreferences(userId: number): { displayName: string; timeFormat: string; claritySkipRitual: boolean; showResponsibility: boolean; showProjectTask: boolean; showStandalone: boolean } {
     const row = db.select().from(preferences).where(eq(preferences.userId, userId)).get();
-    if (!row) return { displayName: "", timeFormat: "12h", claritySkipRitual: false };
+    if (!row) return {
+      displayName: "",
+      timeFormat: "12h",
+      claritySkipRitual: false,
+      showResponsibility: true,
+      showProjectTask: true,
+      showStandalone: true,
+    };
     return {
       displayName: row.displayName,
       timeFormat: row.timeFormat,
       claritySkipRitual: !!row.claritySkipRitual,
+      showResponsibility: !!row.showResponsibility,
+      showProjectTask: !!row.showProjectTask,
+      showStandalone: !!row.showStandalone,
     };
   }
   updatePreferences(
     userId: number,
-    data: { displayName?: string; timeFormat?: string; claritySkipRitual?: boolean },
-  ): { displayName: string; timeFormat: string; claritySkipRitual: boolean } {
+    data: { displayName?: string; timeFormat?: string; claritySkipRitual?: boolean; showResponsibility?: boolean; showProjectTask?: boolean; showStandalone?: boolean },
+  ): { displayName: string; timeFormat: string; claritySkipRitual: boolean; showResponsibility: boolean; showProjectTask: boolean; showStandalone: boolean } {
     const existing = db.select().from(preferences).where(eq(preferences.userId, userId)).get();
     if (existing) {
       const updated: any = {};
       if (data.displayName !== undefined) updated.displayName = data.displayName;
       if (data.timeFormat !== undefined) updated.timeFormat = data.timeFormat;
       if (data.claritySkipRitual !== undefined) updated.claritySkipRitual = data.claritySkipRitual ? 1 : 0;
+      if (data.showResponsibility !== undefined) updated.showResponsibility = data.showResponsibility ? 1 : 0;
+      if (data.showProjectTask !== undefined) updated.showProjectTask = data.showProjectTask ? 1 : 0;
+      if (data.showStandalone !== undefined) updated.showStandalone = data.showStandalone ? 1 : 0;
       db.update(preferences).set(updated).where(eq(preferences.id, existing.id)).run();
     } else {
       db.insert(preferences).values({
@@ -1317,6 +1339,9 @@ export class DatabaseStorage implements IStorage {
         displayName: data.displayName ?? "",
         timeFormat: data.timeFormat ?? "12h",
         claritySkipRitual: data.claritySkipRitual ? 1 : 0,
+        showResponsibility: data.showResponsibility === false ? 0 : 1,
+        showProjectTask: data.showProjectTask === false ? 0 : 1,
+        showStandalone: data.showStandalone === false ? 0 : 1,
       }).run();
     }
     return this.getPreferences(userId);
@@ -2341,7 +2366,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Reset preferences to defaults for this user
-    sqlite.exec(`UPDATE preferences SET display_name = '', time_format = '12h', clarity_skip_ritual = 0 WHERE user_id = ${userId}`);
+    sqlite.exec(`UPDATE preferences SET display_name = '', time_format = '12h', clarity_skip_ritual = 0, show_responsibility = 1, show_project_task = 1, show_standalone = 1 WHERE user_id = ${userId}`);
   }
 }
 

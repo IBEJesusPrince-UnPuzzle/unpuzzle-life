@@ -40,10 +40,13 @@ export function AgendaMonthDayOverlay({ open, onOpenChange, date, onSelect }: Pr
   if (!date) return null;
 
   const title = formatDateContextLabel(date);
+  // PR #30b — do NOT close the overlay when a row is tapped. The view-popup
+  // opens on TOP of the overlay (URL pushes ?task=N on top of ?overlay=ISO),
+  // and tapping ✕ on the popup pops the URL back to the overlay-only state.
+  // This is how Google Calendar's month-day overlay works.
   const body = (
     <OverlayBody date={date} onSelect={(it) => {
       onSelect(it);
-      onOpenChange(false);
     }} />
   );
 

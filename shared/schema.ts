@@ -522,6 +522,11 @@ export const preferences = sqliteTable("preferences", {
   displayName: text("display_name").notNull().default(""),
   timeFormat: text("time_format").notNull().default("12h"), // "12h" | "24h"
   claritySkipRitual: integer("clarity_skip_ritual").notNull().default(0), // 0 | 1
+  // PR #30b — Agenda task-type visibility (Google parity, per-user server state).
+  // All default ON. UI exposes a gear popover in the agenda header.
+  showResponsibility: integer("show_responsibility").notNull().default(1),
+  showProjectTask: integer("show_project_task").notNull().default(1),
+  showStandalone: integer("show_standalone").notNull().default(1),
 });
 
 // ============================================================

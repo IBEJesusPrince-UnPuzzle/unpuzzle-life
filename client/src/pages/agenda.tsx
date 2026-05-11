@@ -1,5 +1,5 @@
 // =============================================================================
-// AgendaPage — Phase 3b (§22, §22a, §23, §20a–§20d, §21)
+// AgendaPage — Phase 3b (§22, §22a, §23, §20a–§20d, §21) + PR #30b
 // =============================================================================
 // Phase 3b ships all four views (Day, 3 Days, Week, Month) plus the
 // Month tap-day overlay (§20d). Header chrome is unchanged from Phase 3a;
@@ -8,7 +8,7 @@
 // Month ±1mo) — same step rules Google Calendar uses.
 //
 // Header layout (locked §22):
-//   Row 1: [Agenda title]   [Today]   [+ Task]
+//   Row 1: [Agenda title]   [Today]   [+ Task]   [⚙]
 //   Row 2: [<] [date label] [>]                              [view selector]
 //
 // Date label updates per view:
@@ -16,6 +16,17 @@
 //   3 Days: "May 7 – 9"
 //   Week:   "May 4 – 10"
 //   Month:  "May 2026"
+//
+// PR #30b — URL state machine.
+// Date, view, the month-day overlay, AND the view popup all live in
+// window.location.search now so:
+//   1. Tapping ✕ on the popup pops one entry and re-shows the overlay
+//      (if one was open), or the agenda (if not).
+//   2. After [Open project] / [Open responsibility] navigates away to
+//      /projects/:id or /responsibilities/:id, browser Back returns to
+//      /agenda with the popup + overlay restored (Google parity).
+//   3. The task-type filter (gear popover) persists per-user on the
+//      preferences table; /api/agenda already filters by it server-side.
 // =============================================================================
 
 import { useEffect, useMemo, useState } from "react";
@@ -50,38 +61,70 @@ import {
   type AgendaWindowItem,
 } from "@/components/agenda-task-modal";
 import { AgendaTaskViewModal } from "@/components/agenda-task-view-modal";
+import { AgendaTaskFilterMenu } from "@/components/agenda-task-filter-menu";
 import { useSwipeNav } from "@/hooks/use-swipe-nav";
-
-type AgendaView = "day" | "3day" | "week" | "month";
+import { useAgendaUrlState, type AgendaView } from "@/hooks/use-agenda-url-state";
 
 export default function AgendaPage() {
-  const [date, setDate] = useState<string>(() => toIsoDate(new Date()));
-  const [view, setView] = useState<AgendaView>("day");
+  // URL is the source of truth for date/view/overlay/popup (PR #30b).
+  const { state: url, replace: urlReplace, push: urlPush, back: urlBack, clearPopup: urlClearPopup } = useAgendaUrlState();
 
-  // Modal state.
+  const date = url.d;
+  const view: AgendaView = url.v ?? "day";
+
+  const overlayOpen = url.overlay != null;
+  const overlayDate = url.overlay;
+
+  const viewOpen = url.task != null;
+
+  // Create/edit modal state stays React-local (it doesn't need Back-button
+  // semantics; opening it always lands the user on the edit page chrome).
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<AgendaWindowItem | null>(null);
 
-  // View-first sheet (PR #13). Tapping a chip/bar opens this sheet; the
-  // pencil inside it then opens the existing edit modal as a clean swap.
-  const [viewOpen, setViewOpen] = useState(false);
-  const [viewing, setViewing] = useState<AgendaWindowItem | null>(null);
+  // The view-popup needs an AgendaWindowItem to drive its top-bar (title,
+  // color, time, recurrence). When the user clicks a row we already have
+  // the object — stash it. When the user lands here via browser Back from
+  // /projects or /responsibilities, ?task=N is in the URL but `viewing` is
+  // null on a fresh mount; we fall back to fetching /api/agenda-tasks/:id.
+  const [viewingCache, setViewingCache] = useState<AgendaWindowItem | null>(null);
 
-  // Month-day overlay state.
-  const [overlayDate, setOverlayDate] = useState<string | null>(null);
-  const [overlayOpen, setOverlayOpen] = useState(false);
+  const taskIdFromUrl = url.task;
+  const { data: taskFromUrl } = useQuery<AgendaWindowItem>({
+    queryKey: ["/api/agenda-tasks", taskIdFromUrl],
+    queryFn: async () => {
+      const r = await fetch(`/api/agenda-tasks/${taskIdFromUrl}`, { credentials: "include" });
+      if (!r.ok) throw new Error(await r.text());
+      const row = await r.json();
+      // Virtual flag is hinted by the URL's `master` param; if present,
+      // the user opened a virtual instance and Back brought them back.
+      if (url.master != null) {
+        row.isVirtual = true;
+        row.masterId = url.master;
+      }
+      return row as AgendaWindowItem;
+    },
+    enabled: taskIdFromUrl != null && viewingCache?.id !== taskIdFromUrl,
+  });
 
-  // Read the persisted default view once on mount.
+  const viewing: AgendaWindowItem | null =
+    viewingCache && viewingCache.id === taskIdFromUrl ? viewingCache : taskFromUrl ?? null;
+
+  // Read the persisted default view once on mount AND apply it only if
+  // the URL itself didn't already pin a view (so reload of a bookmarked
+  // URL stays on the URL's view).
   const { data: defaultViewResp } = useQuery<{ view: AgendaView }>({
     queryKey: ["/api/agenda-default-view"],
   });
   useEffect(() => {
-    if (defaultViewResp?.view) setView(defaultViewResp.view);
-  }, [defaultViewResp?.view]);
+    if (url.v == null && defaultViewResp?.view) {
+      urlReplace({ v: defaultViewResp.view });
+    }
+  }, [defaultViewResp?.view, url.v, urlReplace]);
 
   // Persist view changes back to the server (fire-and-forget).
   function changeView(next: AgendaView) {
-    setView(next);
+    urlReplace({ v: next });
     apiRequest("PATCH", "/api/agenda-default-view", { view: next }).catch(() => {
       // Non-critical — the in-memory view still updates.
     });
@@ -93,20 +136,19 @@ export default function AgendaPage() {
     if (view === "month") {
       const d = fromIsoDate(date);
       const next = new Date(d.getFullYear(), d.getMonth() + direction, d.getDate());
-      // Clamp the day if we cross to a shorter month (e.g. May 31 → Jun 30)
       const lastOfNext = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
       if (next.getDate() !== d.getDate()) {
         next.setDate(Math.min(d.getDate(), lastOfNext));
       }
-      setDate(toIsoDate(next));
+      urlReplace({ d: toIsoDate(next) });
       return;
     }
     const stepDays = view === "day" ? 1 : view === "3day" ? 3 : 7;
-    setDate((d) => addDays(d, direction * stepDays));
+    urlReplace({ d: addDays(date, direction * stepDays) });
   }
   const goPrev = () => step(-1);
   const goNext = () => step(1);
-  const goToday = () => setDate(toIsoDate(new Date()));
+  const goToday = () => urlReplace({ d: toIsoDate(new Date()) });
 
   function openCreate() {
     setEditing(null);
@@ -116,16 +158,27 @@ export default function AgendaPage() {
     setEditing(item);
     setModalOpen(true);
   }
-  // View-first entry (PR #13). Every chip/bar tap routes here instead of
-  // jumping straight into edit.
+  // View-first entry (PR #13 / #30a). Tapping any chip/bar pushes the popup
+  // onto the history stack so Back closes it cleanly.
   function openView(item: AgendaWindowItem) {
-    setViewing(item);
-    setViewOpen(true);
+    setViewingCache(item);
+    urlPush({ task: item.id, master: item.isVirtual ? item.masterId ?? null : null });
   }
 
   function openOverlay(iso: string) {
-    setOverlayDate(iso);
-    setOverlayOpen(true);
+    urlPush({ overlay: iso });
+  }
+
+  // Close handlers go through the URL so the browser back stack stays in
+  // sync. Calling .back() pops one entry; popstate inside useAgendaUrlState
+  // re-reads the URL and updates view/overlay/task flags.
+  function handleViewOpenChange(next: boolean) {
+    if (next) return; // open is driven by URL push above
+    urlBack();
+  }
+  function handleOverlayOpenChange(next: boolean) {
+    if (next) return;
+    urlBack();
   }
 
   // Header date label per view.
@@ -171,6 +224,8 @@ export default function AgendaPage() {
           >
             <Plus className="w-4 h-4 mr-1" /> Task
           </Button>
+          {/* PR #30b — gear popover for task-type visibility (Google parity). */}
+          <AgendaTaskFilterMenu />
         </div>
 
         {/* Row 2 */}
@@ -232,8 +287,6 @@ export default function AgendaPage() {
         {view === "day" && (
           <AgendaAllDayBand date={date} onSelect={openView} />
         )}
-        {/* 3 Days / Week sticky shells span full width to align with the
-            time grid below; cancel the page header's px-4 with -mx-4. */}
         {view === "3day" && (
           <div className="-mx-4">
             <AgendaThreeDayStickyShell
@@ -276,14 +329,15 @@ export default function AgendaPage() {
           swap (Google parity). */}
       <AgendaTaskViewModal
         open={viewOpen}
-        onOpenChange={setViewOpen}
+        onOpenChange={handleViewOpenChange}
         item={viewing}
         onEdit={openEdit}
+        onNavigateAway={urlClearPopup}
       />
 
       <AgendaMonthDayOverlay
         open={overlayOpen}
-        onOpenChange={setOverlayOpen}
+        onOpenChange={handleOverlayOpenChange}
         date={overlayDate}
         onSelect={openView}
       />
