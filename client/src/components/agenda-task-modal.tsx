@@ -33,7 +33,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { GripVertical, Trash2 } from "lucide-react";
+import { ChevronRight, GripVertical, Trash2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -307,9 +307,17 @@ export function AgendaTaskModal({
 
   // PR #29e — page-mode-only project picker + existing tasks for the
   // selected project. Both gated by isPageMode so dialog mode never fires.
+  //
+  // PR #29g — also enable projectsQuery in dialog mode when the editing
+  // target is project-linked. The Linked-to-project block below Notes needs
+  // the project's title to render. Re-using the same /api/projects query
+  // key keeps the cache shared so the page-mode and dialog-mode consumers
+  // hit the same payload.
+  const isEditingProjectLinked =
+    !!editing && editing.origin === "project" && editing.originId != null;
   const projectsQuery = useQuery<Project[]>({
     queryKey: ["/api/projects"],
-    enabled: isPageMode,
+    enabled: isPageMode || isEditingProjectLinked,
   });
   const projectTasksEnabled = isPageMode && projectId !== null;
   const projectTasksQuery = useQuery<ProjectTask[]>({
@@ -323,6 +331,48 @@ export function AgendaTaskModal({
     },
     enabled: projectTasksEnabled,
   });
+
+  // PR #29g — Dialog-mode lookup of the linked project_tasks row by
+  // originId. We need this for two reasons:
+  //   1. To resolve the agenda chip back to its parent projectId (and from
+  //      there to the project's title via projectsQuery).
+  //   2. To detect the "orphan" case where the project_tasks row was
+  //      deleted out from under the chip (PR #29h's PRESERVE path will
+  //      hit this; today a manual project-task delete also reaches it).
+  //
+  // Uses GET /api/project-tasks/:id which 404s on missing/owner mismatch.
+  // The query is given a retry: false so the 404 surfaces immediately as
+  // "orphan" without React Query's default 3-retry loop.
+  const linkedProjectTaskQuery = useQuery<ProjectTask>({
+    queryKey: [
+      `/api/project-tasks/${editing?.originId ?? 0}`,
+      editing?.id,
+    ],
+    queryFn: async () => {
+      const r = await apiRequest(
+        "GET",
+        `/api/project-tasks/${editing!.originId}`,
+      );
+      return r.json();
+    },
+    enabled: isEditingProjectLinked && !isPageMode,
+    retry: false,
+  });
+
+  // PR #29g — Once we know the linked project_tasks.projectId, look up the
+  // project itself from the cached projectsQuery list. Returns undefined
+  // in both the loading state AND the orphan state (project_tasks row
+  // gone). Render rules disambiguate the two.
+  const linkedProject = useMemo(() => {
+    if (!isEditingProjectLinked) return undefined;
+    const taskRow = linkedProjectTaskQuery.data;
+    if (!taskRow) return undefined;
+    return (projectsQuery.data ?? []).find((p) => p.id === taskRow.projectId);
+  }, [
+    isEditingProjectLinked,
+    linkedProjectTaskQuery.data,
+    projectsQuery.data,
+  ]);
 
   // Responsibilities filtered by the currently-picked Role. Null role => empty.
   const filteredResponsibilities = useMemo(() => {
@@ -533,10 +583,36 @@ export function AgendaTaskModal({
   //   - "all"       → PATCH master with new fields (legacy edit-real path)
   const saveMutation = useMutation({
     mutationFn: async (scope: RecurrenceScope | null) => {
+      // PR #29g — the title-sync rule (Q2b lock) needs to know two things
+      // before each scope branch fires:
+      //   * was this row project-linked at edit time?
+      //   * did the user actually change the title? (no point pinging the
+      //     project endpoint when only color / time moved)
+      // syncProjectTitle is called from inside each branch that the locked
+      // rule says should sync (non-recurring, scope=all, scope=following).
+      // scope=this is the explicit override-row case and never syncs.
+      const projectLinkOriginId =
+        editing && editing.origin === "project" ? editing.originId ?? null : null;
+      const trimmedTitle = title.trim();
+      const titleChanged =
+        !!editing && trimmedTitle !== (editing.title ?? "");
+      async function syncProjectTitle() {
+        if (projectLinkOriginId == null || !titleChanged) return;
+        await apiRequest(
+          "PATCH",
+          `/api/project-tasks/${projectLinkOriginId}`,
+          { title: trimmedTitle },
+        );
+      }
+
       // Non-recurring: existing behavior verbatim (no scope).
       if (!isRecurring) {
         if (mode === "edit-real" && editing) {
           const r = await apiRequest("PATCH", `/api/agenda-tasks/${editing.id}`, buildPayload());
+          // PR #29g — Q2b: non-recurring chips sync the project task title
+          // silently. Fires after the agenda PATCH so a 404 on the agenda
+          // row never leaves a partial update.
+          await syncProjectTitle();
           return r.json();
         }
         // Create
@@ -558,6 +634,11 @@ export function AgendaTaskModal({
         // originalDate stamps which instance is being replaced.
         // Overrides themselves never carry recurrence (Google parity:
         // "Only this event" can't change the rule).
+        //
+        // PR #29g — Q2b lock: scope=this writes an override row only, never
+        // touches the project task. The override row itself stays
+        // origin='standalone' (it's a one-off, not part of the project
+        // task's series). This matches the legacy override behavior.
         const { recurrenceRule: _r, recurrenceEndDate: _re, ...overrideBase } = buildPayload();
         const payload = {
           ...overrideBase,
@@ -591,6 +672,9 @@ export function AgendaTaskModal({
           delete (payload as any).endDate;
         }
         const r = await apiRequest("PATCH", `/api/agenda-tasks/${masterId}`, payload);
+        // PR #29g — Q2b: scope=all renames the whole series, so the project
+        // task name follows.
+        await syncProjectTitle();
         return r.json();
       }
 
@@ -605,15 +689,43 @@ export function AgendaTaskModal({
       // 2. Create a new master from the occurrence date forward with the
       //    edited fields. The new master gets its own seriesId (server
       //    auto-assigns on insert when seriesId is null and a rule is set).
-      const payload = {
+      //
+      // PR #29g — Q2b: scope=following splits the series but both halves
+      // remain linked to the SAME project task. The new master must inherit
+      // origin='project' + the same originId so its chip on the agenda
+      // still surfaces the Linked-to-project block. The truncated original
+      // master keeps its own origin/originId untouched (we only patched
+      // recurrenceEndDate above).
+      const followingPayload: Record<string, unknown> = {
         ...buildPayload(),
-        origin: "standalone" as const,
+        origin: projectLinkOriginId != null
+          ? ("project" as const)
+          : ("standalone" as const),
       };
-      const r = await apiRequest("POST", "/api/agenda-tasks", payload);
+      if (projectLinkOriginId != null) {
+        followingPayload.originId = projectLinkOriginId;
+      }
+      const r = await apiRequest("POST", "/api/agenda-tasks", followingPayload);
+      // PR #29g — Q2b: scope=following renames the future window, which
+      // counts as renaming the project task per the locked rule.
+      await syncProjectTitle();
       return r.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/agenda"] });
+      // PR #29g — when the edited row was project-linked, the project's
+      // task list cache may now hold a stale title (we just PATCHed
+      // project_tasks). Invalidate it so any open /projects/:id/edit page
+      // reflects the rename on next focus.
+      if (editing && editing.origin === "project" && linkedProjectTaskQuery.data) {
+        const linkedProjectId = linkedProjectTaskQuery.data.projectId;
+        queryClient.invalidateQueries({
+          queryKey: [`/api/project-tasks?projectId=${linkedProjectId}`],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [`/api/project-tasks/${editing.originId}`],
+        });
+      }
       onOpenChange(false);
     },
     onError: (e: any) => {
@@ -728,8 +840,28 @@ export function AgendaTaskModal({
     mutationFn: async (scope: RecurrenceScope | null) => {
       if (!editing) return;
 
+      // PR #29g — Q3-C delete cascade rule. The project task cascades only
+      // when the agenda action leaves zero occurrences:
+      //   non-recurring delete -> cascade
+      //   scope=this           -> NO cascade (other occurrences remain)
+      //   scope=following      -> NO cascade (past occurrences remain)
+      //   scope=all            -> cascade
+      // We compute the flag here and the DELETE call follows the same
+      // "agenda first, project second" ordering as save so a failure on
+      // the agenda side never deletes the project task out from under
+      // a still-rendered chip.
+      const projectLinkOriginId =
+        editing.origin === "project" ? editing.originId ?? null : null;
+
       if (!isRecurring) {
         await apiRequest("DELETE", `/api/agenda-tasks/${editing.id}`, undefined);
+        if (projectLinkOriginId != null) {
+          await apiRequest(
+            "DELETE",
+            `/api/project-tasks/${projectLinkOriginId}`,
+            undefined,
+          );
+        }
         return;
       }
 
@@ -740,6 +872,9 @@ export function AgendaTaskModal({
       if (scope === "this") {
         // Cancellation override row — hides this single virtual instance.
         // Carries no user-facing fields; it's bookkeeping.
+        //
+        // PR #29g — Q3-C: scope=this does NOT cascade. Other occurrences
+        // still need the project task as their anchor.
         const payload = {
           origin: "standalone" as const,
           title: null,
@@ -757,10 +892,21 @@ export function AgendaTaskModal({
 
       if (scope === "all") {
         await apiRequest("DELETE", `/api/agenda-tasks/${masterId}`, undefined);
+        // PR #29g — Q3-C: scope=all wipes the series, so the project task
+        // has no remaining agenda surface and is deleted alongside.
+        if (projectLinkOriginId != null) {
+          await apiRequest(
+            "DELETE",
+            `/api/project-tasks/${projectLinkOriginId}`,
+            undefined,
+          );
+        }
         return;
       }
 
       // scope === "following"
+      // PR #29g — Q3-C: scope=following caps the master and leaves past
+      // occurrences in place. The project task stays as their anchor.
       const truncatedEnd = addDaysIso(occurrenceDate, -1);
       await apiRequest("PATCH", `/api/agenda-tasks/${masterId}`, {
         recurrenceEndDate: truncatedEnd,
@@ -768,6 +914,18 @@ export function AgendaTaskModal({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/agenda"] });
+      // PR #29g — mirror saveMutation: invalidate the project task list
+      // and the project_tasks/:id detail key so any open project edit
+      // page reflects the cascade on next focus.
+      if (editing && editing.origin === "project" && linkedProjectTaskQuery.data) {
+        const linkedProjectId = linkedProjectTaskQuery.data.projectId;
+        queryClient.invalidateQueries({
+          queryKey: [`/api/project-tasks?projectId=${linkedProjectId}`],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [`/api/project-tasks/${editing.originId}`],
+        });
+      }
       onOpenChange(false);
     },
     onError: (e: any) => {
@@ -1297,6 +1455,60 @@ export function AgendaTaskModal({
               data-testid="textarea-task-notes"
             />
           </div>
+
+          {/* PR #29g — Linked-to-project block. Only renders in dialog mode
+              when the editing target is a project-linked chip AND the
+              project lookup actually resolves to a live row. Orphan case
+              (project_tasks or its parent project gone) renders nothing
+              — the chip looks like a regular standalone task in the modal.
+              This is the deliberate choice per PR #29g amendment: PR #29h's
+              PRESERVE path keeps the agenda row alive but disconnects it
+              from the gone project; the user expressly opted into losing
+              the link reference, so we don't surface it.
+              The block waits for both queries to settle before rendering
+              so we don't flash a wrong state on first paint. */}
+          {!isPageMode
+            && isEditingProjectLinked
+            && !linkedProjectTaskQuery.isLoading
+            && !projectsQuery.isLoading
+            && linkedProject && (
+            <div
+              className="rounded-md border border-border bg-muted/30 p-3"
+              data-testid="section-linked-to-project"
+            >
+              <div className="text-xs font-medium text-muted-foreground mb-1">
+                Linked to project
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenChange(false);
+                    setLocation(`/projects/${linkedProject.id}/edit`);
+                  }}
+                  className="text-sm font-medium text-left flex-1 truncate hover:underline"
+                  data-testid="link-linked-project-name"
+                >
+                  {linkedProject.title}
+                </button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    onOpenChange(false);
+                    setLocation(`/projects/${linkedProject.id}/edit`);
+                  }}
+                  aria-label="Open project"
+                  data-testid="button-open-linked-project"
+                  className="shrink-0"
+                >
+                  Open project
+                  <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* PR #29e — [+ Add to project] collapsible (locked Q2-C). Page mode
               only. Collapsed by default; auto-expands when referenceProjectId
