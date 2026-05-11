@@ -18,6 +18,8 @@ import {
   projectResponsibility,
   // Phase 2 calendar
   projectTasks, projectLinks, agendaTasks,
+  // PR #32 — agenda task↔support junctions (mirror of the responsibility ones).
+  agendaTaskPeople, agendaTaskPlaces, agendaTaskThings, agendaTaskProviders, agendaTaskConditions,
   // PR #29a — Phase 8 inbox processing
   filedNotes,
   type User, type InsertUser,
@@ -626,6 +628,46 @@ sqlite.exec(`
     notes TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
+  );
+
+  -- PR #32 — agenda task↔support junctions, mirroring responsibility_<type>
+  -- and project_<type>. Carries relationship_type + importance so the shared
+  -- SupportSection UI (used by responsibility-edit and project-edit) works
+  -- without branching when reused on the agenda-task page.
+  CREATE TABLE IF NOT EXISTS agenda_task_people (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agenda_task_id INTEGER NOT NULL REFERENCES agenda_tasks(id),
+    person_id INTEGER NOT NULL REFERENCES environment_people(id),
+    relationship_type TEXT NOT NULL DEFAULT 'primary',
+    importance TEXT NOT NULL DEFAULT 'important'
+  );
+  CREATE TABLE IF NOT EXISTS agenda_task_places (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agenda_task_id INTEGER NOT NULL REFERENCES agenda_tasks(id),
+    place_id INTEGER NOT NULL REFERENCES environment_places(id),
+    relationship_type TEXT NOT NULL DEFAULT 'primary',
+    importance TEXT NOT NULL DEFAULT 'important'
+  );
+  CREATE TABLE IF NOT EXISTS agenda_task_things (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agenda_task_id INTEGER NOT NULL REFERENCES agenda_tasks(id),
+    thing_id INTEGER NOT NULL REFERENCES environment_things(id),
+    relationship_type TEXT NOT NULL DEFAULT 'primary',
+    importance TEXT NOT NULL DEFAULT 'important'
+  );
+  CREATE TABLE IF NOT EXISTS agenda_task_providers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agenda_task_id INTEGER NOT NULL REFERENCES agenda_tasks(id),
+    provider_id INTEGER NOT NULL REFERENCES environment_providers(id),
+    relationship_type TEXT NOT NULL DEFAULT 'primary',
+    importance TEXT NOT NULL DEFAULT 'important'
+  );
+  CREATE TABLE IF NOT EXISTS agenda_task_conditions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agenda_task_id INTEGER NOT NULL REFERENCES agenda_tasks(id),
+    condition_id INTEGER NOT NULL REFERENCES environment_conditions(id),
+    relationship_type TEXT NOT NULL DEFAULT 'primary',
+    importance TEXT NOT NULL DEFAULT 'important'
   );
 
   CREATE TABLE IF NOT EXISTS support_requests (
@@ -1972,6 +2014,51 @@ export class DatabaseStorage implements IStorage {
     id: number,
   ): void {
     const t = this.projSupportTable(supportType);
+    db.delete(t).where(eq(t.id, id)).run();
+  }
+
+  // ============================================================
+  // PR #32: AGENDA TASK ↔ SUPPORT JUNCTIONS (mirror of responsibility side)
+  // ============================================================
+  private agendaTaskSupportTable(supportType: "people" | "places" | "things" | "providers" | "conditions"): any {
+    switch (supportType) {
+      case "people":     return agendaTaskPeople;
+      case "places":     return agendaTaskPlaces;
+      case "things":     return agendaTaskThings;
+      case "providers":  return agendaTaskProviders;
+      case "conditions": return agendaTaskConditions;
+    }
+  }
+  getAgendaTaskSupports(
+    agendaTaskId: number,
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+  ): any[] {
+    const t = this.agendaTaskSupportTable(supportType);
+    return db.select().from(t).where(eq(t.agendaTaskId, agendaTaskId)).all();
+  }
+  linkAgendaTaskSupport(
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+    data: any,
+  ): any {
+    const t = this.agendaTaskSupportTable(supportType);
+    return db.insert(t).values(data).returning().get();
+  }
+  updateAgendaTaskSupportLink(
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+    id: number,
+    data: { relationshipType?: string; importance?: string },
+  ): any {
+    const t = this.agendaTaskSupportTable(supportType);
+    const updates: any = {};
+    if (data.relationshipType !== undefined) updates.relationshipType = data.relationshipType;
+    if (data.importance !== undefined) updates.importance = data.importance;
+    return db.update(t).set(updates).where(eq(t.id, id)).returning().get();
+  }
+  unlinkAgendaTaskSupport(
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+    id: number,
+  ): void {
+    const t = this.agendaTaskSupportTable(supportType);
     db.delete(t).where(eq(t.id, id)).run();
   }
 

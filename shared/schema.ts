@@ -321,6 +321,53 @@ export const projectConditions = sqliteTable("project_conditions", {
   importance: text("importance").notNull().default("important"),
 });
 
+// PR #32 — AGENDA TASK ↔ SUPPORT junctions.
+// Same model as responsibility_<type> and project_<type>: support records are
+// owned by the Support module (environment_*). Agenda tasks LINK to those
+// rows. Mirrors responsibility_<type> exactly, just with agenda_task_id
+// instead of responsibility_id. Carries relationship_type + importance so the
+// universal 4-option dropdown (Critical/Important/Helpful/Workaround) and the
+// shared SupportSection UI work without branching.
+export const agendaTaskPeople = sqliteTable("agenda_task_people", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agendaTaskId: integer("agenda_task_id").notNull().references(() => agendaTasks.id),
+  personId: integer("person_id").notNull().references(() => environmentPeople.id),
+  relationshipType: text("relationship_type").notNull().default("primary"),
+  importance: text("importance").notNull().default("important"),
+});
+
+export const agendaTaskPlaces = sqliteTable("agenda_task_places", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agendaTaskId: integer("agenda_task_id").notNull().references(() => agendaTasks.id),
+  placeId: integer("place_id").notNull().references(() => environmentPlaces.id),
+  relationshipType: text("relationship_type").notNull().default("primary"),
+  importance: text("importance").notNull().default("important"),
+});
+
+export const agendaTaskThings = sqliteTable("agenda_task_things", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agendaTaskId: integer("agenda_task_id").notNull().references(() => agendaTasks.id),
+  thingId: integer("thing_id").notNull().references(() => environmentThings.id),
+  relationshipType: text("relationship_type").notNull().default("primary"),
+  importance: text("importance").notNull().default("important"),
+});
+
+export const agendaTaskProviders = sqliteTable("agenda_task_providers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agendaTaskId: integer("agenda_task_id").notNull().references(() => agendaTasks.id),
+  providerId: integer("provider_id").notNull().references(() => environmentProviders.id),
+  relationshipType: text("relationship_type").notNull().default("primary"),
+  importance: text("importance").notNull().default("important"),
+});
+
+export const agendaTaskConditions = sqliteTable("agenda_task_conditions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agendaTaskId: integer("agenda_task_id").notNull().references(() => agendaTasks.id),
+  conditionId: integer("condition_id").notNull().references(() => environmentConditions.id),
+  relationshipType: text("relationship_type").notNull().default("primary"),
+  importance: text("importance").notNull().default("important"),
+});
+
 // Projects can stand alone OR link to one primary responsibility plus optional more (§2).
 export const projectResponsibility = sqliteTable("project_responsibility", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -634,6 +681,11 @@ export const insertProjectResponsibilitySchema = createInsertSchema(projectRespo
 export const insertProjectTaskSchema = createInsertSchema(projectTasks).omit({ id: true });
 export const insertProjectLinkSchema = createInsertSchema(projectLinks).omit({ id: true });
 export const insertAgendaTaskSchema = createInsertSchema(agendaTasks).omit({ id: true });
+export const insertAgendaTaskPeopleSchema = createInsertSchema(agendaTaskPeople).omit({ id: true });
+export const insertAgendaTaskPlaceSchema = createInsertSchema(agendaTaskPlaces).omit({ id: true });
+export const insertAgendaTaskThingSchema = createInsertSchema(agendaTaskThings).omit({ id: true });
+export const insertAgendaTaskProviderSchema = createInsertSchema(agendaTaskProviders).omit({ id: true });
+export const insertAgendaTaskConditionSchema = createInsertSchema(agendaTaskConditions).omit({ id: true });
 
 export const insertPreferencesSchema = createInsertSchema(preferences).omit({ id: true });
 export const insertSupportRequestSchema = createInsertSchema(supportRequests).omit({ id: true });
@@ -702,6 +754,17 @@ export type ProjectLink = typeof projectLinks.$inferSelect;
 export type InsertProjectLink = z.infer<typeof insertProjectLinkSchema>;
 export type AgendaTask = typeof agendaTasks.$inferSelect;
 export type InsertAgendaTask = z.infer<typeof insertAgendaTaskSchema>;
+// PR #32 — agenda task↔support junctions
+export type AgendaTaskPeople = typeof agendaTaskPeople.$inferSelect;
+export type InsertAgendaTaskPeople = z.infer<typeof insertAgendaTaskPeopleSchema>;
+export type AgendaTaskPlace = typeof agendaTaskPlaces.$inferSelect;
+export type InsertAgendaTaskPlace = z.infer<typeof insertAgendaTaskPlaceSchema>;
+export type AgendaTaskThing = typeof agendaTaskThings.$inferSelect;
+export type InsertAgendaTaskThing = z.infer<typeof insertAgendaTaskThingSchema>;
+export type AgendaTaskProvider = typeof agendaTaskProviders.$inferSelect;
+export type InsertAgendaTaskProvider = z.infer<typeof insertAgendaTaskProviderSchema>;
+export type AgendaTaskCondition = typeof agendaTaskConditions.$inferSelect;
+export type InsertAgendaTaskCondition = z.infer<typeof insertAgendaTaskConditionSchema>;
 
 // Phase 1 enum constants — single source of truth for validators.
 export const SUPPORT_STATES = ["available", "at_risk", "unavailable", "archived"] as const;
