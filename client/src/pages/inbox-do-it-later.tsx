@@ -118,6 +118,10 @@ export default function InboxDoItLaterPage() {
       displayMode="page"
       inboxItemId={itemId}
       defaultTitle={inboxItem.content ?? ""}
+      // PR #29e — forward the capture-time project hint so the
+      // [+ Add to project] collapsible inside the modal auto-expands and
+      // prefills the picker (locked Q5-C).
+      referenceProjectId={inboxItem.referenceProjectId ?? null}
       defaultDate={today}
       onSaved={() => navigate("/inbox")}
       onCancel={() => navigate("/inbox")}
