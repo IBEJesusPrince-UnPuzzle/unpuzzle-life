@@ -70,6 +70,13 @@ type Props = {
   item: AgendaWindowItem | null;
   /** Parent dismisses this popup and opens the edit modal on the same row. */
   onEdit: (item: AgendaWindowItem) => void;
+  /**
+   * PR #30b — invoked right before the popup navigates to /projects/:id or
+   * /responsibilities/:id. Parent uses this to drop the popup state from the
+   * URL (replaceState) so browser Back from the destination lands on the
+   * layer underneath (overlay or bare agenda), not back on this popup.
+   */
+  onNavigateAway?: () => void;
 };
 
 type CardSupport = {
@@ -287,6 +294,7 @@ export function AgendaTaskViewModal({
   onOpenChange,
   item,
   onEdit,
+  onNavigateAway,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const { toast } = useToast();
@@ -413,13 +421,19 @@ export function AgendaTaskViewModal({
   }
 
   function handleOpenResponsibility(id: number) {
-    onOpenChange(false);
+    // PR #30b — collapse the popup state in the URL before pushing the new
+    // route so Back from /responsibilities/:id returns to the agenda layer
+    // beneath the popup (Google parity).
+    if (onNavigateAway) onNavigateAway();
     navigate(`/responsibilities/${id}`);
   }
 
   function handleOpenProject(id: number) {
-    onOpenChange(false);
-    navigate(`/projects/${id}`);
+    if (onNavigateAway) onNavigateAway();
+    // Hit the edit route directly so we skip the /projects/:id → :id/edit
+    // redirect, which adds a second history entry and forces the user to
+    // press Back twice. (PR #30b)
+    navigate(`/projects/${id}/edit`);
   }
 
   // Whether the [View details] / [Hide details] toggle should render at

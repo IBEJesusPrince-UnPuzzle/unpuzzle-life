@@ -841,11 +841,14 @@ export function registerRoutes(server: Server, app: Express) {
   });
   app.put("/api/preferences", (req, res) => {
     const userId = getEffectiveUserId(req);
-    const { displayName, timeFormat, claritySkipRitual } = req.body;
-    const data: { displayName?: string; timeFormat?: string; claritySkipRitual?: boolean } = {};
+    const { displayName, timeFormat, claritySkipRitual, showResponsibility, showProjectTask, showStandalone } = req.body;
+    const data: { displayName?: string; timeFormat?: string; claritySkipRitual?: boolean; showResponsibility?: boolean; showProjectTask?: boolean; showStandalone?: boolean } = {};
     if (displayName !== undefined) data.displayName = String(displayName).slice(0, 50);
     if (timeFormat !== undefined && (timeFormat === "12h" || timeFormat === "24h")) data.timeFormat = timeFormat;
     if (claritySkipRitual !== undefined) data.claritySkipRitual = !!claritySkipRitual;
+    if (showResponsibility !== undefined) data.showResponsibility = !!showResponsibility;
+    if (showProjectTask !== undefined) data.showProjectTask = !!showProjectTask;
+    if (showStandalone !== undefined) data.showStandalone = !!showStandalone;
     res.json(storage.updatePreferences(userId, data));
   });
 
@@ -1919,7 +1922,17 @@ export function registerRoutes(server: Server, app: Express) {
     if (from > to) {
       return res.status(400).json({ error: "from must be <= to" });
     }
-    res.json(storage.getAgendaWindow(userId, from, to));
+    // PR #30b — server-side task-type filter (Google parity).
+    // Read the user's preferences and drop rows whose origin is hidden.
+    const prefs = storage.getPreferences(userId);
+    const rows = storage.getAgendaWindow(userId, from, to);
+    const filtered = rows.filter((r: any) => {
+      if (r.origin === "responsibility") return prefs.showResponsibility;
+      if (r.origin === "project") return prefs.showProjectTask;
+      if (r.origin === "standalone") return prefs.showStandalone;
+      return true;
+    });
+    res.json(filtered);
   });
 
   // Default agenda view preference (per §23).
