@@ -30,6 +30,7 @@
 // =============================================================================
 
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, ListChecks, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -57,7 +58,6 @@ import { AgendaMonthView } from "@/components/agenda-month-view";
 import { AgendaMonthDayOverlay } from "@/components/agenda-month-day-overlay";
 import { AgendaAllDayBand } from "@/components/agenda-all-day-band";
 import {
-  AgendaTaskModal,
   type AgendaWindowItem,
 } from "@/components/agenda-task-modal";
 import { AgendaTaskViewModal } from "@/components/agenda-task-view-modal";
@@ -69,6 +69,9 @@ export default function AgendaPage() {
   // URL is the source of truth for date/view/overlay/popup (PR #30b).
   const { state: url, replace: urlReplace, push: urlPush, back: urlBack, popPopupThen: urlPopPopupThen } = useAgendaUrlState();
 
+  // PR #31 — page-mode routes for create/edit
+  const [, navigate] = useLocation();
+
   const date = url.d;
   const view: AgendaView = url.v ?? "day";
 
@@ -77,10 +80,11 @@ export default function AgendaPage() {
 
   const viewOpen = url.task != null;
 
-  // Create/edit modal state stays React-local (it doesn't need Back-button
-  // semantics; opening it always lands the user on the edit page chrome).
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<AgendaWindowItem | null>(null);
+  // PR #31 — create/edit are now full page routes (/agenda/tasks/new and
+  // /agenda/tasks/:id/edit), not a dialog. The local modal state was
+  // removed; openCreate and openEdit navigate instead. Back button on the
+  // page returns here cleanly (no special history-stack handling needed
+  // because the destination is a real route, not an overlay query param).
 
   // The view-popup needs an AgendaWindowItem to drive its top-bar (title,
   // color, time, recurrence). When the user clicks a row we already have
@@ -150,13 +154,47 @@ export default function AgendaPage() {
   const goNext = () => step(1);
   const goToday = () => urlReplace({ d: toIsoDate(new Date()) });
 
+  // PR #31 — [+ Task] now navigates to the page-mode create route.
+  // The current `date` (URL `d` param) is forwarded so the form opens
+  // pre-filled on the visible day (matches the legacy dialog's
+  // defaultDate={date} behavior).
   function openCreate() {
-    setEditing(null);
-    setModalOpen(true);
+    navigate(`/agenda/tasks/new?date=${encodeURIComponent(date)}`);
   }
+
+  // PR #31 — edit pencil navigates to the page-mode edit route.
+  // Virtual occurrences forward both ?master= and ?occurrence= so the
+  // edit page can reconstruct the AgendaWindowItem (matches the legacy
+  // setEditing({ ...item, isVirtual: true, masterId }) shape).
+  //
+  // Sequencing: the view sheet's pencil calls onOpenChange(false) (which
+  // fires urlBack — a history.back()) *before* onEdit. history.back() is
+  // asynchronous; if we navigate() synchronously here, the pushState lands
+  // first, then the queued pop unwinds it and leaves the user on /agenda.
+  // Wait for the popstate to settle, then navigate. urlPopPopupThen does
+  // not apply because the back was already initiated by the view-sheet's
+  // close handler — we just need to ride that wave.
   function openEdit(item: AgendaWindowItem) {
-    setEditing(item);
-    setModalOpen(true);
+    const params = new URLSearchParams();
+    if (item.isVirtual) {
+      params.set("master", String(item.masterId ?? item.id));
+      params.set("occurrence", item.startDate);
+    }
+    const qs = params.toString();
+    const path = `/agenda/tasks/${item.id}/edit${qs ? `?${qs}` : ""}`;
+    // If a popup is on the URL (task=...), wait for the back-pop that the
+    // view sheet's onOpenChange(false) just queued to finish before pushing
+    // the edit route. Otherwise navigate immediately (called from a path
+    // that didn't open a popup, e.g. direct list -> edit).
+    if (url.task != null) {
+      const onPop = () => {
+        window.removeEventListener("popstate", onPop);
+        navigate(path);
+      };
+      window.addEventListener("popstate", onPop);
+    } else {
+      navigate(path);
+    }
   }
   // View-first entry (PR #13 / #30a). Tapping any chip/bar pushes the popup
   // onto the history stack so Back closes it cleanly.
@@ -194,7 +232,7 @@ export default function AgendaPage() {
   const swipeHandlers = useSwipeNav({
     onPrev: goPrev,
     onNext: goNext,
-    disabled: modalOpen || overlayOpen || viewOpen,
+    disabled: overlayOpen || viewOpen,
   });
 
   return (
@@ -317,16 +355,11 @@ export default function AgendaPage() {
         {view === "month" && <AgendaMonthView date={date} onDayTap={openOverlay} />}
       </div>
 
-      <AgendaTaskModal
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-        defaultDate={date}
-        editing={editing}
-      />
+      {/* PR #31 — AgendaTaskModal removed from agenda. Create/edit now
+          live at /agenda/tasks/new and /agenda/tasks/:id/edit (page mode). */}
 
       {/* View-first sheet (PR #13). Pencil inside this sheet routes back
-          through openEdit, which opens the existing edit modal as a clean
-          swap (Google parity). */}
+          through openEdit, which now navigates to the edit page. */}
       <AgendaTaskViewModal
         open={viewOpen}
         onOpenChange={handleViewOpenChange}

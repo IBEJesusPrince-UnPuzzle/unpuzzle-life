@@ -927,11 +927,14 @@ export function AgendaTaskModal({
   // PR #15 — click handlers on the footer Save/Delete buttons.
   // For recurring rows we open the scope dialog; for everything else we
   // fire the mutation directly with scope=null.
-  // PR #29c — in page mode we dispatch the inbox orchestrator mutation
-  // instead; recurrence is allowed but scope dialog is unreachable (page
-  // mode is always a fresh create, never an edit).
+  // PR #29c — in page mode dispatching the inbox orchestrator mutation
+  // was the only path. PR #31 generalizes page mode: when there's no
+  // inboxItemId (i.e. agenda's own /agenda/tasks/new or /agenda/tasks/:id/
+  // edit page route) we fall through to the same saveMutation / scope
+  // dialog logic the dialog uses. The inbox branch still wins when
+  // inboxItemId is set.
   function onSaveClick() {
-    if (isPageMode) {
+    if (isPageMode && inboxItemId != null) {
       inboxSaveMutation.mutate();
       return;
     }
@@ -960,11 +963,17 @@ export function AgendaTaskModal({
     }
   }
 
+  // PR #31 — inbox page keeps its locked "Do It Later" header. Non-inbox
+  // page mode (the agenda's own /agenda/tasks/new and :id/edit routes)
+  // mirrors the dialog's titles so the page feels identical to the dialog
+  // it replaces.
   const titleText =
-    isPageMode
+    isPageMode && inboxItemId != null
       ? "Do It Later"
       : mode === "create"
-        ? "Add task"
+        ? isPageMode
+          ? "New task"
+          : "Add task"
         : mode === "edit-virtual"
           ? "Edit this occurrence"
           : "Edit task";
@@ -1170,21 +1179,27 @@ export function AgendaTaskModal({
     setShowCapPrompt(false);
   }
 
-  // PR #29c — Save button disabled state. In dialog mode this tracks the
-  // legacy saveMutation; in page mode it tracks the inbox orchestrator
-  // mutation instead.
-  const saveIsPending = isPageMode
-    ? inboxSaveMutation.isPending
-    : saveMutation.isPending;
+  // PR #29c — Save button disabled state. The inbox page tracks the
+  // orchestrator mutation; dialog mode tracks saveMutation. PR #31:
+  // non-inbox page mode (agenda's own create/edit routes) also tracks
+  // saveMutation since it hits POST /api/agenda-tasks or PATCH /api/
+  // agenda-tasks/:id directly.
+  const saveIsPending =
+    isPageMode && inboxItemId != null
+      ? inboxSaveMutation.isPending
+      : saveMutation.isPending;
   // PR #29c — Save button label changes for inbox flow per locked ASCII
-  // ("Save task" instead of "Save").
-  const saveButtonLabel = isPageMode
-    ? saveIsPending
-      ? "Saving…"
-      : "Save task"
-    : saveIsPending
-      ? "Saving…"
-      : "Save";
+  // ("Save task" instead of "Save"). PR #31: non-inbox page mode uses the
+  // dialog's plain "Save" label so the agenda's own page-mode routes feel
+  // identical to the legacy dialog they replace.
+  const saveButtonLabel =
+    isPageMode && inboxItemId != null
+      ? saveIsPending
+        ? "Saving…"
+        : "Save task"
+      : saveIsPending
+        ? "Saving…"
+        : "Save";
 
   // PR #29c — wrap the body + dialogs + footer in render helpers so we can
   // either nest them in <DialogContent> (dialog mode, the locked Agenda
@@ -1729,21 +1744,42 @@ export function AgendaTaskModal({
       {renderFormBody()}
       {renderInlineDialogs()}
 
-      <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button
-          variant="outline"
-          onClick={() => (onCancel ? onCancel() : onOpenChange(false))}
-          data-testid="button-task-cancel"
-        >
-          Cancel
-        </Button>
-        <Button
-          onClick={onSaveClick}
-          disabled={!canSave || saveIsPending}
-          data-testid="button-task-save"
-        >
-          {saveButtonLabel}
-        </Button>
+      {/* PR #31 — page-mode footer mirrors the dialog footer's edit-mode
+          layout: Delete on the left (only in edit modes), Cancel + Save on
+          the right. Inbox flow stays as it was (create-only) so Delete is
+          naturally hidden there because mode === "create". */}
+      <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+        {mode !== "create" ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDeleteClick}
+            disabled={deleteMutation.isPending}
+            data-testid="button-task-delete"
+            className="text-destructive hover:text-destructive"
+          >
+            <Trash2 className="w-4 h-4 mr-1" />
+            Delete
+          </Button>
+        ) : (
+          <span />
+        )}
+        <div className="flex gap-2 sm:justify-end">
+          <Button
+            variant="outline"
+            onClick={() => (onCancel ? onCancel() : onOpenChange(false))}
+            data-testid="button-task-cancel"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={onSaveClick}
+            disabled={!canSave || saveIsPending}
+            data-testid="button-task-save"
+          >
+            {saveButtonLabel}
+          </Button>
+        </div>
       </div>
     </div>
   ) : (

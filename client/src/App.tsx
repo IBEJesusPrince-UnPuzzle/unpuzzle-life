@@ -22,6 +22,8 @@ import ProjectEditPage from "@/pages/project-edit";
 import AuthPage, { RegisterPage } from "@/pages/auth-page";
 import AdminPage from "@/pages/admin";
 import AgendaPage from "@/pages/agenda";
+import AgendaTaskNewPage from "@/pages/agenda-task-new";
+import AgendaTaskEditPage from "@/pages/agenda-task-edit";
 import ClarityPage from "@/pages/clarity";
 import SupportPage from "@/pages/support";
 import SupportRolesPage from "@/pages/support-roles";
@@ -63,6 +65,9 @@ function AppRouter() {
         <Redirect to="/agenda" />
       </Route>
       <Route path="/agenda" component={AgendaPage} />
+      {/* PR #31 — page-mode replacements for the legacy dialog. */}
+      <Route path="/agenda/tasks/new" component={AgendaTaskNewPage} />
+      <Route path="/agenda/tasks/:id/edit" component={AgendaTaskEditPage} />
       <Route path="/clarity" component={ClarityPage} />
       <Route path="/support" component={SupportPage} />
       <Route path="/support/roles" component={SupportRolesPage} />
