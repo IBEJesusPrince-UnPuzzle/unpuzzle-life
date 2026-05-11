@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, and, desc, asc, isNull, gte, or } from "drizzle-orm";
+import { eq, and, desc, asc, isNull, gte, or, inArray } from "drizzle-orm";
 import {
   users, invitations,
   projects, inboxItems, weeklyReviews,
@@ -682,6 +682,25 @@ export const db = drizzle(sqlite);
 //                     responsibilities are recurring by nature — §23).
 //                     Mirrors responsibilities.recurrenceRule.
 // =============================================================================
+// PR #29h — return shape of the cascading project delete. Per-table change
+// counts so the client can format an accurate toast and we can verify the
+// cascade in smoke tests.
+export type ProjectDeleteSummary = {
+  mode: "delete" | "preserve";
+  project: number;
+  projectTasks: number;
+  agendaTasksDeleted: number;   // populated when mode='delete'
+  agendaTasksPreserved: number; // populated when mode='preserve'
+  links: number;
+  people: number;
+  places: number;
+  things: number;
+  providers: number;
+  conditions: number;
+  responsibility: number;
+  inboxNulled: number;
+};
+
 export type ResponsibilityScheduleInput = {
   // PR #24 — renamed from `date` to mirror the agenda_tasks.start_date column.
   startDate: string;
@@ -711,7 +730,13 @@ export interface IStorage {
   getProjects(userId: number): Project[];
   createProject(userId: number, data: InsertProject): Project;
   updateProject(userId: number, id: number, data: Partial<InsertProject>): Project | undefined;
-  deleteProject(userId: number, id: number): void;
+  // PR #29h — deleteProject now cascades. mode='delete' hard-deletes linked
+  // agenda chips; mode='preserve' flips them to origin='standalone'.
+  // Both modes cascade all 8 project-child tables and null inbox refs.
+  deleteProject(userId: number, id: number, mode?: "delete" | "preserve"): ProjectDeleteSummary;
+  // PR #29h — count of agenda_tasks linked to this project via its
+  // project_tasks rows. Drives the radio visibility in the delete dialog.
+  getLinkedAgendaCountForProject(userId: number, projectId: number): number;
 
   // Inbox
   getInboxItems(userId: number): InboxItem[];
@@ -974,8 +999,171 @@ export class DatabaseStorage implements IStorage {
   updateProject(userId: number, id: number, data: Partial<InsertProject>): Project | undefined {
     return db.update(projects).set(data).where(and(eq(projects.id, id), eq(projects.userId, userId))).returning().get();
   }
-  deleteProject(userId: number, id: number): void {
-    db.delete(projects).where(and(eq(projects.id, id), eq(projects.userId, userId))).run();
+  // PR #29h — cascade delete across all project children + linked agenda
+  // chips + null inbox refs. All in a single SQLite transaction so a partial
+  // failure rolls back. mode='delete' removes linked agenda_tasks rows;
+  // mode='preserve' flips them to standalone (origin='standalone', null id).
+  deleteProject(
+    userId: number,
+    id: number,
+    mode: "delete" | "preserve" = "delete",
+  ): ProjectDeleteSummary {
+    // Empty summary returned when the project isn't found / isn't owned by
+    // this user. The handler checks `summary.project === 0` to 404.
+    const emptySummary: ProjectDeleteSummary = {
+      mode,
+      project: 0,
+      projectTasks: 0,
+      agendaTasksDeleted: 0,
+      agendaTasksPreserved: 0,
+      links: 0,
+      people: 0,
+      places: 0,
+      things: 0,
+      providers: 0,
+      conditions: 0,
+      responsibility: 0,
+      inboxNulled: 0,
+    };
+
+    const tx = sqlite.transaction(() => {
+      // Ownership pre-check inside the tx — the junction tables don't carry
+      // userId, so we can't filter them by it directly. Returning early here
+      // also gives the route handler a clean 404 path.
+      const owned = db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, id), eq(projects.userId, userId)))
+        .get();
+      if (!owned) return emptySummary;
+
+      // Capture project_task ids first so we can target agenda_tasks before
+      // the project_tasks rows go away.
+      const taskRows = db
+        .select({ id: projectTasks.id })
+        .from(projectTasks)
+        .where(and(eq(projectTasks.projectId, id), eq(projectTasks.userId, userId)))
+        .all();
+      const taskIds = taskRows.map(r => r.id);
+
+      // Touch agenda_tasks first while the originId join is still valid.
+      let agendaTasksDeleted = 0;
+      let agendaTasksPreserved = 0;
+      if (taskIds.length > 0) {
+        if (mode === "delete") {
+          const res = db
+            .delete(agendaTasks)
+            .where(and(
+              eq(agendaTasks.userId, userId),
+              eq(agendaTasks.origin, "project"),
+              inArray(agendaTasks.originId, taskIds),
+            ))
+            .run();
+          agendaTasksDeleted = Number(res.changes ?? 0);
+        } else {
+          const res = db
+            .update(agendaTasks)
+            .set({ origin: "standalone", originId: null })
+            .where(and(
+              eq(agendaTasks.userId, userId),
+              eq(agendaTasks.origin, "project"),
+              inArray(agendaTasks.originId, taskIds),
+            ))
+            .run();
+          agendaTasksPreserved = Number(res.changes ?? 0);
+        }
+      }
+
+      // Project-task rows themselves.
+      const ptRes = db
+        .delete(projectTasks)
+        .where(and(eq(projectTasks.projectId, id), eq(projectTasks.userId, userId)))
+        .run();
+
+      // 7 junction / child tables (env x5, responsibility, links).
+      // Junctions don't carry userId — ownership was already verified above.
+      const linksRes = db
+        .delete(projectLinks)
+        .where(and(eq(projectLinks.projectId, id), eq(projectLinks.userId, userId)))
+        .run();
+      const peopleRes = db
+        .delete(projectPeople)
+        .where(eq(projectPeople.projectId, id))
+        .run();
+      const placesRes = db
+        .delete(projectPlaces)
+        .where(eq(projectPlaces.projectId, id))
+        .run();
+      const thingsRes = db
+        .delete(projectThings)
+        .where(eq(projectThings.projectId, id))
+        .run();
+      const providersRes = db
+        .delete(projectProviders)
+        .where(eq(projectProviders.projectId, id))
+        .run();
+      const conditionsRes = db
+        .delete(projectConditions)
+        .where(eq(projectConditions.projectId, id))
+        .run();
+      const respRes = db
+        .delete(projectResponsibility)
+        .where(eq(projectResponsibility.projectId, id))
+        .run();
+
+      // inbox_items.referenceProjectId — nullable FK, just null it out.
+      const inboxRes = db
+        .update(inboxItems)
+        .set({ referenceProjectId: null })
+        .where(and(eq(inboxItems.userId, userId), eq(inboxItems.referenceProjectId, id)))
+        .run();
+
+      // Finally the project row.
+      const projRes = db
+        .delete(projects)
+        .where(and(eq(projects.id, id), eq(projects.userId, userId)))
+        .run();
+
+      return {
+        mode,
+        project: Number(projRes.changes ?? 0),
+        projectTasks: Number(ptRes.changes ?? 0),
+        agendaTasksDeleted,
+        agendaTasksPreserved,
+        links: Number(linksRes.changes ?? 0),
+        people: Number(peopleRes.changes ?? 0),
+        places: Number(placesRes.changes ?? 0),
+        things: Number(thingsRes.changes ?? 0),
+        providers: Number(providersRes.changes ?? 0),
+        conditions: Number(conditionsRes.changes ?? 0),
+        responsibility: Number(respRes.changes ?? 0),
+        inboxNulled: Number(inboxRes.changes ?? 0),
+      };
+    });
+    return tx();
+  }
+
+  // PR #29h — count of agenda_tasks rows linked to this project via its
+  // project_tasks rows. Used by the delete dialog to decide whether to show
+  // the DELETE-vs-PRESERVE radio.
+  getLinkedAgendaCountForProject(userId: number, projectId: number): number {
+    const taskRows = db
+      .select({ id: projectTasks.id })
+      .from(projectTasks)
+      .where(and(eq(projectTasks.projectId, projectId), eq(projectTasks.userId, userId)))
+      .all();
+    const taskIds = taskRows.map(r => r.id);
+    if (taskIds.length === 0) return 0;
+    const rows = db
+      .select({ id: agendaTasks.id })
+      .from(agendaTasks)
+      .where(and(
+        eq(agendaTasks.userId, userId),
+        eq(agendaTasks.origin, "project"),
+        inArray(agendaTasks.originId, taskIds),
+      ))
+      .all();
+    return rows.length;
   }
 
   // Inbox
