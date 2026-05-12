@@ -27,6 +27,7 @@ import AgendaTaskEditPage from "@/pages/agenda-task-edit";
 import ClarityPage from "@/pages/clarity";
 import SupportPage from "@/pages/support";
 import SupportRolesPage from "@/pages/support-roles";
+import SupportResponsibilitiesPage from "@/pages/support-responsibilities";
 import SupportTypeListPage from "@/pages/support-type-list";
 import SupportRoleDetailPage from "@/pages/support-role-detail";
 import SupportRoleEditPage from "@/pages/support-role-edit";
@@ -72,6 +73,9 @@ function AppRouter() {
       <Route path="/clarity" component={ClarityPage} />
       <Route path="/support" component={SupportPage} />
       <Route path="/support/roles" component={SupportRolesPage} />
+      {/* /support/responsibilities mirrors /support/roles. Must be registered
+          BEFORE the /support/:type catch-all so wouter matches it first. */}
+      <Route path="/support/responsibilities" component={SupportResponsibilitiesPage} />
       {/* PR #33: Parameterized Support Makeup type page (people/places/things/providers/conditions). */}
       {/* Must register BEFORE any /support/* catch-alls; the inner page redirects on unknown :type. */}
       <Route path="/support/:type" component={SupportTypeListPage} />
