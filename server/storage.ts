@@ -1040,6 +1040,18 @@ export interface IStorage {
     isVirtual: boolean;
     masterId: number;
     originalDate: string | null;
+    // PR #39 — chip-layout enrichment.
+    // Populated for every row by getAgendaWindow:
+    //   - responsibility: roleNames from responsibility_role join.
+    //   - project:        projectName from project_tasks.project_id;
+    //                     responsibilityNames from project_responsibility.
+    //   - standalone:     roleNames is [roleName] when roleId set, else [].
+    // placeName = first Place support record by id ASC (no sortOrder column
+    // on the junction tables), pulled from the right junction per origin.
+    roleNames: string[];
+    projectName: string | null;
+    responsibilityNames: string[];
+    placeName: string | null;
   }>;
 
   // Phase 2: agenda default view
@@ -2475,7 +2487,15 @@ export class DatabaseStorage implements IStorage {
     userId: number,
     windowStart: string,
     windowEnd: string,
-  ): Array<AgendaTask & { isVirtual: boolean; masterId: number; originalDate: string | null }> {
+  ): Array<AgendaTask & {
+    isVirtual: boolean;
+    masterId: number;
+    originalDate: string | null;
+    roleNames: string[];
+    projectName: string | null;
+    responsibilityNames: string[];
+    placeName: string | null;
+  }> {
     const rows = db.select().from(agendaTasks).where(eq(agendaTasks.userId, userId)).all();
     const masters: AgendaTask[] = [];
     const overrides: AgendaTask[] = [];
@@ -2494,7 +2514,15 @@ export class DatabaseStorage implements IStorage {
       overrideBySeriesAndDate.set(overrideKey(o.seriesId, o.originalDate), o);
     }
 
-    const out: Array<AgendaTask & { isVirtual: boolean; masterId: number; originalDate: string | null }> = [];
+    const out: Array<AgendaTask & {
+      isVirtual: boolean;
+      masterId: number;
+      originalDate: string | null;
+      roleNames: string[];
+      projectName: string | null;
+      responsibilityNames: string[];
+      placeName: string | null;
+    }> = [];
 
     // 1. Expand masters; skip virtual instances that have an override (regardless of where the override moved to).
     //    For multi-day all-day masters we expand a widened window so that an
@@ -2539,6 +2567,11 @@ export class DatabaseStorage implements IStorage {
           isVirtual: true,
           masterId: m.id,
           originalDate: null,
+          // PR #39 — filled in by the enrichment pass below.
+          roleNames: [],
+          projectName: null,
+          responsibilityNames: [],
+          placeName: null,
         });
       }
     }
@@ -2560,6 +2593,10 @@ export class DatabaseStorage implements IStorage {
           isVirtual: false,
           masterId: o.seriesId ?? o.id,
           originalDate: o.originalDate,
+          roleNames: [],
+          projectName: null,
+          responsibilityNames: [],
+          placeName: null,
         });
       }
     }
@@ -2577,6 +2614,10 @@ export class DatabaseStorage implements IStorage {
           isVirtual: false,
           masterId: s.id,
           originalDate: null,
+          roleNames: [],
+          projectName: null,
+          responsibilityNames: [],
+          placeName: null,
         });
       }
     }
@@ -2634,6 +2675,212 @@ export class DatabaseStorage implements IStorage {
         if (!resp) continue;
         if (row.color == null) row.color = resp.color;
         if (row.title == null) row.title = resp.name;
+      }
+    }
+
+    // ----------------------------------------------------------------
+    // PR #39 — chip-layout enrichment (Day / 3-Day / Week chips).
+    //
+    // Goal: each row leaves this function with roleNames, projectName,
+    // responsibilityNames, placeName populated for whichever origin
+    // applies. Done with bulk selects so the cost stays O(rows + lookups)
+    // rather than O(rows × per-row queries).
+    // ----------------------------------------------------------------
+
+    // Pre-build a name lookup for all this user's roles, projects, and
+    // places. Cheap on a small dataset and avoids three more selects
+    // inside the per-origin loops.
+    const allRoles = db
+      .select({ id: roles.id, name: roles.name })
+      .from(roles)
+      .where(eq(roles.userId, userId))
+      .all();
+    const roleNameById = new Map(allRoles.map((r) => [r.id, r.name]));
+
+    const allPlaces = db
+      .select({ id: environmentPlaces.id, name: environmentPlaces.name })
+      .from(environmentPlaces)
+      .where(eq(environmentPlaces.userId, userId))
+      .all();
+    const placeNameById = new Map(allPlaces.map((p) => [p.id, p.name]));
+
+    const allProjects = db
+      .select({ id: projects.id, title: projects.title })
+      .from(projects)
+      .where(eq(projects.userId, userId))
+      .all();
+    const projectNameById = new Map(allProjects.map((p) => [p.id, p.title]));
+
+    // Responsibility name lookup. Some rows already resolved it above
+    // via the title COALESCE; we still need a clean name -> id map for
+    // the project-task case where the row's title is the task name.
+    const allResponsibilities = db
+      .select({ id: responsibilities.id, name: responsibilities.name })
+      .from(responsibilities)
+      .where(eq(responsibilities.userId, userId))
+      .all();
+    const responsibilityNameById = new Map(
+      allResponsibilities.map((r) => [r.id, r.name]),
+    );
+
+    // ---- Responsibility-origin enrichment -------------------------
+    // roleNames ← responsibility_role join (insertion order = id ASC)
+    // placeName ← first responsibility_places row by id ASC
+    if (responsibilityIds.size > 0) {
+      const respIdList = Array.from(responsibilityIds);
+
+      const respRoleRows = db
+        .select({
+          responsibilityId: responsibilityRole.responsibilityId,
+          roleId: responsibilityRole.roleId,
+        })
+        .from(responsibilityRole)
+        .where(inArray(responsibilityRole.responsibilityId, respIdList))
+        .orderBy(asc(responsibilityRole.id))
+        .all();
+      const rolesByResp = new Map<number, string[]>();
+      for (const r of respRoleRows) {
+        const name = roleNameById.get(r.roleId);
+        if (!name) continue;
+        const list = rolesByResp.get(r.responsibilityId) ?? [];
+        list.push(name);
+        rolesByResp.set(r.responsibilityId, list);
+      }
+
+      const respPlaceRows = db
+        .select({
+          responsibilityId: responsibilityPlaces.responsibilityId,
+          placeId: responsibilityPlaces.placeId,
+          id: responsibilityPlaces.id,
+        })
+        .from(responsibilityPlaces)
+        .where(inArray(responsibilityPlaces.responsibilityId, respIdList))
+        .orderBy(asc(responsibilityPlaces.id))
+        .all();
+      const firstPlaceByResp = new Map<number, number>();
+      for (const r of respPlaceRows) {
+        if (!firstPlaceByResp.has(r.responsibilityId)) {
+          firstPlaceByResp.set(r.responsibilityId, r.placeId);
+        }
+      }
+
+      for (const row of out) {
+        if (row.origin !== "responsibility" || row.originId == null) continue;
+        row.roleNames = rolesByResp.get(row.originId) ?? [];
+        const pid = firstPlaceByResp.get(row.originId);
+        row.placeName = pid != null ? (placeNameById.get(pid) ?? null) : null;
+      }
+    }
+
+    // ---- Project-task-origin enrichment ---------------------------
+    // projectName        ← project_tasks.projectId → projects.name
+    // responsibilityNames ← project_responsibility for that project
+    // placeName          ← first project_places row by id ASC
+    const projectTaskIds = new Set<number>();
+    for (const row of out) {
+      if (row.origin === "project" && row.originId != null) {
+        projectTaskIds.add(row.originId);
+      }
+    }
+    if (projectTaskIds.size > 0) {
+      const ptList = Array.from(projectTaskIds);
+      const ptRows = db
+        .select({ id: projectTasks.id, projectId: projectTasks.projectId })
+        .from(projectTasks)
+        .where(inArray(projectTasks.id, ptList))
+        .all();
+      const projectIdByTaskId = new Map(ptRows.map((p) => [p.id, p.projectId]));
+
+      const projectIdSet = new Set(ptRows.map((p) => p.projectId));
+      const projectIdList = Array.from(projectIdSet);
+
+      let respByProject = new Map<number, string[]>();
+      let firstPlaceByProject = new Map<number, number>();
+      if (projectIdList.length > 0) {
+        const prRows = db
+          .select({
+            projectId: projectResponsibility.projectId,
+            responsibilityId: projectResponsibility.responsibilityId,
+            id: projectResponsibility.id,
+          })
+          .from(projectResponsibility)
+          .where(inArray(projectResponsibility.projectId, projectIdList))
+          .orderBy(asc(projectResponsibility.id))
+          .all();
+        for (const r of prRows) {
+          const name = responsibilityNameById.get(r.responsibilityId);
+          if (!name) continue;
+          const list = respByProject.get(r.projectId) ?? [];
+          list.push(name);
+          respByProject.set(r.projectId, list);
+        }
+
+        const projPlaceRows = db
+          .select({
+            projectId: projectPlaces.projectId,
+            placeId: projectPlaces.placeId,
+            id: projectPlaces.id,
+          })
+          .from(projectPlaces)
+          .where(inArray(projectPlaces.projectId, projectIdList))
+          .orderBy(asc(projectPlaces.id))
+          .all();
+        for (const r of projPlaceRows) {
+          if (!firstPlaceByProject.has(r.projectId)) {
+            firstPlaceByProject.set(r.projectId, r.placeId);
+          }
+        }
+      }
+
+      for (const row of out) {
+        if (row.origin !== "project" || row.originId == null) continue;
+        const pid = projectIdByTaskId.get(row.originId);
+        if (pid == null) continue;
+        row.projectName = projectNameById.get(pid) ?? null;
+        row.responsibilityNames = respByProject.get(pid) ?? [];
+        const placeId = firstPlaceByProject.get(pid);
+        row.placeName = placeId != null ? (placeNameById.get(placeId) ?? null) : null;
+      }
+    }
+
+    // ---- Standalone-task-origin enrichment ------------------------
+    // roleNames ← [roleNameById.get(agenda_tasks.roleId)] if set
+    // placeName ← first agenda_task_places row by id ASC
+    const standaloneIds = new Set<number>();
+    for (const row of out) {
+      if (row.origin === "standalone") {
+        // For standalones the agenda_tasks row is the originating row; its
+        // id is what agenda_task_places references.
+        standaloneIds.add(row.id);
+      }
+    }
+    let firstPlaceByTask = new Map<number, number>();
+    if (standaloneIds.size > 0) {
+      const taskPlaceRows = db
+        .select({
+          agendaTaskId: agendaTaskPlaces.agendaTaskId,
+          placeId: agendaTaskPlaces.placeId,
+          id: agendaTaskPlaces.id,
+        })
+        .from(agendaTaskPlaces)
+        .where(inArray(agendaTaskPlaces.agendaTaskId, Array.from(standaloneIds)))
+        .orderBy(asc(agendaTaskPlaces.id))
+        .all();
+      for (const r of taskPlaceRows) {
+        if (!firstPlaceByTask.has(r.agendaTaskId)) {
+          firstPlaceByTask.set(r.agendaTaskId, r.placeId);
+        }
+      }
+    }
+    for (const row of out) {
+      if (row.origin !== "standalone") continue;
+      if (row.roleId != null) {
+        const name = roleNameById.get(row.roleId);
+        row.roleNames = name ? [name] : [];
+      }
+      const placeId = firstPlaceByTask.get(row.id);
+      if (placeId != null) {
+        row.placeName = placeNameById.get(placeId) ?? null;
       }
     }
 

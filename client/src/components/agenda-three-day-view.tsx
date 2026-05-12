@@ -35,6 +35,7 @@ import {
 import { findColor } from "@/lib/agenda-colors";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 import { CurrentTimeLine, useAgendaZoom, usePinchZoom } from "@/components/agenda-time-grid-shared";
+import { AgendaChipContent } from "@/components/agenda-chip-content";
 import { AgendaAllDayStrip } from "@/components/agenda-all-day-strip";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -272,17 +273,13 @@ function ThreeDayColumn({
             }}
             data-testid={`threeday-chip-${it.id}-${it.startDate}`}
           >
-            <div className="px-1 py-0.5">
-              {/* Vertical text wrap (Phase 3c): titles wrap onto multiple
-                  lines instead of truncating. Capped at 3 lines via
-                  line-clamp so very long titles still keep tight chip. */}
-              <div
-                className="text-[10px] font-medium leading-tight whitespace-normal break-words line-clamp-3"
-                style={{ color: c.hex }}
-              >
-                {it.title || "(untitled)"}
-              </div>
-            </div>
+            <AgendaChipContent
+              item={it}
+              startMin={p.startMin}
+              endMin={p.endMin}
+              titleHex={c.hex}
+              density="3day"
+            />
           </button>
         );
       })}

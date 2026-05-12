@@ -180,9 +180,19 @@ function computeDurationMinutes(
 }
 
 // The window endpoint enriches AgendaTask with these virtual-instance fields.
+// PR #39 — chip-layout enrichment fields (see server/storage.ts
+// getAgendaWindow). Always present on rows returned from /api/agenda:
+//   - roleNames:           [] when no roles linked
+//   - projectName:         null unless origin === 'project'
+//   - responsibilityNames: [] unless origin === 'project'
+//   - placeName:           null when no Place support linked
 export type AgendaWindowItem = AgendaTask & {
   isVirtual?: boolean;
   masterId?: number | null;
+  roleNames?: string[];
+  projectName?: string | null;
+  responsibilityNames?: string[];
+  placeName?: string | null;
 };
 
 type Props = {
