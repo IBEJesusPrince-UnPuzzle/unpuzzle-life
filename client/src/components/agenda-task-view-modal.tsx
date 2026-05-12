@@ -582,62 +582,89 @@ export function AgendaTaskViewModal({
               </div>
             </div>
 
-            {/* Support check block (Q-A: labeled, separate; Q-D: "(none)" when empty) */}
-            <div className="ml-8 mt-5">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Support check
+            {/* PR #45 — Support block split by category. Replaces the single
+                "SUPPORT CHECK" header with one section per type, each only
+                rendered when that type has at least one non-workaround row.
+                Row markup (icon + label text + status badge + nested
+                workaround) is unchanged — only the framing differs.
+
+                Locked headers (5/12/26):
+                  PEOPLE this involve/depend on...
+                  PLACES this happens...
+                  THINGS this needs...
+                  PROVIDERS this relies on...
+                  CONDITIONS that must be true for this to happen...
+
+                Empty supports across all five categories → render nothing
+                (no "(none)" placeholder). Loading state still shows once
+                above all sections. */}
+            {cardQuery.isLoading ? (
+              <div className="ml-8 mt-5 text-sm text-muted-foreground" data-testid="list-view-supports-loading">
+                Loading…
               </div>
-              <div className="mt-1 text-sm space-y-1" data-testid="list-view-supports">
-                {cardQuery.isLoading ? (
-                  <div className="text-muted-foreground">Loading…</div>
-                ) : supportRows.length === 0 ? (
-                  <div className="text-muted-foreground">(none)</div>
-                ) : (
-                  supportRows.map((row) => {
-                    const label = relationshipLabel(row.support.relationshipType);
-                    const icon =
-                      row.kind === "warn"
-                        ? "\u26a0"
-                        : row.kind === "note"
-                        ? "\u2022"
-                        : "\u2713";
-                    const iconClass =
-                      row.kind === "warn"
-                        ? "text-amber-700 dark:text-amber-400"
-                        : "text-foreground";
-                    const labelText =
-                      row.kind === "warn"
-                        ? `${row.support.name} unavailable`
-                        : row.kind === "note"
-                        ? `${row.support.name} at risk`
-                        : row.support.name;
-                    return (
-                      <div key={`${row.support.type}-${row.support.id}`}>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className={iconClass}>
-                            {icon} {labelText}
-                          </span>
-                          {label && (
-                            <span className="text-xs text-muted-foreground shrink-0">{label}</span>
-                          )}
-                        </div>
-                        {row.kind === "warn" && row.workaround && (
-                          <div className="flex items-center justify-between gap-3 pl-5">
-                            <span className="text-foreground">
-                              {"\u2514\u2500 \u2713 "}
-                              {row.workaround.name} available as workaround
-                            </span>
-                            <span className="text-xs text-muted-foreground shrink-0">
-                              {relationshipLabel(row.workaround.relationshipType)}
-                            </span>
+            ) : (
+              ([
+                { type: "people" as const,     header: "People this involve/depend on..." },
+                { type: "places" as const,     header: "Places this happens..." },
+                { type: "things" as const,     header: "Things this needs..." },
+                { type: "providers" as const,  header: "Providers this relies on..." },
+                { type: "conditions" as const, header: "Conditions that must be true for this to happen..." },
+              ]).map((section) => {
+                const rowsForType = supportRows.filter((r) => r.support.type === section.type);
+                if (rowsForType.length === 0) return null;
+                return (
+                  <div className="ml-8 mt-5" key={section.type} data-testid={`block-view-supports-${section.type}`}>
+                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {section.header}
+                    </div>
+                    <div className="mt-1 text-sm space-y-1" data-testid={`list-view-supports-${section.type}`}>
+                      {rowsForType.map((row) => {
+                        const label = relationshipLabel(row.support.relationshipType);
+                        const icon =
+                          row.kind === "warn"
+                            ? "\u26a0"
+                            : row.kind === "note"
+                            ? "\u2022"
+                            : "\u2713";
+                        const iconClass =
+                          row.kind === "warn"
+                            ? "text-amber-700 dark:text-amber-400"
+                            : "text-foreground";
+                        const labelText =
+                          row.kind === "warn"
+                            ? `${row.support.name} unavailable`
+                            : row.kind === "note"
+                            ? `${row.support.name} at risk`
+                            : row.support.name;
+                        return (
+                          <div key={`${row.support.type}-${row.support.id}`}>
+                            <div className="flex items-center justify-between gap-3">
+                              <span className={iconClass}>
+                                {icon} {labelText}
+                              </span>
+                              {label && (
+                                <span className="text-xs text-muted-foreground shrink-0">{label}</span>
+                              )}
+                            </div>
+                            {row.kind === "warn" && row.workaround && (
+                              <div className="flex items-center justify-between gap-3 pl-5">
+                                <span className="text-foreground">
+                                  {"\u2514\u2500 \u2713 "}
+                                  {row.workaround.name} available as workaround
+                                </span>
+                                <span className="text-xs text-muted-foreground shrink-0">
+                                  {relationshipLabel(row.workaround.relationshipType)}
+                                </span>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })
+            )}
 
             {/* Expanded extras (kind-specific) */}
             {expanded && card?.kind === "responsibility" && card.linkedProject && (
