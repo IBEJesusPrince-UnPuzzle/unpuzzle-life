@@ -468,6 +468,13 @@ export function AgendaTaskModal({
         setCustomRuleSnapshot(null);
       }
       setRecurrenceEndDate(editing.recurrenceEndDate ?? "");
+      // PR #43 — seed roleId from the saved row so the page-mode Role
+      // dropdown shows the current value (was previously left at the
+      // initial null, so reopening an edited task always read "Choose
+      // role…" regardless of what was saved). The edit page hydrates
+      // `editing` from GET /api/agenda-tasks/:id, which returns the
+      // raw agenda_tasks row including roleId.
+      setRoleId(editing.roleId ?? null);
       // PR #32 — reset support state when opening an edit. SupportSection
       // re-fetches links from the API; the removal pen starts empty.
       setSupportDraft(emptySupportDraft);
@@ -603,6 +610,14 @@ export function AgendaTaskModal({
       // so a previously-recurring master can be flipped back to standalone.
       recurrenceRule: rule,
       recurrenceEndDate: rule ? recurrenceEndDate : null,
+      // PR #43 — include roleId on every save (create + edit-real). The
+      // page-mode Role dropdown writes into local state but the payload
+      // never carried the field, so the picked role was silently dropped
+      // on Save. Dialog mode doesn't render the dropdown, but roleId is
+      // seeded from editing.roleId on open, so the existing value passes
+      // through unchanged when a dialog-mode user only edits non-role
+      // fields. Explicit null is correct when the user clears the role.
+      roleId,
     };
   }
 

@@ -1915,16 +1915,52 @@ export function registerRoutes(server: Server, app: Express) {
       });
     }
 
-    // origin='standalone' — only resolve the role (if any). No task_support
-    // table exists; supports come back empty and the client renders "(none)".
+    // origin='standalone' — resolve the role (if any), then collect the
+    // task's own People/Places/Things/Providers/Conditions from the
+    // agenda_task_* pivot tables (added in PR #14b and written through by
+    // the page-mode Support card). Mirrors the responsibility / project
+    // pattern above so the popup renders identical "X · status" rows.
+    //
+    // PR #43 fix: previously the supports list was hard-coded to [] with a
+    // stale comment claiming no task_support table existed. The five pivot
+    // tables DO exist (agenda_task_people / _places / _things / _providers /
+    // _conditions), each carrying relationshipType + importance, so the
+    // collect-and-join shape is identical to collectSupports().
     const role = task.roleId != null
       ? storage.getRoles(userId).find((r) => r.id === task.roleId) ?? null
       : null;
+    const standaloneSupports: CardSupport[] = [];
+    for (const t of SUPPORT_TYPES) {
+      const links = storage.getAgendaTaskSupports(task.id, t);
+      if (!links.length) continue;
+      const fkCol = t === "people"
+        ? "personId"
+        : t === "places"
+        ? "placeId"
+        : t === "things"
+        ? "thingId"
+        : t === "providers"
+        ? "providerId"
+        : "conditionId";
+      for (const link of links) {
+        const supportId: number = (link as any)[fkCol];
+        const env = envByType[t].get(supportId);
+        if (!env) continue;
+        standaloneSupports.push({
+          type: t,
+          id: supportId,
+          name: env.name,
+          state: env.state,
+          relationshipType: (link as any).relationshipType,
+          importance: (link as any).importance,
+        });
+      }
+    }
     return res.json({
       task,
       kind: "standalone",
       role: role ? { id: role.id, name: role.name } : null,
-      supports: [],
+      supports: standaloneSupports,
     });
   });
   app.post("/api/agenda-tasks", (req, res) => {
