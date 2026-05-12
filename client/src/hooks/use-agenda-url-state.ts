@@ -21,7 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-export type AgendaView = "day" | "3day" | "week" | "month";
+export type AgendaView = "schedule" | "day" | "3day" | "week" | "month";
 
 export type AgendaUrlState = {
   d: string;             // YYYY-MM-DD; if missing in URL, defaults to today
@@ -38,7 +38,7 @@ function readSearch(search: string): AgendaUrlState {
   const overlay = p.get("overlay");
   const task = p.get("task");
   const master = p.get("master");
-  const allowedView: AgendaView[] = ["day", "3day", "week", "month"];
+  const allowedView: AgendaView[] = ["schedule", "day", "3day", "week", "month"];
   return {
     d: d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : todayIso(),
     v: v && (allowedView as string[]).includes(v) ? (v as AgendaView) : null,

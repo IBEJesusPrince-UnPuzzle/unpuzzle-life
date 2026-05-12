@@ -23,7 +23,7 @@
 //   - Timed chips: vertical text wrap (whitespace-normal, line-clamp-3)
 // =============================================================================
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { packLanes } from "@/lib/lane-pack";
 import {
@@ -34,7 +34,12 @@ import {
 } from "@/lib/agenda-utils";
 import { findColor } from "@/lib/agenda-colors";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
-import { CurrentTimeLine, useAgendaZoom, usePinchZoom } from "@/components/agenda-time-grid-shared";
+import {
+  CurrentTimeLine,
+  useAgendaZoom,
+  usePinchZoom,
+  useTodayScrollToPreviousHour,
+} from "@/components/agenda-time-grid-shared";
 import { AgendaChipContent } from "@/components/agenda-chip-content";
 import { AgendaAllDayStrip } from "@/components/agenda-all-day-strip";
 
@@ -44,6 +49,9 @@ const LEFT_GUTTER_PX = 60;
 type Props = {
   date: string; // anchor day; columns are date, date+1, date+2
   onSelect: (item: AgendaWindowItem) => void;
+  /** PR #40 — incremented on each Today tap so the view auto-scrolls
+   *  to the previous full hour. */
+  todayScrollKey?: number;
 };
 
 type StickyShellProps = Props & {
@@ -135,7 +143,7 @@ export function AgendaThreeDayStickyShell({
 // -----------------------------------------------------------------------------
 // Body — time grid only (mounted under the sticky shell)
 // -----------------------------------------------------------------------------
-export function AgendaThreeDayView({ date, onSelect }: Props) {
+export function AgendaThreeDayView({ date, onSelect, todayScrollKey = 0 }: Props) {
   const { from, to } = threeDayRange(date);
   const { hourHeightPx } = useAgendaZoom();
   const pinchHandlers = usePinchZoom();
@@ -156,8 +164,15 @@ export function AgendaThreeDayView({ date, onSelect }: Props) {
   const totalHeight = hourHeightPx * 24;
   const hours = Array.from({ length: 24 }, (_, h) => h);
 
+  // PR #40 — Today button time-scroll. Fires when today is within the
+  // visible 3-day range and the Today key has been bumped.
+  const todayIso = toIsoDate(new Date());
+  const includesToday = days.includes(todayIso);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  useTodayScrollToPreviousHour(gridRef, includesToday, todayScrollKey, hourHeightPx);
+
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col" ref={gridRef}>
       {/* Time grid */}
       <div
         className="grid"

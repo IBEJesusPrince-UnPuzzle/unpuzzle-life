@@ -30,7 +30,7 @@
 // cards measure inside it, not against the whole page.
 // =============================================================================
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { packLanes } from "@/lib/lane-pack";
 import {
@@ -39,7 +39,11 @@ import {
   formatDurationLabel,
 } from "@/lib/agenda-utils";
 import { findColor } from "@/lib/agenda-colors";
-import { useAgendaZoom, usePinchZoom } from "@/components/agenda-time-grid-shared";
+import {
+  useAgendaZoom,
+  usePinchZoom,
+  useTodayScrollToPreviousHour,
+} from "@/components/agenda-time-grid-shared";
 import { AgendaChipContent } from "@/components/agenda-chip-content";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 
@@ -49,9 +53,12 @@ const GUTTER_WIDTH_PX = 60;
 type Props = {
   date: string; // YYYY-MM-DD
   onSelect: (item: AgendaWindowItem) => void;
+  /** PR #40 — incremented on each Today tap so the view auto-scrolls to
+   *  the previous full hour. */
+  todayScrollKey?: number;
 };
 
-export function AgendaDayView({ date, onSelect }: Props) {
+export function AgendaDayView({ date, onSelect, todayScrollKey = 0 }: Props) {
   const { hourHeightPx } = useAgendaZoom();
   const pinchHandlers = usePinchZoom();
   const { data: items = [] } = useQuery<AgendaWindowItem[]>({
@@ -114,8 +121,13 @@ export function AgendaDayView({ date, onSelect }: Props) {
   const totalHeight = hourHeightPx * 24;
   const hours = Array.from({ length: 24 }, (_, h) => h);
 
+  // PR #40 — Today button time-scroll. Only fires when this view's date
+  // is today AND the Today key has been bumped by a Today tap.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  useTodayScrollToPreviousHour(gridRef, isToday, todayScrollKey, hourHeightPx);
+
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col" ref={gridRef}>
       {/* Time grid — CSS grid with a fixed gutter and a flexible card column.
           The whole block sits in normal page flow; <main> handles scroll. */}
       <div

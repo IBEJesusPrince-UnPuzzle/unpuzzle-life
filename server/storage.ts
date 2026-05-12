@@ -1052,6 +1052,7 @@ export interface IStorage {
     projectName: string | null;
     responsibilityNames: string[];
     placeName: string | null;
+    placeCount: number;
   }>;
 
   // Phase 2: agenda default view
@@ -2495,6 +2496,7 @@ export class DatabaseStorage implements IStorage {
     projectName: string | null;
     responsibilityNames: string[];
     placeName: string | null;
+    placeCount: number;
   }> {
     const rows = db.select().from(agendaTasks).where(eq(agendaTasks.userId, userId)).all();
     const masters: AgendaTask[] = [];
@@ -2522,6 +2524,7 @@ export class DatabaseStorage implements IStorage {
       projectName: string | null;
       responsibilityNames: string[];
       placeName: string | null;
+      placeCount: number;
     }> = [];
 
     // 1. Expand masters; skip virtual instances that have an override (regardless of where the override moved to).
@@ -2572,6 +2575,7 @@ export class DatabaseStorage implements IStorage {
           projectName: null,
           responsibilityNames: [],
           placeName: null,
+          placeCount: 0,
         });
       }
     }
@@ -2597,6 +2601,7 @@ export class DatabaseStorage implements IStorage {
           projectName: null,
           responsibilityNames: [],
           placeName: null,
+          placeCount: 0,
         });
       }
     }
@@ -2618,6 +2623,7 @@ export class DatabaseStorage implements IStorage {
           projectName: null,
           responsibilityNames: [],
           placeName: null,
+          placeCount: 0,
         });
       }
     }
@@ -2757,18 +2763,19 @@ export class DatabaseStorage implements IStorage {
         .where(inArray(responsibilityPlaces.responsibilityId, respIdList))
         .orderBy(asc(responsibilityPlaces.id))
         .all();
-      const firstPlaceByResp = new Map<number, number>();
+      const placesByResp = new Map<number, number[]>();
       for (const r of respPlaceRows) {
-        if (!firstPlaceByResp.has(r.responsibilityId)) {
-          firstPlaceByResp.set(r.responsibilityId, r.placeId);
-        }
+        const list = placesByResp.get(r.responsibilityId) ?? [];
+        list.push(r.placeId);
+        placesByResp.set(r.responsibilityId, list);
       }
 
       for (const row of out) {
         if (row.origin !== "responsibility" || row.originId == null) continue;
         row.roleNames = rolesByResp.get(row.originId) ?? [];
-        const pid = firstPlaceByResp.get(row.originId);
-        row.placeName = pid != null ? (placeNameById.get(pid) ?? null) : null;
+        const placeIds = placesByResp.get(row.originId) ?? [];
+        row.placeCount = placeIds.length;
+        row.placeName = placeIds.length > 0 ? (placeNameById.get(placeIds[0]) ?? null) : null;
       }
     }
 
@@ -2795,7 +2802,7 @@ export class DatabaseStorage implements IStorage {
       const projectIdList = Array.from(projectIdSet);
 
       let respByProject = new Map<number, string[]>();
-      let firstPlaceByProject = new Map<number, number>();
+      let placesByProject = new Map<number, number[]>();
       if (projectIdList.length > 0) {
         const prRows = db
           .select({
@@ -2826,9 +2833,9 @@ export class DatabaseStorage implements IStorage {
           .orderBy(asc(projectPlaces.id))
           .all();
         for (const r of projPlaceRows) {
-          if (!firstPlaceByProject.has(r.projectId)) {
-            firstPlaceByProject.set(r.projectId, r.placeId);
-          }
+          const list = placesByProject.get(r.projectId) ?? [];
+          list.push(r.placeId);
+          placesByProject.set(r.projectId, list);
         }
       }
 
@@ -2838,8 +2845,9 @@ export class DatabaseStorage implements IStorage {
         if (pid == null) continue;
         row.projectName = projectNameById.get(pid) ?? null;
         row.responsibilityNames = respByProject.get(pid) ?? [];
-        const placeId = firstPlaceByProject.get(pid);
-        row.placeName = placeId != null ? (placeNameById.get(placeId) ?? null) : null;
+        const placeIds = placesByProject.get(pid) ?? [];
+        row.placeCount = placeIds.length;
+        row.placeName = placeIds.length > 0 ? (placeNameById.get(placeIds[0]) ?? null) : null;
       }
     }
 
@@ -2854,7 +2862,7 @@ export class DatabaseStorage implements IStorage {
         standaloneIds.add(row.id);
       }
     }
-    let firstPlaceByTask = new Map<number, number>();
+    let placesByTask = new Map<number, number[]>();
     if (standaloneIds.size > 0) {
       const taskPlaceRows = db
         .select({
@@ -2867,9 +2875,9 @@ export class DatabaseStorage implements IStorage {
         .orderBy(asc(agendaTaskPlaces.id))
         .all();
       for (const r of taskPlaceRows) {
-        if (!firstPlaceByTask.has(r.agendaTaskId)) {
-          firstPlaceByTask.set(r.agendaTaskId, r.placeId);
-        }
+        const list = placesByTask.get(r.agendaTaskId) ?? [];
+        list.push(r.placeId);
+        placesByTask.set(r.agendaTaskId, list);
       }
     }
     for (const row of out) {
@@ -2878,9 +2886,10 @@ export class DatabaseStorage implements IStorage {
         const name = roleNameById.get(row.roleId);
         row.roleNames = name ? [name] : [];
       }
-      const placeId = firstPlaceByTask.get(row.id);
-      if (placeId != null) {
-        row.placeName = placeNameById.get(placeId) ?? null;
+      const placeIds = placesByTask.get(row.id) ?? [];
+      row.placeCount = placeIds.length;
+      if (placeIds.length > 0) {
+        row.placeName = placeNameById.get(placeIds[0]) ?? null;
       }
     }
 

@@ -193,6 +193,7 @@ export type AgendaWindowItem = AgendaTask & {
   projectName?: string | null;
   responsibilityNames?: string[];
   placeName?: string | null;
+  placeCount?: number;
 };
 
 type Props = {

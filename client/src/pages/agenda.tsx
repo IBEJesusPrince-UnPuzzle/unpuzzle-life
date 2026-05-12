@@ -32,7 +32,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, ListChecks, Plus } from "lucide-react";
+import { ListChecks, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiRequest } from "@/lib/queryClient";
 import {
@@ -46,6 +46,7 @@ import {
   weekRange,
 } from "@/lib/agenda-utils";
 import { AgendaDayView } from "@/components/agenda-day-view";
+import { AgendaScheduleView } from "@/components/agenda-schedule-view";
 import {
   AgendaThreeDayView,
   AgendaThreeDayStickyShell,
@@ -152,7 +153,16 @@ export default function AgendaPage() {
   }
   const goPrev = () => step(-1);
   const goNext = () => step(1);
-  const goToday = () => urlReplace({ d: toIsoDate(new Date()) });
+
+  // PR #40 — Today now also triggers a one-shot "scroll to previous full
+  // hour" effect on time-axis views (Schedule / Day / 3-Day / Week). We
+  // bump a counter every tap; child views watch this and auto-scroll.
+  // Month has no time axis so it ignores the counter.
+  const [todayScrollKey, setTodayScrollKey] = useState(0);
+  const goToday = () => {
+    urlReplace({ d: toIsoDate(new Date()) });
+    setTodayScrollKey((n) => n + 1);
+  };
 
   // PR #31 — [+ Task] now navigates to the page-mode create route.
   // The current `date` (URL `d` param) is forwarded so the form opens
@@ -219,13 +229,21 @@ export default function AgendaPage() {
     urlBack();
   }
 
+  // PR #40 — Schedule view tracks the day visible at the top of its
+  // scroll viewport, surfaced here so the header date label can follow.
+  const [scheduleVisibleDate, setScheduleVisibleDate] = useState<string | null>(null);
+
   // Header date label per view.
   const dateLabel = useMemo(() => {
+    if (view === "schedule") {
+      const iso = scheduleVisibleDate ?? date;
+      return formatMonthLabel(iso);
+    }
     if (view === "day") return formatDateContextLabel(date);
     if (view === "month") return formatMonthLabel(date);
     const range = view === "3day" ? threeDayRange(date) : weekRange(date);
     return formatRangeLabel(range.from, range.to);
-  }, [view, date]);
+  }, [view, date, scheduleVisibleDate]);
 
   // Swipe gesture — disabled while any modal/overlay is open so it doesn't
   // hijack interactions inside them.
@@ -266,52 +284,39 @@ export default function AgendaPage() {
           <AgendaTaskFilterMenu />
         </div>
 
-        {/* Row 2 */}
+        {/* Row 2 — PR #40: chevrons removed. Date label stands alone; nav
+            is swipe-only on grid views and scroll-driven on Schedule. */}
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={goPrev}
-            data-testid="button-prev-day"
-            className="h-7 w-7"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
           <div
-            className="text-sm font-medium tabular-nums px-2 text-center whitespace-nowrap"
+            className="text-sm font-medium tabular-nums px-2 whitespace-nowrap"
             data-testid="text-date-context"
           >
             {dateLabel}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={goNext}
-            data-testid="button-next-day"
-            className="h-7 w-7"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </Button>
           <div className="flex-1" />
 
-          {/* View selector */}
+          {/* View selector — PR #40 adds Schedule leftmost (5 segments). */}
           <div
             className="inline-flex shrink-0 rounded-md border bg-muted p-0.5"
             data-testid="view-selector"
           >
-            {(["day", "3day", "week", "month"] as const).map((v) => (
+            {(["schedule", "day", "3day", "week", "month"] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => changeView(v)}
                 className={
-                  "px-2.5 h-7 text-xs rounded-sm transition-colors whitespace-nowrap " +
+                  "px-2 h-7 text-xs rounded-sm transition-colors whitespace-nowrap " +
                   (view === v
                     ? "bg-background shadow-sm font-medium"
                     : "text-muted-foreground hover:text-foreground")
                 }
                 data-testid={`button-view-${v}`}
               >
-                {v === "3day" ? "3 Days" : v[0].toUpperCase() + v.slice(1)}
+                {v === "3day"
+                  ? "3 Days"
+                  : v === "schedule"
+                  ? "Schedule"
+                  : v[0].toUpperCase() + v.slice(1)}
               </button>
             ))}
           </div>
@@ -345,13 +350,40 @@ export default function AgendaPage() {
         )}
       </div>
 
-      {/* Body — wrapped in the swipe-nav container so all four views
+      {/* Body — wrapped in the swipe-nav container so all four grid views
           share the gesture. Swipe is horizontal-only and won't fire when
-          a modal or overlay is open. */}
-      <div {...swipeHandlers} data-testid="agenda-body">
-        {view === "day" && <AgendaDayView date={date} onSelect={openView} />}
-        {view === "3day" && <AgendaThreeDayView date={date} onSelect={openView} />}
-        {view === "week" && <AgendaWeekView date={date} onSelect={openView} />}
+          a modal or overlay is open. Schedule view is a scroll-driven
+          list and ignores swipe-nav. */}
+      <div {...(view === "schedule" ? {} : swipeHandlers)} data-testid="agenda-body">
+        {view === "schedule" && (
+          <AgendaScheduleView
+            date={date}
+            onSelect={openView}
+            todayScrollKey={todayScrollKey}
+            onVisibleDateChange={setScheduleVisibleDate}
+          />
+        )}
+        {view === "day" && (
+          <AgendaDayView
+            date={date}
+            onSelect={openView}
+            todayScrollKey={todayScrollKey}
+          />
+        )}
+        {view === "3day" && (
+          <AgendaThreeDayView
+            date={date}
+            onSelect={openView}
+            todayScrollKey={todayScrollKey}
+          />
+        )}
+        {view === "week" && (
+          <AgendaWeekView
+            date={date}
+            onSelect={openView}
+            todayScrollKey={todayScrollKey}
+          />
+        )}
         {view === "month" && <AgendaMonthView date={date} onDayTap={openOverlay} />}
       </div>
 
