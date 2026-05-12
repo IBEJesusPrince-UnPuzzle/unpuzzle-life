@@ -40,6 +40,7 @@ import {
 } from "@/lib/agenda-utils";
 import { findColor } from "@/lib/agenda-colors";
 import { useAgendaZoom, usePinchZoom } from "@/components/agenda-time-grid-shared";
+import { AgendaChipContent } from "@/components/agenda-chip-content";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 
 const MIN_CARD_HEIGHT_PX = 22;
@@ -180,20 +181,17 @@ export function AgendaDayView({ date, onSelect }: Props) {
                 }}
                 data-testid={`button-card-${it.id}`}
               >
-                <div className="px-2 py-1">
-                  <div
-                    className="text-xs font-semibold truncate"
-                    style={{ color: c.hex }}
-                  >
-                    {it.title || "(untitled)"}
-                  </div>
-                  {height >= 36 && (
-                    <div className="text-[10px] text-muted-foreground tabular-nums mt-0.5">
-                      {formatTimeLabel(p.startMin)} ·{" "}
-                      {formatDurationLabel(p.endMin - p.startMin)}
-                    </div>
-                  )}
-                </div>
+                {/* PR #39 — locked chip layout (agenda-grid-chip-layout-spec).
+                   Title → subline(s) → time + duration → place. Whatever
+                   fits within the chip's height (overflow:hidden) renders;
+                   nothing else does. */}
+                <AgendaChipContent
+                  item={it}
+                  startMin={p.startMin}
+                  endMin={p.endMin}
+                  titleHex={c.hex}
+                  density="day"
+                />
               </button>
             );
           })}

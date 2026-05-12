@@ -36,6 +36,7 @@ import {
 import { findColor } from "@/lib/agenda-colors";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 import { CurrentTimeLine, useAgendaZoom, usePinchZoom } from "@/components/agenda-time-grid-shared";
+import { AgendaChipContent } from "@/components/agenda-chip-content";
 import { AgendaAllDayStrip } from "@/components/agenda-all-day-strip";
 
 const LEFT_GUTTER_PX = 48;
@@ -271,19 +272,13 @@ function WeekColumn({
             }}
             data-testid={`week-chip-${it.id}-${it.startDate}`}
           >
-            <div className="px-1">
-              {/* Vertical text wrap (Phase 3c): titles wrap onto multiple
-                  lines so narrow Week columns can still show useful text
-                  ("TK-Pic", "Connect with Benn", "Wix Bill Due $34") at
-                  ~50px column width. Capped at 3 lines so a very long
-                  title doesn't push past the chip's height. */}
-              <div
-                className="text-[9px] font-medium leading-tight whitespace-normal break-words line-clamp-3"
-                style={{ color: c.hex }}
-              >
-                {it.title || "(untitled)"}
-              </div>
-            </div>
+            <AgendaChipContent
+              item={it}
+              startMin={p.startMin}
+              endMin={p.endMin}
+              titleHex={c.hex}
+              density="week"
+            />
           </button>
         );
       })}
