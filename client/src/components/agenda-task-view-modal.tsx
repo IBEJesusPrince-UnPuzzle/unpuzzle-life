@@ -695,6 +695,41 @@ export function AgendaTaskViewModal({
                 </div>
               )}
 
+            {/* PR #44 — Notes block. Per locked decision (5/12/26):
+                  • responsibility chips: no Notes (responsibility edit page
+                    has no notes field, so there's nothing to surface).
+                  • project chips: Notes only when expanded ([View details]),
+                    rendered alongside the other expanded extras.
+                  • standalone chips: Notes always visible at the bottom of
+                    the popup body (standalone has no [View details] toggle).
+                Only renders when task.notes is non-empty. The agenda edit
+                page writes to agenda_tasks.notes for both project and
+                standalone chips, and the card endpoint already returns the
+                full task row, so no server change is needed. */}
+            {expanded &&
+              card?.kind === "project" &&
+              card.task.notes && (
+                <div className="ml-8 mt-5" data-testid="block-view-notes">
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Notes
+                  </div>
+                  <div className="mt-1 text-sm text-foreground whitespace-pre-wrap break-words">
+                    {card.task.notes}
+                  </div>
+                </div>
+              )}
+
+            {card?.kind === "standalone" && card.task.notes && (
+              <div className="ml-8 mt-5" data-testid="block-view-notes">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Notes
+                </div>
+                <div className="mt-1 text-sm text-foreground whitespace-pre-wrap break-words">
+                  {card.task.notes}
+                </div>
+              </div>
+            )}
+
             {/* Action buttons row. The exact buttons depend on:
                   - card.kind
                   - expanded vs collapsed
