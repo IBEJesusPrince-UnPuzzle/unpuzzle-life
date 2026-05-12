@@ -12,30 +12,34 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
-// §18 LOCKED: Six-item sidebar in this exact order.
-// Footer: light/dark, Admin (admins only), Log out.
+// PR #42 — sidebar reorganized per user direction (May 12, 2026):
+//
+//   Primary group:  Agenda, Inbox, Review, Support, Projects
+//   "More" group:   Clarity, Data
+//   Admin group:    Admin (super_admin only)
+//   Footer:         theme toggle + sidebar trigger, then sign out
+//
+// This supersedes the §18 "six-item sidebar in this exact order" lock.
+// Inbox is promoted out of the transitional group and into primary.
+// Clarity and Data demoted to a secondary "More" group — they're less
+// frequent surfaces and the user wants them tucked under a heading.
 //
 // Icon notes:
-//   - "UserStar" is specified in the spec but does NOT exist in lucide-react.
-//     Using UserCheck as a placeholder. TODO §18: confirm lucide name and swap.
-//   - Inbox is not part of the §18 six. Per §18 Inbox is reachable from inside
-//     other pages. Until Phase 4 Clarity surfaces an inside-page Inbox entry,
-//     we keep a transitional Inbox link as a separate group below the six.
-//     TODO Phase 4: remove the transitional Inbox link once Clarity ships.
-// Sidebar item 3 was "Roles" in §18. Locked by addendum
-// v8-addendum-support-module.md (May 8, 2026): renamed to "Support" with
-// the Earth icon. Support = system of current; Projects = system of future.
-const navItems = [
+//   - "UserStar" is specified in §18 but does not exist in lucide-react.
+//     Using UserCheck as a placeholder. TODO: confirm lucide name and swap.
+//   - Support = system of current; Projects = system of future
+//     (v8-addendum-support-module.md, May 8, 2026).
+const primaryNavItems = [
   { title: "Agenda",   url: "/agenda",   icon: ListChecks },
-  { title: "Clarity",  url: "/clarity",  icon: Lightbulb },
+  { title: "Inbox",    url: "/inbox",    icon: Inbox },
+  { title: "Review",   url: "/review",   icon: UserCheck }, // TODO: UserStar
   { title: "Support",  url: "/support",  icon: Earth },
   { title: "Projects", url: "/projects", icon: Blocks },
-  { title: "Review",   url: "/review",   icon: UserCheck }, // TODO §18: UserStar
-  { title: "Data",     url: "/data",     icon: DatabaseZap },
 ];
 
-const transitionalNavItems = [
-  { title: "Inbox", url: "/inbox", icon: Inbox },
+const moreNavItems = [
+  { title: "Clarity", url: "/clarity", icon: Lightbulb },
+  { title: "Data",    url: "/data",    icon: DatabaseZap },
 ];
 
 export function AppSidebar() {
@@ -89,12 +93,13 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        {/* §18 locked six */}
+        {/* Primary nav — the five daily-driver surfaces. No group label
+           per user direction (May 12, 2026): the primary group is
+           unlabeled; only "More" gets a heading. */}
         <SidebarGroup>
-          <SidebarGroupLabel>Navigate</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
+              {primaryNavItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
@@ -112,12 +117,12 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* TRANSITIONAL — remove in Phase 4 (see comment above navItems) */}
+        {/* Secondary nav — less frequent surfaces tucked under "More". */}
         <SidebarGroup>
           <SidebarGroupLabel>More</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {transitionalNavItems.map((item) => (
+              {moreNavItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild

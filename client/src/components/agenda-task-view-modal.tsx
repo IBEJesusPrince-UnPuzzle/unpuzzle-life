@@ -485,39 +485,46 @@ export function AgendaTaskViewModal({
                 <X className="w-5 h-5" />
               </Button>
             </DialogPrimitive.Close>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleEdit}
-                aria-label="Edit"
-                data-testid="button-view-edit"
-                className="h-9 w-9"
-              >
-                <Pencil className="w-5 h-5" />
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="More options"
-                    data-testid="button-view-overflow"
-                    className="h-9 w-9"
-                  >
-                    <MoreVertical className="w-5 h-5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={handleDelete} data-testid="button-view-delete">
-                    Delete
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={handleDuplicate} data-testid="button-view-duplicate">
-                    Duplicate
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+            {/* PR #42 — responsibility cards have no inline edit affordances
+               in this popup. The only edit path is via [Open responsibility]
+               in the expanded details, which routes to /support/
+               responsibilities/:id. Tasks (project / standalone) keep the
+               pencil + 3-dot overflow as before. */}
+            {card?.kind !== "responsibility" && (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleEdit}
+                  aria-label="Edit"
+                  data-testid="button-view-edit"
+                  className="h-9 w-9"
+                >
+                  <Pencil className="w-5 h-5" />
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="More options"
+                      data-testid="button-view-overflow"
+                      className="h-9 w-9"
+                    >
+                      <MoreVertical className="w-5 h-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={handleDelete} data-testid="button-view-delete">
+                      Delete
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={handleDuplicate} data-testid="button-view-duplicate">
+                      Duplicate
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
           </div>
 
           {/* Body */}
