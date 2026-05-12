@@ -33,7 +33,7 @@ import {
   toIsoDate,
   weekRange,
 } from "@/lib/agenda-utils";
-import { findColor } from "@/lib/agenda-colors";
+import { findColor, pickContrastingText } from "@/lib/agenda-colors";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 import {
   CurrentTimeLine,
@@ -283,7 +283,7 @@ function WeekColumn({
               height: `${height}px`,
               left: `calc(${leftPct}% + 1px)`,
               width: `calc(${widthPct}% - 2px)`,
-              backgroundColor: c.softHex,
+              backgroundColor: c.hex,
             }}
             data-testid={`week-chip-${it.id}-${it.startDate}`}
           >
@@ -291,7 +291,7 @@ function WeekColumn({
               item={it}
               startMin={p.startMin}
               endMin={p.endMin}
-              titleHex={c.hex}
+              titleHex={pickContrastingText(c.hex)}
               density="week"
             />
           </button>

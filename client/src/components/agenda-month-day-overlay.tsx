@@ -23,7 +23,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { findColor } from "@/lib/agenda-colors";
+import { findColor, pickContrastingText } from "@/lib/agenda-colors";
 import { formatDateContextLabel, formatTimeLabel, timeToMinutes } from "@/lib/agenda-utils";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 
@@ -124,27 +124,30 @@ function OverlayBody({
       {ordered.map((it) => {
         const c = findColor(it.color);
         const isAD = it.isAllDay === 1;
+        // PR #41 — solid-fill rollout. Background uses the row's hex;
+        // foreground (time + title) uses a contrasting text color.
+        const fg = pickContrastingText(c.hex);
         return (
           <li key={`o-${it.id}-${it.startDate}-${it.time ?? "ad"}`}>
             <button
               type="button"
               onClick={() => onSelect(it)}
               className="w-full text-left rounded-md px-3 py-2 hover:opacity-95 transition-opacity"
-              style={{ backgroundColor: c.softHex }}
+              style={{ backgroundColor: c.hex }}
               data-testid={`month-day-overlay-row-${it.id}-${it.startDate}`}
             >
               <div className="flex items-center gap-2">
                 {!isAD && it.time && (
                   <div
                     className="text-[11px] tabular-nums shrink-0 w-16"
-                    style={{ color: c.hex }}
+                    style={{ color: fg, opacity: 0.9 }}
                   >
                     {formatTimeLabel(timeToMinutes(it.time) ?? 0)}
                   </div>
                 )}
                 <div
                   className="text-xs font-medium truncate"
-                  style={{ color: c.hex }}
+                  style={{ color: fg }}
                 >
                   {it.title || "(untitled)"}
                 </div>

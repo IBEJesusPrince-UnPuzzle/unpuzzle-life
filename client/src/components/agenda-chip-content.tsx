@@ -31,8 +31,11 @@
 // there's no JS-side line-priority hide order. Lines near the bottom get
 // clipped by the chip's bounding box.
 //
-// Color: title uses the row's strong-tint color; sublines use a muted
-// foreground so the title remains the visual anchor.
+// PR #41 — grid chips rolled from soft-tint backgrounds to solid-fill,
+// matching Schedule and Google parity. Title and sublines now use a
+// contrasting foreground (white or near-black, picked by luminance)
+// instead of the palette strong-tint. The `titleHex` prop is now the
+// chosen foreground hex — callers pass `pickContrastingText(c.hex)`.
 
 import { formatTimeLabel, formatDurationLabel } from "@/lib/agenda-utils";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
@@ -129,7 +132,8 @@ export function AgendaChipContent({
       {sublines.map((line, i) => (
         <div
           key={i}
-          className={`${sizes.meta} text-muted-foreground truncate mt-0.5`}
+          className={`${sizes.meta} truncate mt-0.5`}
+          style={{ color: titleHex, opacity: 0.9 }}
           data-testid={`chip-subline-${i}`}
         >
           {line}
@@ -137,7 +141,8 @@ export function AgendaChipContent({
       ))}
 
       <div
-        className={`${sizes.meta} text-muted-foreground tabular-nums truncate mt-0.5`}
+        className={`${sizes.meta} tabular-nums truncate mt-0.5`}
+        style={{ color: titleHex, opacity: 0.9 }}
         data-testid="chip-time"
       >
         {formatTimeLabel(startMin)}
@@ -146,7 +151,8 @@ export function AgendaChipContent({
 
       {placeName ? (
         <div
-          className={`${sizes.meta} text-muted-foreground truncate mt-0.5`}
+          className={`${sizes.meta} truncate mt-0.5`}
+          style={{ color: titleHex, opacity: 0.9 }}
           data-testid="chip-place"
         >
           @ {placeName}

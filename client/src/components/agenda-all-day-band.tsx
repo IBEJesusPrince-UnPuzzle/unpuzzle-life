@@ -12,7 +12,7 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { findColor } from "@/lib/agenda-colors";
+import { findColor, pickContrastingText } from "@/lib/agenda-colors";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 
 type Props = {
@@ -49,18 +49,17 @@ export function AgendaAllDayBand({ date, onSelect }: Props) {
       </div>
       {allDay.map((it) => {
         const c = findColor(it.color);
+        // PR #41 — solid-fill rollout. The leading dot is dropped because
+        // the chip body is now the same hex — the dot would be invisible.
+        const fg = pickContrastingText(c.hex);
         return (
           <button
             key={`${it.id}-${it.startDate}`}
             onClick={() => onSelect(it)}
             className="w-full text-left rounded-md px-2 py-1 text-xs font-medium hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: c.softHex, color: "#1f2937" }}
+            style={{ backgroundColor: c.hex, color: fg }}
             data-testid={`button-allday-${it.id}`}
           >
-            <span
-              className="inline-block w-2 h-2 rounded-full mr-2 align-middle"
-              style={{ backgroundColor: c.hex }}
-            />
             {it.title || "(untitled)"}
           </button>
         );

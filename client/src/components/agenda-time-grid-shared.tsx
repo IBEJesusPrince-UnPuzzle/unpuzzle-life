@@ -152,7 +152,7 @@ export function usePinchZoom() {
 }
 
 /**
- * useTodayScrollToPreviousHour — PR #40.
+ * useTodayScrollToPreviousHour — PR #40 (PR #41 fix).
  *
  * Watches a `todayScrollKey` counter; on every increment, if `isToday`
  * is true, scrolls the page so the previous full hour row in the time
@@ -160,10 +160,19 @@ export function usePinchZoom() {
  * header). Used by Day / 3-Day / Week views; Schedule has its own list
  * implementation.
  *
- * Pass the time-grid container ref — the element whose offsetTop marks
- * "hour 0" of the grid. We approximate sticky header height by reading
- * the topmost `position: sticky` ancestor at scroll time. If nothing
- * sticky is found the offset defaults to 0.
+ * PR #41 fix — the page's actual scroll container is the app shell's
+ * `<main className="overflow-auto">` (see App.tsx), NOT `window`. The
+ * original PR #40 implementation called `window.scrollTo`, which is a
+ * no-op against the real scroll container so Today only changed the
+ * day and never moved the time view. We now walk up from the container
+ * ref to find the nearest overflow:auto/scroll ancestor and scroll
+ * that element. Pattern matches `collapsible-sticky-header.tsx`.
+ *
+ * Also fixes the cross-day Today-tap race: when the user taps Today
+ * while looking at a different day, both `isToday` (via URL change)
+ * AND `todayScrollKey` flip in the same render. The scroll must wait
+ * for layout to settle so the grid's bounding rect is correct — we
+ * defer to requestAnimationFrame.
  */
 export function useTodayScrollToPreviousHour(
   containerRef: RefObject<HTMLDivElement | null>,
@@ -176,16 +185,64 @@ export function useTodayScrollToPreviousHour(
     if (todayScrollKey === 0) return; // initial render, not a Today tap
     const el = containerRef.current;
     if (!el) return;
-    // Previous full hour. At 8:37 -> 8. At exactly 8:00 -> 7 (so the
-    // 7–8 row sits at the top, matching Google's behavior of giving the
-    // user a hint of what's just before now).
-    const now = new Date();
-    const prevHour = Math.max(0, now.getHours() - (now.getMinutes() === 0 ? 1 : 0));
-    const gridTopAbs = el.getBoundingClientRect().top + window.scrollY;
-    const sticky = document.querySelector(".sticky");
-    const stickyHeight = sticky instanceof HTMLElement ? sticky.offsetHeight : 0;
-    const targetY = gridTopAbs + prevHour * hourHeightPx - stickyHeight;
-    window.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
+
+    // Find the nearest scrolling ancestor. Falls back to window when
+    // no element ancestor has overflow:auto/scroll.
+    function findScrollContainer(node: HTMLElement | null): HTMLElement | Window {
+      let cur: HTMLElement | null = node?.parentElement ?? null;
+      while (cur) {
+        const cs = getComputedStyle(cur);
+        if (
+          cs.overflowY === "auto" ||
+          cs.overflowY === "scroll" ||
+          cs.overflow === "auto" ||
+          cs.overflow === "scroll"
+        ) {
+          return cur;
+        }
+        cur = cur.parentElement;
+      }
+      return window;
+    }
+
+    // Defer until layout settles — when the user taps Today on a
+    // different day, the URL change kicks a re-render and the grid's
+    // bounding rect on the previous frame is wrong. rAF gives the
+    // browser one paint to lay out the new day.
+    const id = requestAnimationFrame(() => {
+      // Previous full hour. At 8:37 -> 8. At exactly 8:00 -> 7 (so the
+      // 7–8 row sits at the top, matching Google's behavior of giving
+      // the user a hint of what's just before now).
+      const now = new Date();
+      const prevHour = Math.max(
+        0,
+        now.getHours() - (now.getMinutes() === 0 ? 1 : 0),
+      );
+      const scroller = findScrollContainer(el);
+
+      // Sticky header offset — read from the topmost `position: sticky`
+      // element currently in the page. If none, default to 0.
+      const sticky = document.querySelector(".sticky");
+      const stickyHeight =
+        sticky instanceof HTMLElement ? sticky.offsetHeight : 0;
+
+      if (scroller === window) {
+        const gridTopAbs = el.getBoundingClientRect().top + window.scrollY;
+        const targetY = gridTopAbs + prevHour * hourHeightPx - stickyHeight;
+        window.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
+      } else {
+        const container = scroller as HTMLElement;
+        // Grid top relative to the scroller's content (= current scrollTop
+        // + delta between their viewport tops).
+        const containerRect = container.getBoundingClientRect();
+        const gridRect = el.getBoundingClientRect();
+        const gridTopInScroller =
+          gridRect.top - containerRect.top + container.scrollTop;
+        const targetY = gridTopInScroller + prevHour * hourHeightPx - stickyHeight;
+        container.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
+      }
+    });
+    return () => cancelAnimationFrame(id);
   }, [todayScrollKey, isToday, hourHeightPx, containerRef]);
 }
 

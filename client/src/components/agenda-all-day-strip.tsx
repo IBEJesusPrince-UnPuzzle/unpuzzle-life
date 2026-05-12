@@ -15,7 +15,7 @@
 // =============================================================================
 
 import { useMemo } from "react";
-import { findColor } from "@/lib/agenda-colors";
+import { findColor, pickContrastingText } from "@/lib/agenda-colors";
 import { packAllDay } from "@/lib/all-day-pack";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 
@@ -143,8 +143,8 @@ export function AgendaAllDayStrip({
                 style={{
                   gridColumn: `${colStart} / ${colEndExclusive}`,
                   gridRow: p.row + 1,
-                  backgroundColor: c.softHex,
-                  color: c.hex,
+                  backgroundColor: c.hex,
+                  color: pickContrastingText(c.hex),
                   // Bars that clip on either side get a flat hard edge and
                   // sit flush with the column border (no inner gap).
                   marginLeft: p.clipLeft ? 0 : 1,
