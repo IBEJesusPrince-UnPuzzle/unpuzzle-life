@@ -93,9 +93,10 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        {/* Primary nav — the five daily-driver surfaces. */}
+        {/* Primary nav — the five daily-driver surfaces. No group label
+           per user direction (May 12, 2026): the primary group is
+           unlabeled; only "More" gets a heading. */}
         <SidebarGroup>
-          <SidebarGroupLabel>Navigate</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {primaryNavItems.map((item) => (
