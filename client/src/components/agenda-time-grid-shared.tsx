@@ -7,7 +7,7 @@
 // should call useAgendaZoom() to get the live value; the constant remains
 // exported for SSR / tests / any place a static fallback is wanted.
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, type RefObject } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -149,6 +149,44 @@ export function usePinchZoom() {
     onTouchMove,
     onTouchEnd,
   };
+}
+
+/**
+ * useTodayScrollToPreviousHour — PR #40.
+ *
+ * Watches a `todayScrollKey` counter; on every increment, if `isToday`
+ * is true, scrolls the page so the previous full hour row in the time
+ * grid sits near the top of the visible area (just below the sticky
+ * header). Used by Day / 3-Day / Week views; Schedule has its own list
+ * implementation.
+ *
+ * Pass the time-grid container ref — the element whose offsetTop marks
+ * "hour 0" of the grid. We approximate sticky header height by reading
+ * the topmost `position: sticky` ancestor at scroll time. If nothing
+ * sticky is found the offset defaults to 0.
+ */
+export function useTodayScrollToPreviousHour(
+  containerRef: RefObject<HTMLDivElement | null>,
+  isToday: boolean,
+  todayScrollKey: number,
+  hourHeightPx: number,
+) {
+  useEffect(() => {
+    if (!isToday) return;
+    if (todayScrollKey === 0) return; // initial render, not a Today tap
+    const el = containerRef.current;
+    if (!el) return;
+    // Previous full hour. At 8:37 -> 8. At exactly 8:00 -> 7 (so the
+    // 7–8 row sits at the top, matching Google's behavior of giving the
+    // user a hint of what's just before now).
+    const now = new Date();
+    const prevHour = Math.max(0, now.getHours() - (now.getMinutes() === 0 ? 1 : 0));
+    const gridTopAbs = el.getBoundingClientRect().top + window.scrollY;
+    const sticky = document.querySelector(".sticky");
+    const stickyHeight = sticky instanceof HTMLElement ? sticky.offsetHeight : 0;
+    const targetY = gridTopAbs + prevHour * hourHeightPx - stickyHeight;
+    window.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
+  }, [todayScrollKey, isToday, hourHeightPx, containerRef]);
 }
 
 /**
