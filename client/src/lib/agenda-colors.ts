@@ -40,3 +40,24 @@ export function findColor(hex?: string | null): AgendaColor {
     AGENDA_PALETTE[AGENDA_PALETTE.length - 1]
   );
 }
+
+/**
+ * PR #41 — picks a foreground color (near-black or near-white) that has
+ * enough contrast against the given hex background. Used by every chip
+ * surface that now ships with solid-fill backgrounds (Day / 3-Day / Week
+ * timed chips, Month tiny chips, all-day band, month-day-overlay rows,
+ * Schedule chips).
+ *
+ * Heuristic: perceptual luminance, threshold 0.65. Banana lands above
+ * the line and gets dark text; every other palette entry gets white.
+ * Matches Google Calendar's behavior on the same palette.
+ */
+export function pickContrastingText(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return "#ffffff";
+  const r = parseInt(m[1].slice(0, 2), 16) / 255;
+  const g = parseInt(m[1].slice(2, 4), 16) / 255;
+  const b = parseInt(m[1].slice(4, 6), 16) / 255;
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 0.65 ? "#1f1f1f" : "#ffffff";
+}

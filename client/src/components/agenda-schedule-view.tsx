@@ -59,12 +59,84 @@ import {
   weekRange,
   timeToMinutes,
 } from "@/lib/agenda-utils";
-import { findColor } from "@/lib/agenda-colors";
+import { findColor, pickContrastingText } from "@/lib/agenda-colors";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 
 // 14-day window per fetch in either direction. The spec lists this as the
 // default fetch chunk; could be tuned later.
 const WINDOW_DAYS = 14;
+
+// ---------------------------------------------------------------------------
+// Scroll container resolution.
+//
+// The app's scrollable surface is `<main className="overflow-auto">` (see
+// App.tsx), NOT `window`. PR #41 fix — the original PR #40 code scrolled
+// `window`, which silently no-ops on the real layout, so the Today button
+// only changed the day and never moved the time view.
+//
+// Both helpers mirror the pattern in collapsible-sticky-header.tsx: walk up
+// from a child node until we find an element whose computed overflow makes
+// it a scroll container; fall back to `window` if none found.
+// ---------------------------------------------------------------------------
+function findScrollContainer(node: HTMLElement | null): HTMLElement | Window {
+  let cur: HTMLElement | null = node?.parentElement ?? null;
+  while (cur) {
+    const cs = getComputedStyle(cur);
+    if (
+      cs.overflowY === "auto" ||
+      cs.overflowY === "scroll" ||
+      cs.overflow === "auto" ||
+      cs.overflow === "scroll"
+    ) {
+      return cur;
+    }
+    cur = cur.parentElement;
+  }
+  return window;
+}
+
+/** Get current scrollTop of the resolved container. */
+function containerScrollTop(scroller: HTMLElement | Window): number {
+  return scroller === window
+    ? window.scrollY
+    : (scroller as HTMLElement).scrollTop;
+}
+
+/** Get total scroll height of the resolved container. */
+function containerScrollHeight(scroller: HTMLElement | Window): number {
+  return scroller === window
+    ? document.documentElement.scrollHeight
+    : (scroller as HTMLElement).scrollHeight;
+}
+
+/** Scroll target element so its top lands `offset` px below the scroller's
+ *  viewport top. Works for both the element and window cases. */
+function scrollElementToTop(
+  scroller: HTMLElement | Window,
+  target: HTMLElement,
+  offset: number,
+  behavior: ScrollBehavior,
+): void {
+  if (scroller === window) {
+    const top = target.getBoundingClientRect().top + window.scrollY;
+    window.scrollTo({ top: Math.max(0, top - offset), behavior });
+  } else {
+    const container = scroller as HTMLElement;
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const top = targetRect.top - containerRect.top + container.scrollTop;
+    container.scrollTo({ top: Math.max(0, top - offset), behavior });
+  }
+}
+
+/** Add `dy` px to the resolved container's current scroll position. */
+function scrollContainerBy(scroller: HTMLElement | Window, dy: number): void {
+  if (scroller === window) {
+    window.scrollBy(0, dy);
+  } else {
+    (scroller as HTMLElement).scrollTop += dy;
+  }
+}
 
 type Props = {
   /** Anchor date — used on first mount to position scroll on today
@@ -101,24 +173,6 @@ interface DayChip {
   dayTotal?: number; // total number of days the event spans
   /** True when this chip represents the final day of a multi-day event. */
   isFinalDay?: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Luminance helper — white text on dark backgrounds, black on light ones.
-// Uses the standard relative-luminance formula. Threshold tuned to match
-// Google's behavior on the 11-color palette (Banana = black text, every
-// other palette entry = white text).
-// ---------------------------------------------------------------------------
-function pickContrastingText(hex: string): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
-  if (!m) return "#ffffff";
-  const r = parseInt(m[1].slice(0, 2), 16) / 255;
-  const g = parseInt(m[1].slice(2, 4), 16) / 255;
-  const b = parseInt(m[1].slice(4, 6), 16) / 255;
-  // Quick perceptual luminance — no gamma correction needed at this
-  // resolution since we're picking between two values.
-  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return lum > 0.65 ? "#1f1f1f" : "#ffffff";
 }
 
 // ---------------------------------------------------------------------------
@@ -407,32 +461,37 @@ export function AgendaScheduleView({
   };
 
   // Run once on first non-empty group set: position today's first event
-  // (or today's day-header) near the top of the viewport.
+  // (or today's day-header) near the top of the viewport. rAF defers
+  // until after the chips have laid out so getBoundingClientRect reports
+  // the correct position.
   useEffect(() => {
     if (didInitialScroll.current) return;
     if (groups.length === 0) return;
 
-    const targetKey = findFirstTimedChipKey(todayIso);
-    let targetEl: HTMLElement | null = null;
-    if (targetKey) {
-      targetEl = chipRefs.current.get(targetKey) ?? null;
-    }
-    if (!targetEl) {
-      targetEl = dayHeaderRefs.current.get(todayIso) ?? null;
-    }
-    if (!targetEl) {
-      // Today has no group (no events anywhere near today) — fall back
-      // to whichever group sits closest after today, or the first group.
-      const after = groups.find((g) => g.day >= todayIso);
-      const fallbackDay = (after ?? groups[0]).day;
-      targetEl = dayHeaderRefs.current.get(fallbackDay) ?? null;
-    }
-    if (!targetEl) return;
+    const id = requestAnimationFrame(() => {
+      const targetKey = findFirstTimedChipKey(todayIso);
+      let targetEl: HTMLElement | null = null;
+      if (targetKey) {
+        targetEl = chipRefs.current.get(targetKey) ?? null;
+      }
+      if (!targetEl) {
+        targetEl = dayHeaderRefs.current.get(todayIso) ?? null;
+      }
+      if (!targetEl) {
+        // Today has no group (no events anywhere near today) — fall back
+        // to whichever group sits closest after today, or the first group.
+        const after = groups.find((g) => g.day >= todayIso);
+        const fallbackDay = (after ?? groups[0]).day;
+        targetEl = dayHeaderRefs.current.get(fallbackDay) ?? null;
+      }
+      if (!targetEl) return;
 
-    const top = targetEl.getBoundingClientRect().top + window.scrollY;
-    const offset = getStickyOffset() + 8;
-    window.scrollTo({ top: top - offset, behavior: "auto" });
-    didInitialScroll.current = true;
+      const scroller = findScrollContainer(containerRef.current);
+      const offset = getStickyOffset() + 8;
+      scrollElementToTop(scroller, targetEl, offset, "auto");
+      didInitialScroll.current = true;
+    });
+    return () => cancelAnimationFrame(id);
   }, [groups, todayIso, findFirstTimedChipKey]);
 
   // On Today-key bump: re-anchor to today. Schedule has no time grid, so
@@ -444,39 +503,45 @@ export function AgendaScheduleView({
     if (todayScrollKey === 0) return; // initial render only
     if (groups.length === 0) return;
 
-    const group = groups.find((g) => g.day === todayIso);
-    let targetEl: HTMLElement | null = null;
+    // Defer until after layout settles. Today-tap from a different day
+    // also re-anchors the page's `date` prop — the schedule range hasn't
+    // necessarily re-centered yet, and chip DOM nodes may still be moving.
+    const id = requestAnimationFrame(() => {
+      const group = groups.find((g) => g.day === todayIso);
+      let targetEl: HTMLElement | null = null;
 
-    if (group) {
-      // Look for the first chip whose start time is >= (now hour). At
-      // exactly :00 we use the hour-1 bound to give context, matching
-      // useTodayScrollToPreviousHour's behavior.
-      const nowDate = new Date();
-      const nowH = nowDate.getHours();
-      const nowM = nowDate.getMinutes();
-      const refH = nowM === 0 ? Math.max(0, nowH - 1) : nowH;
-      const refMin = refH * 60;
-      const found = group.chips.find((c) => {
-        if (c.item.isAllDay === 1) return false;
-        const s = timeToMinutes(c.item.time) ?? 0;
-        return s >= refMin;
-      });
-      const lastTimed = [...group.chips]
-        .reverse()
-        .find((c) => c.item.isAllDay !== 1);
-      const chipKey = (found ?? lastTimed)?.key ?? null;
-      if (chipKey) targetEl = chipRefs.current.get(chipKey) ?? null;
-      if (!targetEl) targetEl = dayHeaderRefs.current.get(todayIso) ?? null;
-    } else {
-      // Today has no group → header of closest future group, or first.
-      const after = groups.find((g) => g.day >= todayIso);
-      const fallbackDay = (after ?? groups[0]).day;
-      targetEl = dayHeaderRefs.current.get(fallbackDay) ?? null;
-    }
-    if (!targetEl) return;
-    const top = targetEl.getBoundingClientRect().top + window.scrollY;
-    const offset = getStickyOffset() + 8;
-    window.scrollTo({ top: top - offset, behavior: "smooth" });
+      if (group) {
+        // Look for the first chip whose start time is >= (now hour). At
+        // exactly :00 we use the hour-1 bound to give context, matching
+        // useTodayScrollToPreviousHour's behavior.
+        const nowDate = new Date();
+        const nowH = nowDate.getHours();
+        const nowM = nowDate.getMinutes();
+        const refH = nowM === 0 ? Math.max(0, nowH - 1) : nowH;
+        const refMin = refH * 60;
+        const found = group.chips.find((c) => {
+          if (c.item.isAllDay === 1) return false;
+          const s = timeToMinutes(c.item.time) ?? 0;
+          return s >= refMin;
+        });
+        const lastTimed = [...group.chips]
+          .reverse()
+          .find((c) => c.item.isAllDay !== 1);
+        const chipKey = (found ?? lastTimed)?.key ?? null;
+        if (chipKey) targetEl = chipRefs.current.get(chipKey) ?? null;
+        if (!targetEl) targetEl = dayHeaderRefs.current.get(todayIso) ?? null;
+      } else {
+        // Today has no group → header of closest future group, or first.
+        const after = groups.find((g) => g.day >= todayIso);
+        const fallbackDay = (after ?? groups[0]).day;
+        targetEl = dayHeaderRefs.current.get(fallbackDay) ?? null;
+      }
+      if (!targetEl) return;
+      const scroller = findScrollContainer(containerRef.current);
+      const offset = getStickyOffset() + 8;
+      scrollElementToTop(scroller, targetEl, offset, "smooth");
+    });
+    return () => cancelAnimationFrame(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayScrollKey]);
 
@@ -510,12 +575,14 @@ export function AgendaScheduleView({
       onVisibleDateChange(bestDay);
     };
 
-    // Fire once on mount to initialize, then on every scroll/resize.
+    // The real scroll source is the app's <main>, not window. Resolve
+    // once and listen on whichever element/window the walk-up returns.
+    const scroller = findScrollContainer(containerRef.current);
     onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
+    scroller.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll);
     return () => {
-      window.removeEventListener("scroll", onScroll);
+      scroller.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
     };
   }, [groups, onVisibleDateChange]);
@@ -541,18 +608,21 @@ export function AgendaScheduleView({
           if (expandingRef.current) continue;
           if (e.target === topEl) {
             expandingRef.current = true;
-            // Preserve scroll position: capture current scrollHeight, then
-            // after the next render adjust scrollTop by the delta.
-            const before = document.documentElement.scrollHeight;
+            // Preserve scroll position: capture current scrollHeight on
+            // the resolved container, then after the next render adjust
+            // scrollTop by the delta. The resolved container is the
+            // app's <main>, not window.
+            const scroller = findScrollContainer(containerRef.current);
+            const before = containerScrollHeight(scroller);
             setRange((r) => ({ from: addDays(r.from, -WINDOW_DAYS), to: r.to }));
             // Defer adjustment until layout is updated. The data fetch
             // is async, so we re-check on next frame in a loop until
             // scrollHeight grows — bounded by a few frames.
             let frames = 0;
             const tick = () => {
-              const after = document.documentElement.scrollHeight;
+              const after = containerScrollHeight(scroller);
               if (after > before) {
-                window.scrollBy(0, after - before);
+                scrollContainerBy(scroller, after - before);
                 expandingRef.current = false;
                 return;
               }

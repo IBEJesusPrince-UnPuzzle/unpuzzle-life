@@ -35,7 +35,7 @@ import {
   monthGridStartIso,
   monthGridEndIso,
 } from "@/lib/month-grid";
-import { findColor } from "@/lib/agenda-colors";
+import { findColor, pickContrastingText } from "@/lib/agenda-colors";
 import { packAllDay, type AllDayPlacement } from "@/lib/all-day-pack";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 
@@ -302,7 +302,7 @@ function SpanLayer({
                   (p.clipLeft ? "rounded-l-none " : "rounded-l-[3px] ") +
                   (p.clipRight ? "rounded-r-none" : "rounded-r-[3px]")
                 }
-                style={{ backgroundColor: c.softHex, color: c.hex }}
+                style={{ backgroundColor: c.hex, color: pickContrastingText(c.hex) }}
                 data-testid={`month-bar-${p.item.id}-${p.item.startDate}-${p.row}-${p.startCol}`}
               >
                 {p.item.title || "(untitled)"}
@@ -374,7 +374,7 @@ function MonthCell({
             <div
               key={`m-${it.id}-${it.startDate}-${it.time ?? "ad"}`}
               className="rounded-sm px-1 truncate text-[9px] leading-[14px] border border-white/40"
-              style={{ backgroundColor: c.softHex, color: c.hex, height: 14 }}
+              style={{ backgroundColor: c.hex, color: pickContrastingText(c.hex), height: 14 }}
               data-testid={`month-chip-${it.id}-${it.startDate}`}
             >
               {it.title || "(untitled)"}

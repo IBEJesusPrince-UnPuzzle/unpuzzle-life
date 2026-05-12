@@ -38,7 +38,7 @@ import {
   formatTimeLabel,
   formatDurationLabel,
 } from "@/lib/agenda-utils";
-import { findColor } from "@/lib/agenda-colors";
+import { findColor, pickContrastingText } from "@/lib/agenda-colors";
 import {
   useAgendaZoom,
   usePinchZoom,
@@ -189,19 +189,22 @@ export function AgendaDayView({ date, onSelect, todayScrollKey = 0 }: Props) {
                   height: `${height}px`,
                   left: `calc(${leftPct}% + 2px)`,
                   width: `calc(${widthPct}% - 4px)`,
-                  backgroundColor: c.softHex,
+                  backgroundColor: c.hex,
                 }}
                 data-testid={`button-card-${it.id}`}
               >
                 {/* PR #39 — locked chip layout (agenda-grid-chip-layout-spec).
                    Title → subline(s) → time + duration → place. Whatever
                    fits within the chip's height (overflow:hidden) renders;
-                   nothing else does. */}
+                   nothing else does.
+                   PR #41 — rolled to solid-fill (Google parity). titleHex
+                   is now the contrasting text color, not the palette strong
+                   tint. */}
                 <AgendaChipContent
                   item={it}
                   startMin={p.startMin}
                   endMin={p.endMin}
-                  titleHex={c.hex}
+                  titleHex={pickContrastingText(c.hex)}
                   density="day"
                 />
               </button>
