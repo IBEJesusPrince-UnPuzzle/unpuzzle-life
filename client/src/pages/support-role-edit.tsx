@@ -148,6 +148,20 @@ export default function SupportRoleEditPage({
           });
           const created = (await res.json()) as Role;
           createdIdRef.current = created.id;
+          // PR #47 — Prime the roles cache with the newly created row so
+          // that downstream `roles.find(r => r.id === createdId)` succeeds
+          // on the very next render. Without this prime, the cache holds
+          // the pre-create list, the lookup returns undefined, and the
+          // NotFound gate fires the moment isCreate flips false. This was
+          // the white-screen-after-typing bug in the 5/12/26 video.
+          queryClient.setQueryData<RoleWithPeople[]>(["/api/roles"], prev => {
+            const list = prev ?? [];
+            if (list.some(r => r.id === created.id)) return list;
+            // RoleWithPeople augments Role with a `people` array. New role
+            // has none yet — cast through `as` rather than fabricate fields
+            // that don't exist on Role.
+            return [...list, { ...created, people: [] } as RoleWithPeople];
+          });
           setCreatedId(created.id);
         } catch (err) {
           const msg = parseServerError(err as Error, "Couldn't create role");
