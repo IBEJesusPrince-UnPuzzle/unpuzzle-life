@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { Switch, Route, Router, Redirect, useLocation } from "wouter";
 import { useHashLocation } from "@/lib/hash-location";
+import { installKeyboardScroll } from "@/lib/keyboard-scroll";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -177,6 +179,11 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  // PR #48 — Install the global focusin scroll-into-view listener once on
+  // mount so typeahead suggestions stay visible above the on-screen keyboard.
+  useEffect(() => {
+    installKeyboardScroll();
+  }, []);
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
