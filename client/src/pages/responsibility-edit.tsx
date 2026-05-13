@@ -49,6 +49,7 @@ import { useAutosaveDraft } from "@/lib/use-autosave-draft";
 import { RolePicker } from "@/components/role-picker";
 import { SupportSection } from "@/components/support-section";
 import { CalendarSettingsCard, type CalendarSettings } from "@/components/calendar-settings-card";
+import { ResponsibilityDeleteDialog } from "@/components/responsibility-delete-dialog";
 import type { SupportType } from "@/components/env-picker";
 import { apiRequest } from "@/lib/queryClient";
 import { parseServerError } from "@/lib/parse-server-error";
@@ -141,6 +142,10 @@ export default function ResponsibilityEditPage({
   // "name + time" gate). On an existing responsibility, schedule changes
   // PATCH separately via saveCalendarSettings.
   const [pendingSchedule, setPendingSchedule] = useState<CalendarSettings | null>(null);
+  // PR #49 — Delete responsibility dialog open state. Only mounted when
+  // responsibility is non-null (existing edit), so the dialog has a stable
+  // id and name to display.
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   // createInFlight is a ref (not state) so flipping it doesn't re-run the
   // create effect — if it were state, the effect's cleanup would cancel the
   // in-flight POST's post-await navigation, leaving the user stranded on
@@ -710,9 +715,46 @@ export default function ResponsibilityEditPage({
             undoRemoval={undoRemoval}
           />
         )}
+
+        {/* PR #49 — Danger zone. Mirrors project-edit. Only renders when we
+            have a real persisted responsibility to delete. */}
+        {responsibility ? (
+          <div
+            className="mt-6 border-t pt-4"
+            data-testid="section-danger-zone"
+          >
+            <div className="text-xs font-medium text-muted-foreground mb-2">
+              Danger zone
+            </div>
+            <Button
+              variant="destructive"
+              onClick={() => setDeleteDialogOpen(true)}
+              data-testid="button-responsibility-delete"
+            >
+              Delete responsibility
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <EditPageUndoBar count={removalCount} onUndoAll={clearRemovals} />
+
+      {/* PR #49 — confirmation dialog. Mounted when we have a responsibility
+          so the dialog has a stable id and name to display. */}
+      {responsibility ? (
+        <ResponsibilityDeleteDialog
+          responsibilityId={responsibility.id}
+          responsibilityName={responsibility.name}
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          onDeleted={() => {
+            toast({
+              title: `Deleted ${responsibility.name}`,
+            });
+            setLocation("/support");
+          }}
+        />
+      ) : null}
     </div>
   );
 }
