@@ -116,10 +116,34 @@ export function useAutosaveDraft<T>(
     baselineRef.current = baseline;
   }, [baseline]);
   useEffect(() => {
+    // Already in sync with the saved baseline — nothing to do.
     if (isEqual(value, baselineRef.current)) return;
+    // The hook's own save normalised the value before sending; the server
+    // echoed back the normalised form. Matches lastSavedSnapshotRef.
     if (
       lastSavedSnapshotRef.current != null &&
       isEqual(value, lastSavedSnapshotRef.current)
+    ) {
+      return;
+    }
+    // PR #46 — The user's pre-trim draft (what's still in the input). When
+    // the server echoes a normalised value, this is the snapshot that
+    // matches "what the user sees on screen right now". Skip the reset.
+    if (
+      lastSentDraftRef.current != null &&
+      isEqual(value, lastSentDraftRef.current)
+    ) {
+      return;
+    }
+    // PR #46 — Echo-guard window. Within ECHO_GUARD_MS of a successful
+    // save, swallow incoming value-prop changes unless the user kept
+    // typing past the save (lastUserEditRef advanced beyond the save
+    // moment). Handles the case where the server response carries
+    // ancillary fields the hook can't compare against.
+    const now = Date.now();
+    if (
+      now < echoGuardUntilRef.current &&
+      lastUserEditRef.current < echoGuardUntilRef.current - ECHO_GUARD_MS
     ) {
       return;
     }
@@ -151,6 +175,27 @@ export function useAutosaveDraft<T>(
   // our own save round-tripping through the parent’s state" and avoid
   // wiping out the undo/redo stacks when the parent re-renders.
   const lastSavedSnapshotRef = useRef<T | null>(null);
+  // PR #46 — The exact draft we sent to save(). The reset effect compares
+  // the incoming `value` prop against this raw pre-save snapshot in addition
+  // to the post-save baseline. Why: the parent's save() typically trims
+  // / normalizes fields before POST/PATCH, so the server's echoed value
+  // can diverge from the user's still-untouched draft (e.g. trailing
+  // space stripped). Without this extra check the hook saw the echo as
+  // "new server data", forcibly reset draft state, and React re-rendered
+  // the focused <input>, jumping the caret to the end and flashing the
+  // spell-check underline. Caught on video 5/12/26 typing "UnPuzzle".
+  const lastSentDraftRef = useRef<T | null>(null);
+  // PR #46 — Guard window. After a successful save, ignore any incoming
+  // `value` prop change for this many ms unless the user has typed since
+  // the save fired. Catches the case where the server response carries
+  // extra fields (linked-people counts, timestamps, etc.) that the hook
+  // can't compare against the bare draft shape — same flashing root cause.
+  const ECHO_GUARD_MS = 1500;
+  const echoGuardUntilRef = useRef<number>(0);
+  // User-input watermark. setDraft() bumps this; the reset effect uses it
+  // to tell "this prop change came in after the user kept typing" (in
+  // which case the guard is voided and we DO accept the incoming value).
+  const lastUserEditRef = useRef<number>(0);
 
   const flushSave = useCallback(async () => {
     if (debounceTimerRef.current) {
@@ -162,10 +207,19 @@ export function useAutosaveDraft<T>(
       // Nothing to save.
       return;
     }
+    // PR #46 — Remember the pre-save snapshot so the reset effect can
+    // recognize the server's echo even after the parent's save() trims /
+    // normalizes fields. Set BEFORE the await so a fast round-trip can
+    // race against the reset effect and still hit the equality check.
+    lastSentDraftRef.current = snapshot;
     setIsSaving(true);
     try {
       await saveRef.current(snapshot);
       lastSavedSnapshotRef.current = snapshot;
+      // PR #46 — Open the echo-guard window. Any value-prop change in the
+      // next ECHO_GUARD_MS is presumed to be our save round-tripping back
+      // through React Query.
+      echoGuardUntilRef.current = Date.now() + ECHO_GUARD_MS;
       setBaseline(snapshot);
       setSavedAt(new Date().toISOString());
     } finally {
@@ -182,6 +236,11 @@ export function useAutosaveDraft<T>(
         setRedoStack([]);
         return next;
       });
+      // PR #46 — Watermark the user-edit time. Reset effect uses this to
+      // tell whether an incoming value-prop change crossed paths with
+      // continued typing (don't swallow it) vs landed during a quiet
+      // window after save (swallow it).
+      lastUserEditRef.current = Date.now();
       // Restart debounce window.
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
