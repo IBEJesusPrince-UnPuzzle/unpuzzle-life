@@ -299,6 +299,19 @@ export default function ResponsibilityEditPage({
         // setLocation, no invalidateQueries during typing; both fire
         // once in handleDone() before navigating away.
         createdIdRef.current = created.id;
+        // PR #47 — Prime the responsibilities cache with the new row so
+        // `responsibilities.find(r => r.id === createdId)` succeeds on
+        // the next render. Without this, the NotFound gate fires the
+        // moment isCreate flips false (same white-screen-after-typing
+        // bug as the role-edit path, video 5/12/26).
+        queryClient.setQueryData<Responsibility[]>(
+          ["/api/responsibilities"],
+          prev => {
+            const list = prev ?? [];
+            if (list.some(r => r.id === created.id)) return list;
+            return [...list, created];
+          },
+        );
         setCreatedId(created.id);
       } catch (err) {
         const msg = parseServerError(err as Error, "Couldn't create responsibility");
