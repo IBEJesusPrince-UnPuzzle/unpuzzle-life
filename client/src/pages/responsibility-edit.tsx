@@ -87,9 +87,17 @@ export default function ResponsibilityEditPage({
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  // PR #46 — Same anti-remount pattern as support-role-edit. On atomic
+  // create, stash the new id locally and stay mounted instead of
+  // setLocation-ing to the stable URL (which unmount/remounts wouter,
+  // drops focus, dismisses keyboard).
   const idParam = params?.id;
-  const isCreate = !idParam;
-  const id = isCreate ? null : Number(idParam);
+  const isCreateUrl = !idParam;
+  const createdIdRef = useRef<number | null>(null);
+  const [createdId, setCreatedId] = useState<number | null>(null);
+  const effectiveId = createdId ?? (isCreateUrl ? null : Number(idParam));
+  const isCreate = effectiveId == null;
+  const id = effectiveId;
   const validId = isCreate ? true : !!id && !isNaN(id as number);
 
   const { data: responsibilities = [] } = useQuery<Responsibility[]>({
@@ -151,11 +159,12 @@ export default function ResponsibilityEditPage({
         // (watching draft.name + pendingSchedule) handles it.
         return;
       }
+      // PR #46 — Removed per-save invalidateQueries; list pages refetch
+      // on remount via their own useQuery hooks.
       try {
         await apiRequest("PATCH", `/api/responsibilities/${id}`, {
           name: trimmedName,
         });
-        queryClient.invalidateQueries({ queryKey: ["/api/responsibilities"] });
       } catch (err) {
         const msg = parseServerError(err as Error, "Couldn't save");
         toast({ variant: "destructive", title: "Couldn't save", description: msg });
@@ -286,8 +295,11 @@ export default function ResponsibilityEditPage({
           },
         });
         const created = (await res.json()) as Responsibility;
-        queryClient.invalidateQueries({ queryKey: ["/api/responsibilities"] });
-        setLocation(`/responsibilities/${created.id}/edit`, { replace: true });
+        // PR #46 — Stash the new id locally instead of navigating. No
+        // setLocation, no invalidateQueries during typing; both fire
+        // once in handleDone() before navigating away.
+        createdIdRef.current = created.id;
+        setCreatedId(created.id);
       } catch (err) {
         const msg = parseServerError(err as Error, "Couldn't create responsibility");
         toast({ variant: "destructive", title: "Couldn't save", description: msg });
@@ -322,6 +334,9 @@ export default function ResponsibilityEditPage({
   async function handleDone() {
     // Flush pending name autosave.
     await done();
+    // PR #46 — Use the stashed created id (if a create just happened) or
+    // the URL id. Falls back through state too via `id` (= effectiveId).
+    const targetId = createdIdRef.current ?? id;
     if (!isCreate) {
       const ops: Promise<unknown>[] = [];
       const supportTypesTouched = new Set<SupportType>();
@@ -347,23 +362,31 @@ export default function ResponsibilityEditPage({
         } catch {
           // toasts already shown in onError
         }
-        await queryClient.invalidateQueries({
-          queryKey: [`/api/responsibilities/${id}/roles`],
-        });
-        await queryClient.invalidateQueries({ queryKey: ["/api/responsibility-roles"] });
-        for (const st of Array.from(supportTypesTouched)) {
-          await queryClient.invalidateQueries({
-            queryKey: [`/api/responsibilities/${id}/support/${st}`],
-          });
-        }
       }
       clearRemovals();
     }
-    if (isCreate) {
+    // PR #46 — Single batched invalidate before navigating. No invalidates
+    // fire during typing/autosave, so the form doesn't get yanked.
+    await queryClient.invalidateQueries({ queryKey: ["/api/responsibilities"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/responsibility-roles"] });
+    if (targetId != null) {
+      await queryClient.invalidateQueries({
+        queryKey: [`/api/responsibilities/${targetId}/schedule`],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: [`/api/responsibilities/${targetId}/roles`],
+      });
+      for (const st of ["people", "places", "things", "providers", "conditions"] as SupportType[]) {
+        await queryClient.invalidateQueries({
+          queryKey: [`/api/responsibilities/${targetId}/support/${st}`],
+        });
+      }
+    }
+    if (isCreateUrl && createdIdRef.current == null) {
       setLocation("/support");
     } else {
       // §11a compact saved view.
-      setLocation(`/responsibilities/${id}`);
+      setLocation(`/responsibilities/${targetId}`);
     }
   }
 

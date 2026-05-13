@@ -19,7 +19,7 @@
 //   - Cadence/dayOfWeek hidden from UI per addendum §A7.1 — server defaults
 //     on create and ignores on PATCH.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
@@ -78,10 +78,24 @@ export default function SupportRoleEditPage({
   const { toast } = useToast();
 
   // Mode is determined by params.id. /new → undefined → create. After first
-  // save we navigate to /support/roles/:id/edit so the URL is stable.
+  // save we used to navigate to /support/roles/:id/edit to give the URL
+  // stability, but that wouter setLocation forced wouter to unmount this
+  // component and mount a fresh one — dropping input focus and dismissing
+  // the keyboard mid-typing (PR #46 reproduction video, 5/12/26).
+  //
+  // Replacement (PR #46): once the POST succeeds, stash the new id in a
+  // ref and use it as the effective id for all subsequent PATCH calls.
+  // The URL stays /new until the user hits Done. handleDone() routes to
+  // the read-only detail page using the stashed id when present.
   const idParam = params?.id;
-  const isCreate = !idParam;
-  const id = isCreate ? null : Number(idParam);
+  const isCreateUrl = !idParam;
+  const createdIdRef = useRef<number | null>(null);
+  // Force a re-render after first create so derived state (queries gated
+  // on `id`, isCreate, etc.) picks up the new id.
+  const [createdId, setCreatedId] = useState<number | null>(null);
+  const effectiveId = createdId ?? (isCreateUrl ? null : Number(idParam));
+  const isCreate = effectiveId == null;
+  const id = effectiveId;
   const validId = isCreate ? true : !!id && !isNaN(id as number);
 
   const { data: roles = [] } = useQuery<RoleWithPeople[]>({
@@ -122,6 +136,10 @@ export default function SupportRoleEditPage({
       // Don't fire create on empty name. Don't fire PATCH on edit either —
       // server would reject. Hook will retry on next change.
       if (!trimmedName) return;
+      // PR #46 — First create: POST, stash id locally, stay mounted. NO
+      // setLocation, NO invalidateQueries during typing. The /support and
+      // /support/roles list pages will refetch when the user navigates
+      // away via Done.
       if (isCreate) {
         try {
           const res = await apiRequest("POST", "/api/roles", {
@@ -129,9 +147,8 @@ export default function SupportRoleEditPage({
             description: next.description?.trim() || null,
           });
           const created = (await res.json()) as Role;
-          queryClient.invalidateQueries({ queryKey: ["/api/roles"] });
-          // Navigate to stable URL. wouter setLocation replaces history.
-          setLocation(`/support/roles/${created.id}/edit`, { replace: true });
+          createdIdRef.current = created.id;
+          setCreatedId(created.id);
         } catch (err) {
           const msg = parseServerError(err as Error, "Couldn't create role");
           toast({ variant: "destructive", title: "Couldn't save", description: msg });
@@ -139,13 +156,18 @@ export default function SupportRoleEditPage({
         }
         return;
       }
-      // Edit path: PATCH name + description.
+      // Edit path: PATCH name + description. PR #46 — removed the per-save
+      // invalidateQueries(["/api/roles"]). Forcing a refetch on every
+      // keystroke-debounce cycle was causing the autosave hook's value
+      // prop to churn, which (combined with normalization differences in
+      // the server echo) was forcing a draft reset and re-rendering the
+      // focused input — the visible flash and caret jump in the recording.
+      // The list pages refetch on remount via their own useQuery hooks.
       try {
         await apiRequest("PATCH", `/api/roles/${id}`, {
           name: trimmedName,
           description: next.description?.trim() || null,
         });
-        queryClient.invalidateQueries({ queryKey: ["/api/roles"] });
       } catch (err) {
         const msg = parseServerError(err as Error, "Couldn't save");
         toast({ variant: "destructive", title: "Couldn't save", description: msg });
@@ -219,15 +241,23 @@ export default function SupportRoleEditPage({
         } catch {
           // toasts already shown in onError
         }
-        await queryClient.invalidateQueries({ queryKey: ["/api/roles"] });
       }
       clearRemovals();
     }
-    // Navigate to the read-only detail (or /support if create with no id yet).
-    if (isCreate) {
+    // PR #46 — Single invalidation on exit. Previously this fired on every
+    // autosave keystroke, churning the autosave hook's value prop and
+    // flashing the focused input. Now the list pages get fresh data once,
+    // here, before we navigate away.
+    await queryClient.invalidateQueries({ queryKey: ["/api/roles"] });
+    // Navigate to the read-only detail. If the user landed on /new and
+    // typed a name, we created the row but never moved the URL. Use the
+    // stashed id from createdIdRef to land on the right detail page. If
+    // they hit Done without typing (no create fired), go to /support.
+    if (isCreateUrl && createdIdRef.current == null) {
       setLocation("/support");
     } else {
-      setLocation(`/support/roles/${id}`);
+      const targetId = createdIdRef.current ?? id;
+      setLocation(`/support/roles/${targetId}`);
     }
   }
 
