@@ -866,6 +866,15 @@ export default function ReviewPage() {
                         >
                           <XCircle className="w-4 h-4" />
                         </button>
+                        {!external && (
+                          <button
+                            title="Reschedule"
+                            onClick={() => setRescheduleItem(item)}
+                            className={cn("p-1 rounded hover:bg-accent transition-colors", STATUS_CONFIG.rescheduled.className)}
+                          >
+                            <CalendarClock className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
