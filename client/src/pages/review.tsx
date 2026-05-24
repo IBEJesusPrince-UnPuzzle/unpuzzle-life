@@ -919,9 +919,10 @@ export default function ReviewPage() {
               </div>
             </PopoverContent>
           </Popover>
-          <div className="flex-1" />
+        </div>
 
-          {/* View selector */}
+        {/* View selector */}
+        <div className="flex items-center gap-2 mt-3">
           <div
             className="inline-flex shrink-0 rounded-md border bg-muted p-0.5"
             data-testid="review-view-selector"
