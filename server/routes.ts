@@ -698,13 +698,14 @@ export function registerRoutes(server: Server, app: Express) {
           // Dual-write: create agenda_task so it shows in agenda/review
           // This mirrors the do_it_later with projectId behavior
           const nowIso = new Date().toISOString();
+          const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
           storage.createAgendaTask(userId, {
             title: p.taskName,
             notes: p.notes ?? null,
             status: "open",
             origin: "project",
             originId: projectTaskRow.id,
-            startDate: null, // Unscheduled project task
+            startDate: today, // Use today for unscheduled project task
             isAllDay: 0,
             createdAt: nowIso,
             updatedAt: nowIso,
@@ -2111,6 +2112,13 @@ export function registerRoutes(server: Server, app: Express) {
     }
     if (body.status !== undefined && !(AGENDA_STATUSES as readonly string[]).includes(body.status)) {
       return res.status(400).json({ error: `status must be one of: ${AGENDA_STATUSES.join(", ")}` });
+    }
+    // Prevent changing origin from project to standalone
+    if (body.origin !== undefined) {
+      const existing = storage.getAgendaTask(userId, Number(req.params.id));
+      if (existing && existing.origin === "project" && body.origin !== "project") {
+        return res.status(400).json({ error: "Cannot change origin of project-linked tasks" });
+      }
     }
     if (body.recurrenceRule) {
       const err = validateRecurrenceRule(body.recurrenceRule);

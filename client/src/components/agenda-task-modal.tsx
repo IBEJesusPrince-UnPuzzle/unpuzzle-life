@@ -1693,7 +1693,7 @@ export function AgendaTaskModal({
               payload, and the server dual-writes a project_tasks row + an
               agenda_tasks row with origin='project' + originId pointing at it
               (Q1 dual-write lock). */}
-          {isPageMode && !addToProjectExpanded && (
+          {isPageMode && !addToProjectExpanded && editing?.origin !== "project" && (
             <div>
               <Button
                 type="button"
@@ -1704,6 +1704,19 @@ export function AgendaTaskModal({
               >
                 + Add to project
               </Button>
+            </div>
+          )}
+
+          {/* Show linked project when editing a project task */}
+          {isPageMode && editing?.origin === "project" && linkedProject && (
+            <div className="rounded-md border border-border bg-muted/30 p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Linked to project</span>
+              </div>
+              <div className="mt-2 text-sm">
+                <span className="text-muted-foreground">Project:</span>{" "}
+                <span className="font-medium">{linkedProject.title}</span>
+              </div>
             </div>
           )}
 
