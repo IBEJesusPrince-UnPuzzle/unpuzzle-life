@@ -1408,6 +1408,16 @@ export function AgendaTaskModal({
   // exactly when called from the Dialog branch.
   const renderFormBody = () => (
     <div className="space-y-4 py-2">
+      {/* Show linked project when editing a project task */}
+      {editing?.origin === "project" && linkedProject && (
+        <div className="rounded-md border border-border bg-muted/30 p-3">
+          <div className="text-sm">
+            <span className="text-muted-foreground">Project:</span>{" "}
+            <span className="font-medium">{linkedProject.title}</span>
+          </div>
+        </div>
+      )}
+
       {/* Title */}
       <div className="space-y-1.5">
         <Label htmlFor="task-title">Title</Label>
@@ -1704,19 +1714,6 @@ export function AgendaTaskModal({
               >
                 + Add to project
               </Button>
-            </div>
-          )}
-
-          {/* Show linked project when editing a project task */}
-          {isPageMode && editing?.origin === "project" && linkedProject && (
-            <div className="rounded-md border border-border bg-muted/30 p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Linked to project</span>
-              </div>
-              <div className="mt-2 text-sm">
-                <span className="text-muted-foreground">Project:</span>{" "}
-                <span className="font-medium">{linkedProject.title}</span>
-              </div>
             </div>
           )}
 
