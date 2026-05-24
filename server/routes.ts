@@ -682,7 +682,7 @@ export function registerRoutes(server: Server, app: Express) {
             }, 0);
             sortOrder = maxSort + 1;
           }
-          const created = storage.createProjectTask(userId, {
+          const projectTaskRow = storage.createProjectTask(userId, {
             projectId: p.projectId,
             title: p.taskName,
             notes: p.notes ?? null,
@@ -695,8 +695,22 @@ export function registerRoutes(server: Server, app: Express) {
             recurrenceEndDate: null,
             createdAt: new Date().toISOString(),
           });
+          // Dual-write: create agenda_task so it shows in agenda/review
+          // This mirrors the do_it_later with projectId behavior
+          const nowIso = new Date().toISOString();
+          storage.createAgendaTask(userId, {
+            title: p.taskName,
+            notes: p.notes ?? null,
+            status: "open",
+            origin: "project",
+            originId: projectTaskRow.id,
+            startDate: null, // Unscheduled project task
+            isAllDay: 0,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          });
           const updated = storage.markInboxProcessed(userId, id, "project");
-          return res.json({ item: updated, created });
+          return res.json({ item: updated, created: projectTaskRow });
         }
 
         case "file_it": {
