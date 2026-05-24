@@ -22,6 +22,7 @@ import type { TaskCompletion } from "@shared/schema";
 import { formatTimeLabel, timeToMinutes, toIsoDate } from "@/lib/agenda-utils";
 import { cn } from "@/lib/utils";
 import { AgendaTaskViewModal } from "@/components/agenda-task-view-modal";
+import { SidebarMenuButton } from "@/components/sidebar-menu";
 
 // Completion status options for each agenda item
 type CompletionStatus = "done" | "missed" | "skipped" | "rescheduled";
@@ -343,9 +344,12 @@ export default function ReviewPage() {
       {/* Header */}
       <div className="px-4 pt-4 pb-3 border-b shrink-0">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight">Daily Review</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">{formatDate(date)}</p>
+          <div className="flex items-center gap-2">
+            <SidebarMenuButton />
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight">Daily Review</h1>
+              <p className="text-xs text-muted-foreground mt-0.5">{formatDate(date)}</p>
+            </div>
           </div>
           {total > 0 && (
             <Badge variant="secondary" className="text-xs tabular-nums">

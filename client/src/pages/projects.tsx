@@ -17,6 +17,7 @@ import { FolderOpen, Plus, Search } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useState, useMemo } from "react";
 import type { Project } from "@shared/schema";
+import { SidebarMenuButton } from "@/components/sidebar-menu";
 
 // PR #23 — Replaces the old single-line quick-add with a dialog that
 // requires title + start_date + target_date (Date-handling.docx lock).
@@ -83,14 +84,14 @@ export default function ProjectsPage() {
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight flex items-center gap-2">
-            <FolderOpen className="w-5 h-5 text-chart-5" />
-            Projects
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Outcomes you're working toward.
-          </p>
+        <div className="flex items-center gap-2">
+          <SidebarMenuButton />
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Outcomes you're working toward.
+            </p>
+          </div>
         </div>
         <Button
           size="sm"

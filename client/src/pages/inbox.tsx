@@ -13,6 +13,7 @@ import { Link } from "wouter";
 import type { InboxItem } from "@shared/schema";
 import { usePreferences } from "@/hooks/use-preferences";
 import { InboxProcessMenu } from "@/components/inbox-process-menu";
+import { SidebarMenuButton } from "@/components/sidebar-menu";
 
 export default function InboxPage() {
   const { data: prefs } = usePreferences();
@@ -71,11 +72,14 @@ export default function InboxPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Inbox</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Capture everything, then process when you're ready.
-          </p>
+        <div className="flex items-center gap-2">
+          <SidebarMenuButton />
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Inbox</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Capture everything, then process when you're ready.
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="secondary" className="text-sm">

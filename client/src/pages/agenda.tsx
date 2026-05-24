@@ -35,6 +35,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ListChecks, Plus, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiRequest } from "@/lib/queryClient";
+import { SidebarMenuButton } from "@/components/sidebar-menu";
 import {
   addDays,
   formatDateContextLabel,
@@ -270,11 +271,17 @@ export default function AgendaPage() {
       <div className="sticky top-0 z-20 border-b px-4 py-3 space-y-2 bg-background">
         {/* Row 1 */}
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold tracking-tight flex items-center gap-2">
-            <ListChecks className="w-5 h-5 text-chart-1" />
-            Agenda
-          </h1>
+          <SidebarMenuButton />
+          <h1 className="text-xl font-semibold tracking-tight">Agenda</h1>
           <div className="flex-1" />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/agenda/calendar-sources")}
+            title="Calendar sources"
+          >
+            <ListChecks className="w-5 h-5 text-chart-1" />
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -289,14 +296,6 @@ export default function AgendaPage() {
             data-testid="button-add-task"
           >
             <Plus className="w-4 h-4 mr-1" /> Task
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate("/agenda/calendar-sources")}
-            title="Calendar sources"
-          >
-            <CalendarDays className="w-4 h-4" />
           </Button>
           {/* PR #30b — gear popover for task-type visibility (Google parity). */}
           <AgendaTaskFilterMenu />

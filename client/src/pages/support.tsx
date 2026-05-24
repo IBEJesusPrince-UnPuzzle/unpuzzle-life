@@ -7,6 +7,7 @@ import {
 import { Link } from "wouter";
 import { useState, useMemo } from "react";
 import { SupportAddSheet } from "@/components/support-add-sheet";
+import { SidebarMenuButton } from "@/components/sidebar-menu";
 import type {
   Responsibility, Role, EnvironmentPerson,
   EnvironmentPlace, EnvironmentThing,
@@ -124,25 +125,34 @@ export default function SupportPage() {
       <div className="p-6 max-w-3xl mx-auto space-y-6 pb-24">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight flex items-center gap-2">
-              <Earth className="w-5 h-5 text-chart-3" />
-              Support
-            </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Your system of current
-            </p>
+          <div className="flex items-center gap-2">
+            <SidebarMenuButton />
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight">Support</h1>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Your system of current
+              </p>
+            </div>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setAddSheetOpen(true)}
-            className="h-9 w-9 p-0 shrink-0"
-            data-testid="button-support-add"
-            aria-label="Add to support"
-          >
-            <Plus className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Support"
+            >
+              <Earth className="w-5 h-5 text-chart-3" />
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setAddSheetOpen(true)}
+              className="h-9 w-9 p-0 shrink-0"
+              data-testid="button-support-add"
+              aria-label="Add to support"
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Needs attention (conditional) */}
