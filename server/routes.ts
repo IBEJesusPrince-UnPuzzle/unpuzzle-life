@@ -2,6 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { storage, sqlite } from "./storage";
 import { requireAuth, requireAdmin, getEffectiveUserId } from "./auth";
+import { format } from "date-fns-tz";
 import {
   insertProjectSchema,
   PROJECT_STATUSES,
@@ -2271,22 +2272,29 @@ export function registerRoutes(server: Server, app: Express) {
           const dy = String(d.getDate()).padStart(2, "0");
           return `${y}-${m}-${dy}`;
         };
-        const toTimeStr = (d: Date) =>
-          `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+        const toTimeStr = (d: Date, tz: string | undefined) => {
+          if (tz) {
+            // Event has timezone info - use it
+            return format(d, "HH:mm", { timeZone: tz });
+          } else {
+            // No timezone info - convert from UTC to Eastern time
+            return format(d, "HH:mm", { timeZone: "America/New_York" });
+          }
+        };
         const startDate = isAllDay ? toDateStrUtc(start) : toDateStrLocal(start);
         const endRaw = end ? (isAllDay ? toDateStrUtc(end) : toDateStrLocal(end)) : startDate;
         // iCal all-day end dates are exclusive (next day); subtract 1 day.
         const endDate = isAllDay && endRaw > startDate
           ? toDateStrUtc(new Date(new Date(endRaw).getTime() - 86400000))
           : endRaw;
-        console.log(`[ical-sync] uid=${ev.uid} datetype=${ev.datetype} isAllDay=${isAllDay} start=${ev.start} startDate=${startDate} startTime=${isAllDay ? null : toTimeStr(start)}`);
+        console.log(`[ical-sync] uid=${ev.uid} datetype=${ev.datetype} isAllDay=${isAllDay} start=${ev.start} startDate=${startDate} startTime=${isAllDay ? null : toTimeStr(start, ev.tzid)}`);
         toUpsert.push({
           uid: String(ev.uid ?? `${startDate}-${ev.summary}`),
           title: String(ev.summary ?? "(No title)"),
           startDate,
           endDate,
-          startTime: isAllDay ? null : toTimeStr(start),
-          endTime: isAllDay || !end ? null : toTimeStr(end),
+          startTime: isAllDay ? null : toTimeStr(start, ev.tzid),
+          endTime: isAllDay || !end ? null : toTimeStr(end, ev.tzid),
           isAllDay: isAllDay ? 1 : 0,
           description: ev.description ? String(ev.description) : null,
           location: ev.location ? String(ev.location) : null,
