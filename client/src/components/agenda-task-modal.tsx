@@ -752,7 +752,13 @@ export function AgendaTaskModal({
       // Non-recurring: existing behavior verbatim (no scope).
       if (!isRecurring) {
         if (mode === "edit-real" && editing) {
-          const r = await apiRequest("PATCH", `/api/agenda-tasks/${editing.id}`, buildPayload());
+          const payload = buildPayload();
+          // Preserve origin and originId when editing project tasks
+          if (editing.origin === "project") {
+            (payload as any).origin = "project";
+            (payload as any).originId = editing.originId;
+          }
+          const r = await apiRequest("PATCH", `/api/agenda-tasks/${editing.id}`, payload);
           // PR #29g — Q2b: non-recurring chips sync the project task title
           // silently. Fires after the agenda PATCH so a 404 on the agenda
           // row never leaves a partial update.
@@ -822,6 +828,11 @@ export function AgendaTaskModal({
         // Google Calendar disables the date field outright in this scenario;
         // this preserves intent without locking the user out.
         const payload = buildPayload();
+        // Preserve origin and originId when editing project tasks
+        if (editing && editing.origin === "project") {
+          (payload as any).origin = "project";
+          (payload as any).originId = editing.originId;
+        }
         const stripDateFields =
           mode === "edit-virtual" && date === editing.startDate;
         if (stripDateFields) {
