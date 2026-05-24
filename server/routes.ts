@@ -2,7 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { storage, sqlite } from "./storage";
 import { requireAuth, requireAdmin, getEffectiveUserId } from "./auth";
-import { format } from "date-fns-tz";
+import { format, toZonedTime } from "date-fns-tz";
 import {
   insertProjectSchema,
   PROJECT_STATUSES,
@@ -2277,8 +2277,11 @@ export function registerRoutes(server: Server, app: Express) {
             // Event has timezone info - use it
             return format(d, "HH:mm", { timeZone: tz });
           } else {
-            // No timezone info - convert from UTC to Eastern time
-            return format(d, "HH:mm", { timeZone: "America/New_York" });
+            // No timezone info - floating time
+            // On Render (UTC), node-ical interprets as UTC, but we want Eastern
+            // Convert UTC to Eastern using toZonedTime
+            const easternTime = toZonedTime(d, "America/New_York");
+            return format(easternTime, "HH:mm");
           }
         };
         const startDate = isAllDay ? toDateStrUtc(start) : toDateStrLocal(start);
