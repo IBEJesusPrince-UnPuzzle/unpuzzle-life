@@ -828,63 +828,92 @@ export default function ReviewPage() {
           </div>
         )}
 
-        {/* EXTERNAL section */}
+        {/* EXTERNAL CALENDAR section — action buttons + calendar link on rescheduled */}
         {externalItems.length > 0 && (
-          <div className="mt-4">
+          <div className="mt-5">
             <button
               className="flex items-center gap-1.5 w-full text-left mb-2"
               onClick={() => toggleSection("external")}
             >
               {expandedSections.has("external") ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
               <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                External · {externalItems.length}
+                Calendar Events · {externalItems.length}
               </span>
             </button>
 
             {expandedSections.has("external") && (
               <div className="space-y-1">
+                <div className="flex items-start gap-2 px-3 py-2 mb-1 rounded-md bg-muted/40 text-xs text-muted-foreground">
+                  <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>Synced from your calendar. Review badges carry over when you edit an event in place. If you delete and recreate an event, the badge won't carry over to the new one.</span>
+                </div>
                 {externalItems.map(item => {
                   const key = itemKey(item);
-                  const isSelected = selectedIds.has(key);
                   const startMin = timeToMinutes(item.time);
-                  const timeLabel = item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  const endMin = timeToMinutes((item as any).endTime);
+                  const timeLabel = item.isAllDay
+                    ? "All day"
+                    : startMin != null
+                      ? endMin != null && endMin > startMin
+                        ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
+                        : formatTimeLabel(startMin)
+                      : "";
+                  const calUrl = (() => {
+                    const uid = (item as any).uid as string | null | undefined;
+                    const calendarUrl = (item as any).calendarUrl as string | null | undefined;
+                    try {
+                      if (uid?.endsWith("@google.com") && item.startDate) {
+                        const [y, mo, d] = item.startDate.split("-");
+                        return `https://calendar.google.com/calendar/u/0/r/day/${y}/${mo}/${d}`;
+                      }
+                      if (calendarUrl) return calendarUrl;
+                    } catch { /* ignore */ }
+                    return null;
+                  })();
+                  const logged = item.completion;
                   return (
-                    <div
-                      key={key}
-                      className={cn(
-                        "flex items-start gap-3 px-3 py-2.5 rounded-lg border transition-colors",
-                        isSelected ? "bg-primary/5 border-primary/20" : "border-transparent hover:bg-accent"
-                      )}
-                    >
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={() => toggleSelect(key)}
-                        className="mt-0.5 shrink-0"
-                      />
+                    <div key={key} className="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-transparent">
                       <div className="flex-1 min-w-0">
-                        <button
-                          onClick={() => setViewingItem(item)}
-                          className="text-sm font-medium truncate text-left hover:text-primary transition-colors"
-                        >
+                        <p className={cn("text-sm font-medium truncate", logged?.status === "done" ? "line-through text-muted-foreground" : "")}>
                           {item.title ?? "Untitled"}
-                        </button>
-                        {timeLabel && (
-                          <p className="text-xs text-muted-foreground">{timeLabel}</p>
+                        </p>
+                        {timeLabel && <p className="text-xs text-muted-foreground">{timeLabel}</p>}
+                        {(item as any).calendarName && (
+                          <p className="text-xs text-muted-foreground">{(item as any).calendarName}</p>
                         )}
-                        {item.placeName && (
-                          <p className="text-xs text-muted-foreground">in {item.placeName}</p>
+                        {/* Show calendar link when rescheduled */}
+                        {logged?.status === "rescheduled" && calUrl && (
+                          <a href={calUrl} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs text-primary underline underline-offset-2 mt-0.5">
+                            <ExternalLink className="w-3 h-3" /> Reschedule in calendar
+                          </a>
                         )}
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          title="Mark done"
-                          disabled={markMutation.isPending}
-                          onClick={() => markMutation.mutate({ item, status: "done" })}
-                          className="p-1 rounded hover:bg-accent transition-colors text-green-600"
-                        >
-                          <CheckCircle2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      {!logged ? (
+                        <div className="flex items-center gap-1 shrink-0">
+                          {(["done", "missed", "skipped", "rescheduled"] as CompletionStatus[]).map(s => {
+                            const cfg = STATUS_CONFIG[s];
+                            const Icon = cfg.icon;
+                            return (
+                              <button key={s} title={cfg.label}
+                                disabled={markMutation.isPending}
+                                onClick={() => markMutation.mutate({ item, status: s })}
+                                className={cn("p-1 rounded hover:bg-accent transition-colors", cfg.className)}>
+                                <Icon className="w-4 h-4" />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 shrink-0">
+                          <StatusBadge status={logged.status as CompletionStatus} />
+                          <button title="Undo" disabled={undoMutation.isPending}
+                            onClick={() => undoMutation.mutate(logged.id)}
+                            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2">
+                            Undo
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
