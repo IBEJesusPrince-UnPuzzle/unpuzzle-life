@@ -382,6 +382,477 @@ export default function ReviewPage() {
     }
   }
 
+  // Group items by date for multi-day views
+  const itemsByDate = useMemo(() => {
+    const groups: Record<string, ReviewItem[]> = {};
+    reviewItems.forEach(item => {
+      const date = item.startDate;
+      if (!groups[date]) groups[date] = [];
+      groups[date].push(item);
+    });
+    return groups;
+  }, [reviewItems]);
+
+  // Sort dates chronologically
+  const sortedDates = useMemo(() => {
+    return Object.keys(itemsByDate).sort();
+  }, [itemsByDate]);
+
+  // Render a single task block (for multi-day views)
+  function renderTaskBlock(item: ReviewItem) {
+    const key = itemKey(item);
+    const isSelected = selectedIds.has(key);
+    const startMin = timeToMinutes(item.time);
+    const timeLabel = item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+    const isExternal = item.origin === "external" || (item as any).isExternal;
+
+    return (
+      <div
+        key={key}
+        className={cn(
+          "flex items-start gap-2 px-3 py-2 rounded-md border transition-colors",
+          isSelected ? "bg-primary/5 border-primary/20" : "border-transparent hover:bg-accent"
+        )}
+      >
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={() => toggleSelect(key)}
+          className="mt-0.5 shrink-0"
+        />
+        <div className="flex-1 min-w-0">
+          <button
+            onClick={() => setViewingItem(item)}
+            className="text-sm font-medium truncate text-left hover:text-primary transition-colors block"
+          >
+            {item.title ?? "Untitled"}
+          </button>
+          {timeLabel && (
+            <p className="text-xs text-muted-foreground">{timeLabel}</p>
+          )}
+          {item.placeName && (
+            <p className="text-xs text-muted-foreground">in {item.placeName}</p>
+          )}
+        </div>
+        {!isExternal && (
+          <div className="flex items-center gap-1 shrink-0">
+            {(["done", "missed", "skipped"] as CompletionStatus[]).map(s => {
+              const cfg = STATUS_CONFIG[s];
+              const Icon = cfg.icon;
+              return (
+                <button
+                  key={s}
+                  title={cfg.label}
+                  disabled={markMutation.isPending}
+                  onClick={() => markMutation.mutate({ item, status: s })}
+                  className={cn("p-1 rounded hover:bg-accent transition-colors", cfg.className)}
+                >
+                  <Icon className="w-4 h-4" />
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Render Schedule view (date-based y-axis)
+  function renderScheduleView() {
+    return (
+      <div className="space-y-4 mt-4">
+        {sortedDates.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center">No items scheduled for this period.</p>
+        ) : (
+          sortedDates.map(date => {
+            const items = itemsByDate[date];
+            const dayLabel = formatDateContextLabel(date);
+            const isToday = date === today;
+            return (
+              <div key={date} className="space-y-2">
+                <div className={cn("text-sm font-medium", isToday ? "text-primary" : "text-muted-foreground")}>
+                  {dayLabel}
+                </div>
+                <div className="space-y-1">
+                  {items.map(renderTaskBlock)}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
+  }
+
+  // Render Day view (time-based y-axis - current implementation)
+  function renderDayView() {
+    return (
+      <>
+        {/* Bulk action bar — shown when items are selected */}
+        {selectedIds.size > 0 && (
+          <div className="sticky top-0 z-10 bg-background border-b py-2 flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground">{selectedIds.size} selected</span>
+            {(["done", "missed", "skipped"] as CompletionStatus[]).map(s => {
+              const cfg = STATUS_CONFIG[s];
+              const Icon = cfg.icon;
+              return (
+                <Button key={s} variant="outline" size="sm" className="h-7 text-xs gap-1"
+                  disabled={bulkMutation.isPending}
+                  onClick={() => bulkMutation.mutate({ items: selectedItems, status: s })}>
+                  <Icon className="w-3 h-3" /> Mark {cfg.label}
+                </Button>
+              );
+            })}
+            <Button variant="ghost" size="sm" className="h-7 text-xs ml-auto"
+              onClick={() => setSelectedIds(new Set())}>
+              Cancel
+            </Button>
+          </div>
+        )}
+
+        {/* PENDING section */}
+        {pending.length > 0 && (
+          <div className="mt-4">
+            <button
+              className="flex items-center gap-1.5 w-full text-left mb-2"
+              onClick={() => toggleSection("pending")}
+            >
+              {expandedSections.has("pending") ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Pending · {pending.length}
+              </span>
+              {pending.length > 1 && expandedSections.has("pending") && (
+                <button
+                  className="ml-auto text-[10px] text-primary underline underline-offset-2"
+                  onClick={e => { e.stopPropagation(); toggleSelectAll(); }}
+                >
+                  {allPendingSelected ? "Deselect all" : "Select all"}
+                </button>
+              )}
+            </button>
+
+            {expandedSections.has("pending") && (
+              <div className="space-y-1">
+                {pending.map(item => {
+                  const key = itemKey(item);
+                  const isSelected = selectedIds.has(key);
+                  const startMin = timeToMinutes(item.time);
+                  const timeLabel = item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  return (
+                    <div
+                      key={key}
+                      className={cn(
+                        "flex items-start gap-3 px-3 py-2.5 rounded-lg border transition-colors",
+                        isSelected ? "bg-primary/5 border-primary/20" : "border-transparent hover:bg-accent"
+                      )}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleSelect(key)}
+                        className="mt-0.5 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <button
+                          onClick={() => setViewingItem(item)}
+                          className="text-sm font-medium truncate text-left hover:text-primary transition-colors"
+                        >
+                          {item.title ?? "Untitled"}
+                        </button>
+                        {timeLabel && (
+                          <p className="text-xs text-muted-foreground">{timeLabel}</p>
+                        )}
+                        {item.placeName && (
+                          <p className="text-xs text-muted-foreground">in {item.placeName}</p>
+                        )}
+                      </div>
+                      {/* Quick action buttons */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {(["done", "missed", "skipped"] as CompletionStatus[]).map(s => {
+                          const cfg = STATUS_CONFIG[s];
+                          const Icon = cfg.icon;
+                          return (
+                            <button
+                              key={s}
+                              title={cfg.label}
+                              disabled={markMutation.isPending}
+                              onClick={() => markMutation.mutate({ item, status: s })}
+                              className={cn("p-1 rounded hover:bg-accent transition-colors", cfg.className)}
+                            >
+                              <Icon className="w-4 h-4" />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* DONE section */}
+        {done.length > 0 && (
+          <div className="mt-4">
+            <button
+              className="flex items-center gap-1.5 w-full text-left mb-2"
+              onClick={() => toggleSection("done")}
+            >
+              {expandedSections.has("done") ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Done · {done.length}
+              </span>
+            </button>
+
+            {expandedSections.has("done") && (
+              <div className="space-y-1">
+                {done.map(item => {
+                  const key = itemKey(item);
+                  const isSelected = selectedIds.has(key);
+                  const startMin = timeToMinutes(item.time);
+                  const timeLabel = item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  return (
+                    <div
+                      key={key}
+                      className={cn(
+                        "flex items-start gap-3 px-3 py-2.5 rounded-lg border transition-colors",
+                        isSelected ? "bg-primary/5 border-primary/20" : "border-transparent hover:bg-accent"
+                      )}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleSelect(key)}
+                        className="mt-0.5 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <button
+                          onClick={() => setViewingItem(item)}
+                          className="text-sm font-medium truncate text-left hover:text-primary transition-colors"
+                        >
+                          {item.title ?? "Untitled"}
+                        </button>
+                        {timeLabel && (
+                          <p className="text-xs text-muted-foreground">{timeLabel}</p>
+                        )}
+                        {item.placeName && (
+                          <p className="text-xs text-muted-foreground">in {item.placeName}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          title="Undo"
+                          disabled={undoMutation.isPending}
+                          onClick={() => undoMutation.mutate(item.completion!.id)}
+                          className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* MISSED section */}
+        {missed.length > 0 && (
+          <div className="mt-4">
+            <button
+              className="flex items-center gap-1.5 w-full text-left mb-2"
+              onClick={() => toggleSection("missed")}
+            >
+              {expandedSections.has("missed") ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Missed · {missed.length}
+              </span>
+            </button>
+
+            {expandedSections.has("missed") && (
+              <div className="space-y-1">
+                {missed.map(item => {
+                  const key = itemKey(item);
+                  const isSelected = selectedIds.has(key);
+                  const startMin = timeToMinutes(item.time);
+                  const timeLabel = item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  return (
+                    <div
+                      key={key}
+                      className={cn(
+                        "flex items-start gap-3 px-3 py-2.5 rounded-lg border transition-colors",
+                        isSelected ? "bg-primary/5 border-primary/20" : "border-transparent hover:bg-accent"
+                      )}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleSelect(key)}
+                        className="mt-0.5 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <button
+                          onClick={() => setViewingItem(item)}
+                          className="text-sm font-medium truncate text-left hover:text-primary transition-colors"
+                        >
+                          {item.title ?? "Untitled"}
+                        </button>
+                        {timeLabel && (
+                          <p className="text-xs text-muted-foreground">{timeLabel}</p>
+                        )}
+                        {item.placeName && (
+                          <p className="text-xs text-muted-foreground">in {item.placeName}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          title="Undo"
+                          disabled={undoMutation.isPending}
+                          onClick={() => undoMutation.mutate(item.completion!.id)}
+                          className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* SKIPPED section */}
+        {skipped.length > 0 && (
+          <div className="mt-4">
+            <button
+              className="flex items-center gap-1.5 w-full text-left mb-2"
+              onClick={() => toggleSection("skipped")}
+            >
+              {expandedSections.has("skipped") ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Skipped · {skipped.length}
+              </span>
+            </button>
+
+            {expandedSections.has("skipped") && (
+              <div className="space-y-1">
+                {skipped.map(item => {
+                  const key = itemKey(item);
+                  const isSelected = selectedIds.has(key);
+                  const startMin = timeToMinutes(item.time);
+                  const timeLabel = item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  return (
+                    <div
+                      key={key}
+                      className={cn(
+                        "flex items-start gap-3 px-3 py-2.5 rounded-lg border transition-colors",
+                        isSelected ? "bg-primary/5 border-primary/20" : "border-transparent hover:bg-accent"
+                      )}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleSelect(key)}
+                        className="mt-0.5 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <button
+                          onClick={() => setViewingItem(item)}
+                          className="text-sm font-medium truncate text-left hover:text-primary transition-colors"
+                        >
+                          {item.title ?? "Untitled"}
+                        </button>
+                        {timeLabel && (
+                          <p className="text-xs text-muted-foreground">{timeLabel}</p>
+                        )}
+                        {item.placeName && (
+                          <p className="text-xs text-muted-foreground">in {item.placeName}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          title="Undo"
+                          disabled={undoMutation.isPending}
+                          onClick={() => undoMutation.mutate(item.completion!.id)}
+                          className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* EXTERNAL section */}
+        {externalItems.length > 0 && (
+          <div className="mt-4">
+            <button
+              className="flex items-center gap-1.5 w-full text-left mb-2"
+              onClick={() => toggleSection("external")}
+            >
+              {expandedSections.has("external") ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                External · {externalItems.length}
+              </span>
+            </button>
+
+            {expandedSections.has("external") && (
+              <div className="space-y-1">
+                {externalItems.map(item => {
+                  const key = itemKey(item);
+                  const isSelected = selectedIds.has(key);
+                  const startMin = timeToMinutes(item.time);
+                  const timeLabel = item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  return (
+                    <div
+                      key={key}
+                      className={cn(
+                        "flex items-start gap-3 px-3 py-2.5 rounded-lg border transition-colors",
+                        isSelected ? "bg-primary/5 border-primary/20" : "border-transparent hover:bg-accent"
+                      )}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleSelect(key)}
+                        className="mt-0.5 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <button
+                          onClick={() => setViewingItem(item)}
+                          className="text-sm font-medium truncate text-left hover:text-primary transition-colors"
+                        >
+                          {item.title ?? "Untitled"}
+                        </button>
+                        {timeLabel && (
+                          <p className="text-xs text-muted-foreground">{timeLabel}</p>
+                        )}
+                        {item.placeName && (
+                          <p className="text-xs text-muted-foreground">in {item.placeName}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          title="Mark done"
+                          disabled={markMutation.isPending}
+                          onClick={() => markMutation.mutate({ item, status: "done" })}
+                          className="p-1 rounded hover:bg-accent transition-colors text-green-600"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </>
+    );
+  }
+
   const isLoading = agendaLoading || completionsLoading;
 
   return (
@@ -483,277 +954,18 @@ export default function ReviewPage() {
         {isLoading ? (
           <p className="text-sm text-muted-foreground mt-6 text-center">Loading…</p>
         ) : reviewItems.length === 0 ? (
-          <p className="text-sm text-muted-foreground mt-6 text-center">No items scheduled for this day.</p>
+          <p className="text-sm text-muted-foreground mt-6 text-center">No items scheduled for this period.</p>
         ) : (
           <>
-            {/* Bulk action bar — shown when items are selected */}
-            {selectedIds.size > 0 && (
-              <div className="sticky top-0 z-10 bg-background border-b py-2 flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-muted-foreground">{selectedIds.size} selected</span>
-                {(["done", "missed", "skipped"] as CompletionStatus[]).map(s => {
-                  const cfg = STATUS_CONFIG[s];
-                  const Icon = cfg.icon;
-                  return (
-                    <Button key={s} variant="outline" size="sm" className="h-7 text-xs gap-1"
-                      disabled={bulkMutation.isPending}
-                      onClick={() => bulkMutation.mutate({ items: selectedItems, status: s })}>
-                      <Icon className="w-3 h-3" /> Mark {cfg.label}
-                    </Button>
-                  );
-                })}
-                <Button variant="ghost" size="sm" className="h-7 text-xs ml-auto"
-                  onClick={() => setSelectedIds(new Set())}>
-                  Cancel
-                </Button>
-              </div>
-            )}
-
-            {/* PENDING section */}
-            {pending.length > 0 && (
-              <div className="mt-4">
-                <button
-                  className="flex items-center gap-1.5 w-full text-left mb-2"
-                  onClick={() => toggleSection("pending")}
-                >
-                  {expandedSections.has("pending") ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
-                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Pending · {pending.length}
-                  </span>
-                  {pending.length > 1 && expandedSections.has("pending") && (
-                    <button
-                      className="ml-auto text-[10px] text-primary underline underline-offset-2"
-                      onClick={e => { e.stopPropagation(); toggleSelectAll(); }}
-                    >
-                      {allPendingSelected ? "Deselect all" : "Select all"}
-                    </button>
-                  )}
-                </button>
-
-                {expandedSections.has("pending") && (
-                  <div className="space-y-1">
-                    {pending.map(item => {
-                      const key = itemKey(item);
-                      const isSelected = selectedIds.has(key);
-                      const startMin = timeToMinutes(item.time);
-                      const timeLabel = item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
-                      return (
-                        <div
-                          key={key}
-                          className={cn(
-                            "flex items-start gap-3 px-3 py-2.5 rounded-lg border transition-colors",
-                            isSelected ? "bg-primary/5 border-primary/20" : "border-transparent hover:bg-accent"
-                          )}
-                        >
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => toggleSelect(key)}
-                            className="mt-0.5 shrink-0"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <button
-                              onClick={() => setViewingItem(item)}
-                              className="text-sm font-medium truncate text-left hover:text-primary transition-colors"
-                            >
-                              {item.title ?? "Untitled"}
-                            </button>
-                            {timeLabel && (
-                              <p className="text-xs text-muted-foreground">{timeLabel}</p>
-                            )}
-                            {item.placeName && (
-                              <p className="text-xs text-muted-foreground">in {item.placeName}</p>
-                            )}
-                          </div>
-                          {/* Quick action buttons */}
-                          <div className="flex items-center gap-1 shrink-0">
-                            {(["done", "missed", "skipped"] as CompletionStatus[]).map(s => {
-                              const cfg = STATUS_CONFIG[s];
-                              const Icon = cfg.icon;
-                              return (
-                                <button
-                                  key={s}
-                                  title={cfg.label}
-                                  disabled={markMutation.isPending}
-                                  onClick={() => markMutation.mutate({ item, status: s })}
-                                  className={cn("p-1 rounded hover:bg-accent transition-colors", cfg.className)}
-                                >
-                                  <Icon className="w-4 h-4" />
-                                </button>
-                              );
-                            })}
-                            <button
-                              title="Rescheduled"
-                              onClick={() => setRescheduleItem(item)}
-                              className={cn("p-1 rounded hover:bg-accent transition-colors", STATUS_CONFIG.rescheduled.className)}
-                            >
-                              <CalendarClock className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* EXTERNAL CALENDAR section — action buttons + calendar link on rescheduled */}
-            {externalItems.length > 0 && (
-              <div className="mt-5">
-                <button
-                  className="flex items-center gap-1.5 w-full text-left mb-2"
-                  onClick={() => toggleSection("external")}
-                >
-                  {expandedSections.has("external") ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
-                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Calendar Events · {externalItems.length}
-                  </span>
-                </button>
-
-                {expandedSections.has("external") && (
-                  <div className="space-y-1">
-                    <div className="flex items-start gap-2 px-3 py-2 mb-1 rounded-md bg-muted/40 text-xs text-muted-foreground">
-                      <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                      <span>Synced from your calendar. Review badges carry over when you edit an event in place. If you delete and recreate an event, the badge won't carry over to the new one.</span>
-                    </div>
-                    {externalItems.map(item => {
-                      const key = itemKey(item);
-                      const startMin = timeToMinutes(item.time);
-                      const endMin = timeToMinutes((item as any).endTime);
-                      const timeLabel = item.isAllDay
-                        ? "All day"
-                        : startMin != null
-                          ? endMin != null && endMin > startMin
-                            ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
-                            : formatTimeLabel(startMin)
-                          : "";
-                      const calUrl = (() => {
-                        const uid = (item as any).uid as string | null | undefined;
-                        const calendarUrl = (item as any).calendarUrl as string | null | undefined;
-                        try {
-                          if (uid?.endsWith("@google.com") && item.startDate) {
-                            const [y, mo, d] = item.startDate.split("-");
-                            return `https://calendar.google.com/calendar/u/0/r/day/${y}/${mo}/${d}`;
-                          }
-                          if (calendarUrl) return calendarUrl;
-                        } catch { /* ignore */ }
-                        return null;
-                      })();
-                      const logged = item.completion;
-                      return (
-                        <div key={key} className="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-transparent">
-                          <div className="flex-1 min-w-0">
-                            <p className={cn("text-sm font-medium truncate", logged?.status === "done" ? "line-through text-muted-foreground" : "")}>
-                              {item.title ?? "Untitled"}
-                            </p>
-                            {timeLabel && <p className="text-xs text-muted-foreground">{timeLabel}</p>}
-                            {(item as any).calendarName && (
-                              <p className="text-xs text-muted-foreground">{(item as any).calendarName}</p>
-                            )}
-                            {/* Show calendar link when rescheduled */}
-                            {logged?.status === "rescheduled" && calUrl && (
-                              <a href={calUrl} target="_blank" rel="noopener noreferrer"
-                                className="flex items-center gap-1 text-xs text-primary underline underline-offset-2 mt-0.5">
-                                <ExternalLink className="w-3 h-3" /> Reschedule in calendar
-                              </a>
-                            )}
-                          </div>
-                          {!logged ? (
-                            <div className="flex items-center gap-1 shrink-0">
-                              {(["done", "missed", "skipped", "rescheduled"] as CompletionStatus[]).map(s => {
-                                const cfg = STATUS_CONFIG[s];
-                                const Icon = cfg.icon;
-                                return (
-                                  <button key={s} title={cfg.label}
-                                    disabled={markMutation.isPending}
-                                    onClick={() => markMutation.mutate({ item, status: s })}
-                                    className={cn("p-1 rounded hover:bg-accent transition-colors", cfg.className)}>
-                                    <Icon className="w-4 h-4" />
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 shrink-0">
-                              <StatusBadge status={logged.status as CompletionStatus} />
-                              <button title="Undo" disabled={undoMutation.isPending}
-                                onClick={() => undoMutation.mutate(logged.id)}
-                                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2">
-                                Undo
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* COMPLETED section */}
-            {completed.length > 0 && (
-              <div className="mt-5">
-                <button
-                  className="flex items-center gap-1.5 w-full text-left mb-2"
-                  onClick={() => toggleSection("done")}
-                >
-                  {expandedSections.has("done") ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
-                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Logged · {completed.length}
-                  </span>
-                </button>
-
-                {expandedSections.has("done") && (
-                  <div className="space-y-1">
-                    {completed.map(item => {
-                      const key = itemKey(item);
-                      const startMin = timeToMinutes(item.time);
-                      const timeLabel = item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
-                      return (
-                        <div key={key} className="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-transparent">
-                          <div className="flex-1 min-w-0">
-                            <p className={cn("text-sm truncate", item.completion?.status === "done" ? "line-through text-muted-foreground" : "")}>
-                              {item.title ?? "Untitled"}
-                            </p>
-                            {timeLabel && (
-                              <p className="text-xs text-muted-foreground">{timeLabel}</p>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            {item.completion && <StatusBadge status={item.completion.status as CompletionStatus} />}
-                            <button
-                              title="Undo"
-                              disabled={undoMutation.isPending}
-                              onClick={() => item.completion && undoMutation.mutate(item.completion.id)}
-                              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
-                            >
-                              Undo
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Mark all done shortcut at bottom when everything is pending */}
-            {pending.length > 0 && completed.length === 0 && (
-              <div className="mt-6 pt-4 border-t">
-                <Button
-                  variant="outline"
-                  className="w-full text-sm"
-                  disabled={bulkMutation.isPending}
-                  onClick={() => bulkMutation.mutate({ items: pending, status: "done" })}
-                >
-                  <CheckCircle2 className="w-4 h-4 mr-2" /> Mark all as done
-                </Button>
-              </div>
-            )}
+            {view === "schedule" && renderScheduleView()}
+            {view === "day" && renderDayView()}
+            {view === "3day" && renderScheduleView()}
+            {view === "week" && renderScheduleView()}
+            {view === "month" && renderScheduleView()}
           </>
         )}
       </div>
+
       <RescheduleSheet
         item={rescheduleItem}
         onClose={() => setRescheduleItem(null)}
