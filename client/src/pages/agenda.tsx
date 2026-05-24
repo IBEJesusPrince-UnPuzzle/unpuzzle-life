@@ -32,7 +32,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ListChecks, Plus } from "lucide-react";
+import { ListChecks, Plus, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiRequest } from "@/lib/queryClient";
 import {
@@ -62,6 +62,7 @@ import {
   type AgendaWindowItem,
 } from "@/components/agenda-task-modal";
 import { AgendaTaskViewModal } from "@/components/agenda-task-view-modal";
+import { ExternalEventDetailSheet } from "@/components/external-event-detail-sheet";
 import { AgendaTaskFilterMenu } from "@/components/agenda-task-filter-menu";
 import { useSwipeNav } from "@/hooks/use-swipe-nav";
 import { useAgendaUrlState, type AgendaView } from "@/hooks/use-agenda-url-state";
@@ -93,6 +94,9 @@ export default function AgendaPage() {
   // /projects or /responsibilities, ?task=N is in the URL but `viewing` is
   // null on a fresh mount; we fall back to fetching /api/agenda-tasks/:id.
   const [viewingCache, setViewingCache] = useState<AgendaWindowItem | null>(null);
+
+  // External calendar events use a different sheet (read-only)
+  const [externalEvent, setExternalEvent] = useState<AgendaWindowItem | null>(null);
 
   const taskIdFromUrl = url.task;
   const { data: taskFromUrl } = useQuery<AgendaWindowItem>({
@@ -208,7 +212,13 @@ export default function AgendaPage() {
   }
   // View-first entry (PR #13 / #30a). Tapping any chip/bar pushes the popup
   // onto the history stack so Back closes it cleanly.
+  // PR #53: External calendar events open read-only sheet instead of task modal
   function openView(item: AgendaWindowItem) {
+    // External events have origin === "external" or negative IDs
+    if (item.origin === "external" || item.id < 0) {
+      setExternalEvent(item);
+      return;
+    }
     setViewingCache(item);
     urlPush({ task: item.id, master: item.isVirtual ? item.masterId ?? null : null });
   }
@@ -279,6 +289,14 @@ export default function AgendaPage() {
             data-testid="button-add-task"
           >
             <Plus className="w-4 h-4 mr-1" /> Task
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/agenda/calendar-sources")}
+            title="Calendar sources"
+          >
+            <CalendarDays className="w-4 h-4" />
           </Button>
           {/* PR #30b — gear popover for task-type visibility (Google parity). */}
           <AgendaTaskFilterMenu />
@@ -384,7 +402,7 @@ export default function AgendaPage() {
             todayScrollKey={todayScrollKey}
           />
         )}
-        {view === "month" && <AgendaMonthView date={date} onDayTap={openOverlay} />}
+        {view === "month" && <AgendaMonthView date={date} onDayTap={openOverlay} onSelect={openView} />}
       </div>
 
       {/* PR #31 — AgendaTaskModal removed from agenda. Create/edit now
@@ -395,9 +413,15 @@ export default function AgendaPage() {
       <AgendaTaskViewModal
         open={viewOpen}
         onOpenChange={handleViewOpenChange}
-        item={viewing}
+        item={viewOpen ? viewing : null}
         onEdit={openEdit}
         onNavigateAway={urlPopPopupThen}
+      />
+
+      {/* PR #53: External calendar events show read-only sheet */}
+      <ExternalEventDetailSheet
+        item={externalEvent}
+        onClose={() => setExternalEvent(null)}
       />
 
       <AgendaMonthDayOverlay

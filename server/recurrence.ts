@@ -12,7 +12,8 @@
 //   * Lets Phase 3+ swap the engine (or add an LRU cache) without touching
 //     storage.ts call sites.
 
-import { RRule } from "rrule";
+import rruleModule from "rrule";
+const { RRule } = rruleModule as any;
 
 export type IsoDate = string; // YYYY-MM-DD
 

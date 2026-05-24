@@ -40,6 +40,7 @@ import { ColorPicker } from "@/components/color-picker";
 import { RecurrenceEditor } from "@/components/recurrence-editor";
 import { DEFAULT_AGENDA_COLOR_HEX } from "@/lib/agenda-colors";
 import { parseDuration, durationToMinutes } from "@/lib/duration";
+import { CalendarDays, Clock } from "lucide-react";
 
 // CalendarSettings — the full snapshot the card emits. The parent maps this
 // to the API shape: color/recurrenceRule onto the responsibility row,
@@ -233,44 +234,23 @@ export function CalendarSettingsCard({
   }
 
   return (
-    <Card data-testid="card-schedule">
-      <CardContent className="p-4 space-y-4">
-        <div className="space-y-0.5">
-          <Label className="text-xs">Schedule</Label>
-          <p className="text-[11px] italic text-muted-foreground -mt-0.5">
-            -how often you complete this duty, and how it shows on your
-            calendar
-          </p>
-        </div>
-
-        {/* Frequency first (Google order: repeat row above date/time/color). */}
-        <div className="space-y-1.5">
-          <Label className="text-xs" htmlFor="responsibility-recurrence">
-            Frequency
-          </Label>
-          <RecurrenceEditor
-            fieldId="responsibility-recurrence"
-            value={recurrenceRule}
-            onChange={onRecurrenceChange}
-          />
-        </div>
-
-        {/* Date — becomes "Start date" when all-day with multi-day support */}
-        <div className="space-y-1.5">
+    <div className="space-y-4">
+      {/* Starting: Date + All-day checkbox on one row */}
+      <div className="flex items-end gap-3">
+        <div className="flex-1 space-y-1.5">
           <Label className="text-xs" htmlFor="responsibility-date">
-            {isAllDay ? "Start date" : "Date"}
+            Starting…
           </Label>
           <Input
             id="responsibility-date"
             type="date"
             value={date}
             onChange={(e) => onDateChange(e.target.value)}
+            className="scroll-mt-24"
             data-testid="input-responsibility-date"
           />
         </div>
-
-        {/* All-day toggle */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 pb-2">
           <Checkbox
             id="responsibility-all-day"
             checked={isAllDay}
@@ -281,69 +261,86 @@ export function CalendarSettingsCard({
             All-day
           </Label>
         </div>
+      </div>
 
-        {/* End date — only when all-day. Empty means single-day. */}
-        {isAllDay && (
-          <div className="space-y-1.5">
-            <Label className="text-xs" htmlFor="responsibility-end-date">
-              End date <span className="text-muted-foreground text-xs">— leave blank for single day</span>
+      {/* End date — only when all-day. Empty means single-day. */}
+      {isAllDay && (
+        <div className="space-y-1.5">
+          <Label className="text-xs" htmlFor="responsibility-end-date">
+            Until… <span className="text-muted-foreground text-xs">— leave blank for single day</span>
+          </Label>
+          <Input
+            id="responsibility-end-date"
+            type="date"
+            value={endDate}
+            min={date}
+            onChange={(e) => onEndDateChange(e.target.value)}
+            className="scroll-mt-24"
+            data-testid="input-responsibility-end-date"
+          />
+        </div>
+      )}
+
+      {/* At: Time + For: Duration on one row (hidden when all-day) */}
+      {!isAllDay && (
+        <div className="flex items-end gap-3">
+          <div className="flex-1 space-y-1.5">
+            <Label className="text-xs flex items-center gap-1" htmlFor="responsibility-time">
+              <Clock className="w-3 h-3" />
+              At…
             </Label>
             <Input
-              id="responsibility-end-date"
-              type="date"
-              value={endDate}
-              min={date}
-              onChange={(e) => onEndDateChange(e.target.value)}
-              data-testid="input-responsibility-end-date"
+              id="responsibility-time"
+              type="time"
+              value={time}
+              onChange={(e) => onTimeChange(e.target.value)}
+              className="scroll-mt-24"
+              data-testid="input-responsibility-time"
             />
           </div>
-        )}
-
-        {/* Time + duration (hidden when all-day). Mirrors agenda-task-modal
-            lines 633–669 verbatim so muscle memory is identical. */}
-        {!isAllDay && (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs" htmlFor="responsibility-time">Start time</Label>
+          <div className="flex-1 space-y-1.5">
+            <Label className="text-xs">For…</Label>
+            <div className="flex gap-2">
               <Input
-                id="responsibility-time"
-                type="time"
-                value={time}
-                onChange={(e) => onTimeChange(e.target.value)}
-                data-testid="input-responsibility-time"
+                type="number"
+                min={1}
+                value={durValue}
+                onChange={(e) => onDurValueChange(e.target.value)}
+                className="flex-1 scroll-mt-24"
+                data-testid="input-responsibility-duration-value"
               />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Duration</Label>
-              <div className="flex gap-2">
-                <Input
-                  type="number"
-                  min={1}
-                  value={durValue}
-                  onChange={(e) => onDurValueChange(e.target.value)}
-                  className="flex-1"
-                  data-testid="input-responsibility-duration-value"
-                />
-                <select
-                  value={durUnit}
-                  onChange={(e) => onDurUnitChange(e.target.value as "min" | "hr")}
-                  className="rounded-md border border-input bg-background px-2 text-sm"
-                  data-testid="select-responsibility-duration-unit"
-                >
-                  <option value="min">min</option>
-                  <option value="hr">hr</option>
-                </select>
-              </div>
+              <select
+                value={durUnit}
+                onChange={(e) => onDurUnitChange(e.target.value as "min" | "hr")}
+                className="rounded-md border border-input bg-background px-2 text-sm h-9 scroll-mt-24"
+                data-testid="select-responsibility-duration-unit"
+              >
+                <option value="min">min</option>
+                <option value="hr">hr</option>
+              </select>
             </div>
           </div>
-        )}
-
-        {/* Color last. */}
-        <div className="space-y-1.5">
-          <Label className="text-xs">Color</Label>
-          <ColorPicker value={color} onChange={onColorChange} />
         </div>
-      </CardContent>
-    </Card>
+      )}
+
+      {/* Frequency with calendar icon */}
+      <div className="space-y-1.5">
+        <Label className="text-xs flex items-center gap-1.5" htmlFor="responsibility-recurrence">
+          <CalendarDays className="w-3.5 h-3.5" />
+          Frequency
+        </Label>
+        <RecurrenceEditor
+          fieldId="responsibility-recurrence"
+          value={recurrenceRule}
+          onChange={onRecurrenceChange}
+        />
+      </div>
+
+      {/* Color last. */}
+      <div className="space-y-1.5">
+        <Label className="text-xs">Color</Label>
+        <ColorPicker value={color} onChange={onColorChange} />
+      </div>
+    </div>
   );
 }

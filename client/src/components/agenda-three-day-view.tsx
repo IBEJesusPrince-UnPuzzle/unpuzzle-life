@@ -23,8 +23,10 @@
 //   - Timed chips: vertical text wrap (whitespace-normal, line-clamp-3)
 // =============================================================================
 
-import { useMemo, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useDragReschedule } from "@/hooks/use-drag-reschedule";
+import { apiRequest } from "@/lib/queryClient";
 import { packLanes } from "@/lib/lane-pack";
 import {
   addDays,
@@ -42,6 +44,7 @@ import {
 } from "@/components/agenda-time-grid-shared";
 import { AgendaChipContent } from "@/components/agenda-chip-content";
 import { AgendaAllDayStrip } from "@/components/agenda-all-day-strip";
+import { ExternalEventDetailSheet } from "@/components/external-event-detail-sheet";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const LEFT_GUTTER_PX = 60;
@@ -224,6 +227,25 @@ function ThreeDayColumn({
   onSelect: (item: AgendaWindowItem) => void;
   hourHeightPx: number;
 }) {
+  const [extViewing, setExtViewing] = useState<AgendaWindowItem | null>(null);
+  const qc = useQueryClient();
+  const colRef = useRef<HTMLDivElement | null>(null);
+
+  const { chipHandlers, columnHandlers, dragState } = useDragReschedule({
+    columnRef: colRef,
+    hourHeightPx,
+    columnDate: iso,
+    onTap: onSelect,
+    onCommit: async ({ item, newDate, newTime }) => {
+      await apiRequest("PATCH", `/api/agenda-tasks/${item.id}`, {
+        startDate: newDate,
+        time: newTime,
+        updatedAt: new Date().toISOString(),
+      });
+      qc.invalidateQueries({ queryKey: ["/api/agenda", "v2"] });
+    },
+  });
+
   const todayIso = toIsoDate(new Date());
   const isToday = iso === todayIso;
 
@@ -254,13 +276,26 @@ function ThreeDayColumn({
 
   const hours = Array.from({ length: 24 }, (_, h) => h);
 
+  const MIN_CHIP_HEIGHT_PX_LOCAL = 18;
+
   return (
-    <div className="relative border-l">
+    <div
+      ref={colRef}
+      className="relative border-l"
+      {...columnHandlers}
+    >
       {hours.map((h) => (
         <div
           key={h}
           className="absolute left-0 right-0 border-t border-border/60"
           style={{ top: `${h * hourHeightPx}px` }}
+        />
+      ))}
+      {hours.map((h) => (
+        <div
+          key={`half-${h}`}
+          className="absolute left-0 right-0 border-t border-border/30"
+          style={{ top: `${h * hourHeightPx + hourHeightPx / 2}px` }}
         />
       ))}
 
@@ -274,19 +309,25 @@ function ThreeDayColumn({
         );
         const widthPct = 100 / p.laneCount;
         const leftPct = p.lane * widthPct;
+        const isExt = !!(it as any).isExternal;
         return (
           <button
             key={`${it.id}-${it.startDate}-${p.startMin}`}
-            onClick={() => onSelect(it)}
-            className="absolute rounded-sm text-left overflow-hidden hover:opacity-95 transition-opacity border border-white/40"
+            onClick={(e) => { e.stopPropagation(); if (isExt) setExtViewing(it); }}
+            className="absolute rounded-sm text-left overflow-hidden hover:opacity-95 transition-opacity border touch-none"
             style={{
               top: `${top}px`,
               height: `${height}px`,
               left: `calc(${leftPct}% + 1px)`,
               width: `calc(${widthPct}% - 2px)`,
               backgroundColor: c.hex,
+              opacity: isExt ? 0.82 : (dragState.draggingId === it.id ? 0.35 : 1),
+              cursor: isExt ? "default" : "grab",
+              borderColor: isExt ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.4)",
+              backgroundImage: isExt ? "repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,0.15) 4px,rgba(255,255,255,0.15) 6px)" : undefined,
             }}
             data-testid={`threeday-chip-${it.id}-${it.startDate}`}
+            {...(isExt ? {} : chipHandlers(it, p.startMin))}
           >
             <AgendaChipContent
               item={it}
@@ -299,7 +340,29 @@ function ThreeDayColumn({
         );
       })}
 
+
+      {/* Drag ghost */}
+      {dragState.draggingId != null && dragState.ghostTopPx != null && (() => {
+        const dragging = packed.find((p) => p.item.id === dragState.draggingId);
+        if (!dragging) return null;
+        const ghostHeight = Math.max(MIN_CHIP_HEIGHT_PX_LOCAL, ((dragging.endMin - dragging.startMin) / 60) * hourHeightPx - 2);
+        const gc = findColor(dragging.item.color);
+        return (
+          <div
+            className="absolute rounded-sm pointer-events-none z-20 border border-white/60 shadow-lg opacity-90"
+            style={{
+              top: `${dragState.ghostTopPx}px`,
+              height: `${ghostHeight}px`,
+              left: "1px",
+              right: "1px",
+              backgroundColor: gc.hex,
+            }}
+          />
+        );
+      })()}
+
       {isToday && <CurrentTimeLine />}
+      <ExternalEventDetailSheet item={extViewing} onClose={() => setExtViewing(null)} />
     </div>
   );
 }

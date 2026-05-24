@@ -22,6 +22,10 @@ import {
   agendaTaskPeople, agendaTaskPlaces, agendaTaskThings, agendaTaskProviders, agendaTaskConditions,
   // PR #29a — Phase 8 inbox processing
   filedNotes,
+  // iCal feed sync
+  externalCalendars, externalEvents,
+  // PR #54 — Daily Review completions
+  taskCompletions,
   type User, type InsertUser,
   type Invitation, type InsertInvitation,
   type Project, type InsertProject,
@@ -55,6 +59,7 @@ import {
   type AgendaTask, type InsertAgendaTask,
   type FiledNote, type InsertFiledNote,
   type FiledNoteTargetType,
+  type TaskCompletion, type InsertTaskCompletion,
 } from "@shared/schema";
 import { expandMaster, isoToUtcDate, utcDateToIso, type MasterRow } from "./recurrence";
 
@@ -180,6 +185,24 @@ tryMigration("project_tasks.sort_order",  `ALTER TABLE project_tasks ADD COLUMN 
 tryMigration("responsibilities.start_date",            `ALTER TABLE responsibilities ADD COLUMN start_date TEXT`);
 tryMigration("responsibilities.recurrence_end_date",   `ALTER TABLE responsibilities ADD COLUMN recurrence_end_date TEXT`);
 tryMigration("responsibilities.project_id",            `ALTER TABLE responsibilities ADD COLUMN project_id INTEGER`);
+// PR #52 — Habit loop columns for responsibility chip display
+tryMigration("responsibilities.response",            `ALTER TABLE responsibilities ADD COLUMN response TEXT`);
+tryMigration("responsibilities.cue",                 `ALTER TABLE responsibilities ADD COLUMN cue TEXT`);
+tryMigration("responsibilities.craving",               `ALTER TABLE responsibilities ADD COLUMN craving TEXT`);
+tryMigration("responsibilities.reward",              `ALTER TABLE responsibilities ADD COLUMN reward TEXT`);
+
+// PR #53 — Support availability state (Available / Unavailable / Archived)
+tryMigration("environment_people.state",      `ALTER TABLE environment_people ADD COLUMN state TEXT NOT NULL DEFAULT 'available'`);
+tryMigration("environment_places.state",      `ALTER TABLE environment_places ADD COLUMN state TEXT NOT NULL DEFAULT 'available'`);
+tryMigration("environment_things.state",      `ALTER TABLE environment_things ADD COLUMN state TEXT NOT NULL DEFAULT 'available'`);
+tryMigration("environment_providers.state",   `ALTER TABLE environment_providers ADD COLUMN state TEXT NOT NULL DEFAULT 'available'`);
+tryMigration("environment_conditions.state",  `ALTER TABLE environment_conditions ADD COLUMN state TEXT NOT NULL DEFAULT 'available'`);
+// PR #53 — Optional reason when marking unavailable
+tryMigration("environment_people.unavailable_reason",     `ALTER TABLE environment_people ADD COLUMN unavailable_reason TEXT`);
+tryMigration("environment_places.unavailable_reason",     `ALTER TABLE environment_places ADD COLUMN unavailable_reason TEXT`);
+tryMigration("environment_things.unavailable_reason",     `ALTER TABLE environment_things ADD COLUMN unavailable_reason TEXT`);
+tryMigration("environment_providers.unavailable_reason",  `ALTER TABLE environment_providers ADD COLUMN unavailable_reason TEXT`);
+tryMigration("environment_conditions.unavailable_reason", `ALTER TABLE environment_conditions ADD COLUMN unavailable_reason TEXT`);
 tryMigration("project_tasks.start_date",               `ALTER TABLE project_tasks ADD COLUMN start_date TEXT`);
 tryMigration("project_tasks.end_date",                 `ALTER TABLE project_tasks ADD COLUMN end_date TEXT`);
 tryMigration("project_tasks.is_all_day",               `ALTER TABLE project_tasks ADD COLUMN is_all_day INTEGER NOT NULL DEFAULT 0`);
@@ -403,6 +426,7 @@ sqlite.exec(`
     name TEXT NOT NULL,
     relationship TEXT,
     state TEXT NOT NULL DEFAULT 'available',
+    unavailable_reason TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -412,6 +436,7 @@ sqlite.exec(`
     name TEXT NOT NULL,
     type TEXT,
     state TEXT NOT NULL DEFAULT 'available',
+    unavailable_reason TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -421,6 +446,7 @@ sqlite.exec(`
     name TEXT NOT NULL,
     category TEXT,
     state TEXT NOT NULL DEFAULT 'available',
+    unavailable_reason TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -430,6 +456,7 @@ sqlite.exec(`
     name TEXT NOT NULL,
     type TEXT,
     state TEXT NOT NULL DEFAULT 'available',
+    unavailable_reason TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -439,6 +466,7 @@ sqlite.exec(`
     name TEXT NOT NULL,
     description TEXT,
     state TEXT NOT NULL DEFAULT 'available',
+    unavailable_reason TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -706,6 +734,47 @@ sqlite.exec(`
   );
   CREATE INDEX IF NOT EXISTS filed_notes_target_idx
     ON filed_notes (user_id, target_type, target_id);
+
+  -- iCal feed sync — external calendars and their events.
+  CREATE TABLE IF NOT EXISTS external_calendars (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 1,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT '#4285F4',
+    last_synced_at TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS task_completions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    series_id INTEGER,
+    original_date TEXT,
+    agenda_task_id INTEGER,
+    status TEXT NOT NULL,
+    rescheduled_to TEXT,
+    completed_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS external_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    calendar_id INTEGER NOT NULL REFERENCES external_calendars(id) ON DELETE CASCADE,
+    uid TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '(No title)',
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    start_time TEXT,
+    end_time TEXT,
+    is_all_day INTEGER NOT NULL DEFAULT 0,
+    description TEXT,
+    location TEXT,
+    color TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS external_events_cal_uid
+    ON external_events (calendar_id, uid);
 `);
 
 // Insert default preferences row if none exists
@@ -715,6 +784,23 @@ try {
     sqlite.exec("INSERT INTO preferences (user_id, display_name, time_format) VALUES (1, '', '12h')");
   }
 } catch (_) { /* table will be handled above */ }
+
+// PR #54 — unique index so each occurrence can only have one completion record.
+tryMigration("task_completions.idx_series", `
+  CREATE UNIQUE INDEX IF NOT EXISTS task_completions_series_date
+  ON task_completions (user_id, series_id, original_date)
+  WHERE series_id IS NOT NULL AND original_date IS NOT NULL
+`);
+// Drop the old index that lacked original_date (external events reuse the same
+// agenda_task_id across dates, so we need originalDate in the key).
+tryMigration("task_completions.drop_old_task_idx", `
+  DROP INDEX IF EXISTS task_completions_task_id
+`);
+tryMigration("task_completions.idx_task", `
+  CREATE UNIQUE INDEX IF NOT EXISTS task_completions_task_date
+  ON task_completions (user_id, agenda_task_id, original_date)
+  WHERE agenda_task_id IS NOT NULL AND series_id IS NULL
+`);
 
 // Schema migration complete — re-enable foreign key enforcement for runtime queries.
 sqlite.pragma("foreign_keys = ON");
@@ -1001,7 +1087,7 @@ export interface IStorage {
   // Phase 1: Responsibility ↔ Support junctions (one method set, dispatches by type)
   getResponsibilitySupports(responsibilityId: number, supportType: "people" | "places" | "things" | "providers" | "conditions"): any[];
   linkResponsibilitySupport(supportType: "people" | "places" | "things" | "providers" | "conditions", data: any): any;
-  updateResponsibilitySupportLink(supportType: "people" | "places" | "things" | "providers" | "conditions", id: number, data: { relationshipType?: string; importance?: string }): any;
+  updateResponsibilitySupportLink(supportType: "people" | "places" | "things" | "providers" | "conditions", id: number, data: { relationshipType?: string; importance?: string; coversId?: number | null }): any;
   unlinkResponsibilitySupport(supportType: "people" | "places" | "things" | "providers" | "conditions", id: number): void;
 
   // Phase 1: Project ↔ Responsibility junction
@@ -2008,12 +2094,14 @@ export class DatabaseStorage implements IStorage {
   updateResponsibilitySupportLink(
     supportType: "people" | "places" | "things" | "providers" | "conditions",
     id: number,
-    data: { relationshipType?: string; importance?: string },
+    data: { relationshipType?: string; importance?: string; coversId?: number | null },
   ): any {
     const t = this.respSupportTable(supportType);
     const updates: any = {};
     if (data.relationshipType !== undefined) updates.relationshipType = data.relationshipType;
     if (data.importance !== undefined) updates.importance = data.importance;
+    // PR #53: Support explicit workaround linking
+    if (data.coversId !== undefined) updates.coversId = data.coversId;
     return db.update(t).set(updates).where(eq(t.id, id)).returning().get();
   }
   unlinkResponsibilitySupport(
@@ -2053,12 +2141,14 @@ export class DatabaseStorage implements IStorage {
   updateProjectSupportLink(
     supportType: "people" | "places" | "things" | "providers" | "conditions",
     id: number,
-    data: { relationshipType?: string; importance?: string },
+    data: { relationshipType?: string; importance?: string; coversId?: number | null },
   ): any {
     const t = this.projSupportTable(supportType);
     const updates: any = {};
     if (data.relationshipType !== undefined) updates.relationshipType = data.relationshipType;
     if (data.importance !== undefined) updates.importance = data.importance;
+    // PR #53: Support explicit workaround linking
+    if (data.coversId !== undefined) updates.coversId = data.coversId;
     return db.update(t).set(updates).where(eq(t.id, id)).returning().get();
   }
   unlinkProjectSupport(
@@ -2975,6 +3065,239 @@ export class DatabaseStorage implements IStorage {
 
     // Reset preferences to defaults for this user
     sqlite.exec(`UPDATE preferences SET display_name = '', time_format = '12h', clarity_skip_ritual = 0, show_responsibility = 1, show_project_task = 1, show_standalone = 1 WHERE user_id = ${userId}`);
+
+    // External calendars + their events (cascade handles events)
+    sqlite.exec(`DELETE FROM external_calendars WHERE user_id = ${userId}`);
+  }
+
+  // ============================================================
+  // EXTERNAL CALENDARS
+  // ============================================================
+
+  listExternalCalendars(userId: number) {
+    return db.select().from(externalCalendars).where(eq(externalCalendars.userId, userId)).all();
+  }
+
+  createExternalCalendar(userId: number, data: { name: string; url: string; color: string }) {
+    const now = new Date().toISOString();
+    const rows = db.insert(externalCalendars).values({
+      userId,
+      name: data.name,
+      url: data.url,
+      color: data.color,
+      createdAt: now,
+    }).returning().all();
+    return rows[0];
+  }
+
+  deleteExternalCalendar(userId: number, id: number) {
+    db.delete(externalCalendars)
+      .where(and(eq(externalCalendars.id, id), eq(externalCalendars.userId, userId)))
+      .run();
+  }
+
+  getExternalCalendar(userId: number, id: number) {
+    return db.select().from(externalCalendars)
+      .where(and(eq(externalCalendars.id, id), eq(externalCalendars.userId, userId)))
+      .get() ?? null;
+  }
+
+  updateExternalCalendar(userId: number, id: number, data: { name?: string; color?: string }) {
+    const cal = this.getExternalCalendar(userId, id);
+    if (!cal) return null;
+    db.update(externalCalendars)
+      .set({
+        name: data.name ?? cal.name,
+        color: data.color ?? cal.color,
+      })
+      .where(and(eq(externalCalendars.id, id), eq(externalCalendars.userId, userId)))
+      .run();
+    return this.getExternalCalendar(userId, id);
+  }
+
+  upsertExternalEvents(calendarId: number, events: Array<{
+    uid: string; title: string;
+    startDate: string; endDate: string;
+    startTime: string | null; endTime: string | null;
+    isAllDay: number;
+    description: string | null; location: string | null;
+  }>) {
+    const now = new Date().toISOString();
+    for (const ev of events) {
+      sqlite.prepare(`
+        INSERT INTO external_events
+          (calendar_id, uid, title, start_date, end_date, start_time, end_time, is_all_day, description, location, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(calendar_id, uid) DO UPDATE SET
+          title=excluded.title, start_date=excluded.start_date, end_date=excluded.end_date,
+          start_time=excluded.start_time, end_time=excluded.end_time, is_all_day=excluded.is_all_day,
+          description=excluded.description, location=excluded.location, updated_at=excluded.updated_at
+      `).run(
+        calendarId, ev.uid, ev.title,
+        ev.startDate, ev.endDate, ev.startTime, ev.endTime,
+        ev.isAllDay, ev.description, ev.location,
+        now, now,
+      );
+    }
+    // Mark last synced
+    db.update(externalCalendars)
+      .set({ lastSyncedAt: now })
+      .where(eq(externalCalendars.id, calendarId))
+      .run();
+  }
+
+  getExternalEventsInWindow(userId: number, windowStart: string, windowEnd: string) {
+    return sqlite.prepare(`
+      SELECT ee.*, ec.color AS calendarColor, ec.name AS calendarName, ec.url AS calendarUrl
+      FROM external_events ee
+      JOIN external_calendars ec ON ec.id = ee.calendar_id
+      WHERE ec.user_id = ?
+        AND ee.end_date >= ? AND ee.start_date <= ?
+      ORDER BY ee.start_date, COALESCE(ee.start_time, '99:99')
+    `).all(userId, windowStart, windowEnd) as Array<{
+      id: number; calendarId: number; uid: string; title: string;
+      startDate: string; endDate: string; startTime: string | null; endTime: string | null;
+      isAllDay: number; description: string | null; location: string | null;
+      color: string | null; calendarColor: string; calendarName: string; calendarUrl: string;
+      createdAt: string; updatedAt: string;
+    }>;
+  }
+
+  // PR #53 Phase 3 — Get all items (responsibilities, projects, agenda tasks) that use
+  // a specific support. Used in disruption dialog to show "This may affect…" list.
+  getSupportAffectedItems(
+    userId: number,
+    supportType: "people" | "places" | "things" | "providers" | "conditions",
+    supportId: number,
+  ): {
+    responsibilities: Array<{ id: number; name: string }>;
+    projects: Array<{ id: number; name: string }>;
+    agendaTasks: Array<{ id: number; name: string }>;
+  } {
+    const fkField = this.envFkFieldForType(supportType);
+    const respT = this.respSupportTable(supportType);
+    const projT = this.projSupportTable(supportType);
+    const agendaT = this.agendaTaskSupportTable(supportType);
+
+    // Get responsibility links
+    const respLinks = db.select().from(respT).where(eq(respT[fkField], supportId)).all();
+    const respIds = respLinks.map((r: any) => r.responsibilityId);
+    const respRows = respIds.length
+      ? db.select({ id: responsibilities.id, name: responsibilities.name })
+          .from(responsibilities)
+          .where(and(eq(responsibilities.userId, userId), inArray(responsibilities.id, respIds)))
+          .all()
+      : [];
+
+    // Get project links
+    const projLinks = db.select().from(projT).where(eq(projT[fkField], supportId)).all();
+    const projIds = projLinks.map((r: any) => r.projectId);
+    const projRows = projIds.length
+      ? db.select({ id: projects.id, title: projects.title })
+          .from(projects)
+          .where(and(eq(projects.userId, userId), inArray(projects.id, projIds)))
+          .all()
+      : [];
+
+    // Get agenda task links
+    const agendaLinks = db.select().from(agendaT).where(eq(agendaT[fkField], supportId)).all();
+    const agendaIds = agendaLinks.map((r: any) => r.agendaTaskId);
+    const agendaRows = agendaIds.length
+      ? db.select({ id: agendaTasks.id, title: agendaTasks.title })
+          .from(agendaTasks)
+          .where(and(eq(agendaTasks.userId, userId), inArray(agendaTasks.id, agendaIds)))
+          .all()
+      : [];
+
+    return {
+      responsibilities: respRows.map((r: any) => ({ id: r.id, name: r.name })),
+      projects: projRows.map((r: any) => ({ id: r.id, name: r.title ?? "Untitled Project" })),
+      agendaTasks: agendaRows.map((r: any) => ({ id: r.id, name: r.title ?? "Untitled Task" })),
+    };
+  }
+
+  // ============================================================
+  // PR #54 — Task Completions (Daily Review)
+  // ============================================================
+
+  // Get all completions for a user on a given date (for the review page).
+  // Matches both recurring (series_id + original_date) and standalone/external
+  // (agenda_task_id + original_date) completions.
+  getCompletionsForDate(userId: number, date: string): TaskCompletion[] {
+    return db.select().from(taskCompletions)
+      .where(and(
+        eq(taskCompletions.userId, userId),
+        eq(taskCompletions.originalDate, date),
+      ))
+      .all();
+  }
+
+  // Get a single completion by series+date (recurring) or agendaTaskId (standalone).
+  getCompletion(userId: number, key: { seriesId: number; originalDate: string } | { agendaTaskId: number }): TaskCompletion | undefined {
+    if ("seriesId" in key) {
+      return db.select().from(taskCompletions)
+        .where(and(
+          eq(taskCompletions.userId, userId),
+          eq(taskCompletions.seriesId, key.seriesId),
+          eq(taskCompletions.originalDate, key.originalDate),
+        ))
+        .get();
+    }
+    return db.select().from(taskCompletions)
+      .where(and(
+        eq(taskCompletions.userId, userId),
+        eq(taskCompletions.agendaTaskId, key.agendaTaskId),
+      ))
+      .get();
+  }
+
+  // Upsert a completion — insert or replace if one already exists for this occurrence.
+  upsertCompletion(userId: number, data: Omit<InsertTaskCompletion, "id" | "userId" | "completedAt">): TaskCompletion {
+    const now = new Date().toISOString();
+    // Check if one exists already and update it, otherwise insert.
+    let existing: TaskCompletion | undefined;
+    if (data.seriesId != null && data.originalDate != null) {
+      existing = db.select().from(taskCompletions)
+        .where(and(
+          eq(taskCompletions.userId, userId),
+          eq(taskCompletions.seriesId, data.seriesId),
+          eq(taskCompletions.originalDate, data.originalDate),
+        ))
+        .get();
+    } else if (data.agendaTaskId != null) {
+      existing = db.select().from(taskCompletions)
+        .where(and(
+          eq(taskCompletions.userId, userId),
+          eq(taskCompletions.agendaTaskId, data.agendaTaskId),
+          data.originalDate != null
+            ? eq(taskCompletions.originalDate, data.originalDate)
+            : isNull(taskCompletions.originalDate),
+        ))
+        .get();
+    }
+    if (existing) {
+      return db.update(taskCompletions)
+        .set({ status: data.status, rescheduledTo: data.rescheduledTo ?? null, completedAt: now })
+        .where(eq(taskCompletions.id, existing.id))
+        .returning()
+        .get();
+    }
+    return db.insert(taskCompletions)
+      .values({ ...data, userId, completedAt: now })
+      .returning()
+      .get();
+  }
+
+  // Delete a completion (undo).
+  deleteCompletion(userId: number, id: number): void {
+    db.delete(taskCompletions)
+      .where(and(eq(taskCompletions.id, id), eq(taskCompletions.userId, userId)))
+      .run();
+  }
+
+  // Bulk upsert completions for the review page "mark all" actions.
+  bulkUpsertCompletions(userId: number, items: Omit<InsertTaskCompletion, "id" | "userId" | "completedAt">[]): TaskCompletion[] {
+    return items.map(item => this.upsertCompletion(userId, item));
   }
 }
 

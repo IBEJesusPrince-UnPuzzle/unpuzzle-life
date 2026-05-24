@@ -30,7 +30,7 @@ function todayIso(): string {
   return `${y}-${m}-${day}`;
 }
 
-function readQuery(): { date: string; time: string | null } {
+function readQuery(): { date: string; time: string | null; duration: number | null } {
   // Hash router puts query params before the hash (?foo=bar#/route),
   // matching the pattern used by use-agenda-url-state.ts.
   const params = new URLSearchParams(window.location.search);
@@ -39,23 +39,19 @@ function readQuery(): { date: string; time: string | null } {
     dateRaw && /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : todayIso();
   const timeRaw = params.get("time");
   const time = timeRaw && /^\d{2}:\d{2}$/.test(timeRaw) ? timeRaw : null;
-  return { date, time };
+  const durRaw = params.get("duration");
+  const durParsed = durRaw ? parseInt(durRaw, 10) : NaN;
+  const duration = !isNaN(durParsed) && durParsed > 0 ? durParsed : null;
+  return { date, time, duration };
 }
 
 export default function AgendaTaskNewPage() {
   const [, navigate] = useLocation();
-  const { date /* , time */ } = readQuery();
+  const { date, time, duration } = readQuery();
 
   useEffect(() => {
     document.title = "New task — UnPuzzle";
   }, []);
-
-  // NOTE: AgendaTaskModal doesn't currently accept a defaultTime prop in
-  // create mode (its existing dialog never needed one). Keeping the
-  // ?time= query parsed so the wiring is in place; threading it through
-  // the modal's create-mode default belongs in a tiny follow-up if the
-  // time-slot tap behavior is wanted. For PR #31 the parity goal is the
-  // [+ Task] button replacement, which doesn't carry a time hint.
 
   return (
     <AgendaTaskModal
@@ -65,6 +61,8 @@ export default function AgendaTaskNewPage() {
       }}
       displayMode="page"
       defaultDate={date}
+      defaultTime={time}
+      defaultDuration={duration}
       onSaved={() => navigate("/agenda")}
       onCancel={() => navigate("/agenda")}
     />

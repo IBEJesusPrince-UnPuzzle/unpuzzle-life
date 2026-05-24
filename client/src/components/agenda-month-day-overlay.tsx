@@ -12,17 +12,11 @@
 //   - Tap a row → opens the task modal for that item
 // =============================================================================
 
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { X } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { CalendarDays } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { findColor, pickContrastingText } from "@/lib/agenda-colors";
 import { formatDateContextLabel, formatTimeLabel, timeToMinutes } from "@/lib/agenda-utils";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
@@ -35,50 +29,63 @@ type Props = {
 };
 
 export function AgendaMonthDayOverlay({ open, onOpenChange, date, onSelect }: Props) {
-  const isMobile = useIsMobile();
+  // Keep the Sheet mounted for 400ms after closing so the slide-out
+  // animation can complete. Unmounting immediately would freeze the
+  // animation AND — more critically — leaving it mounted while closed
+  // causes Radix to apply pointer-events:none to <body>, blocking all
+  // desktop clicks on the month grid.
+  const [mounted, setMounted] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  if (!date) return null;
+  useEffect(() => {
+    if (open) {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      setMounted(true);
+    } else {
+      timerRef.current = setTimeout(() => setMounted(false), 400);
+    }
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [open]);
 
-  const title = formatDateContextLabel(date);
-  // PR #30b — do NOT close the overlay when a row is tapped. The view-popup
-  // opens on TOP of the overlay (URL pushes ?task=N on top of ?overlay=ISO),
-  // and tapping ✕ on the popup pops the URL back to the overlay-only state.
-  // This is how Google Calendar's month-day overlay works.
-  const body = (
-    <OverlayBody date={date} onSelect={(it) => {
-      onSelect(it);
-    }} />
-  );
-
-  if (isMobile) {
-    return (
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent
-          side="bottom"
-          className="max-h-[80vh] overflow-y-auto"
-          data-testid="month-day-overlay-sheet"
-        >
-          <SheetHeader>
-            <SheetTitle>{title}</SheetTitle>
-          </SheetHeader>
-          <div className="mt-3">{body}</div>
-        </SheetContent>
-      </Sheet>
-    );
-  }
+  if (!mounted) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="max-w-md"
-        data-testid="month-day-overlay-dialog"
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="bottom"
+        className="max-h-[80vh] overflow-y-auto"
+        data-testid="month-day-overlay-sheet"
       >
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
-        {body}
-      </DialogContent>
-    </Dialog>
+        {date && (
+          <>
+            <SheetHeader className="flex flex-row items-center justify-between pr-8">
+              <SheetTitle>{formatDateContextLabel(date)}</SheetTitle>
+              <GoToDayButton date={date} onClose={() => onOpenChange(false)} />
+            </SheetHeader>
+            <div className="mt-3">
+              <OverlayBody date={date} onSelect={onSelect} />
+            </div>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function GoToDayButton({ date, onClose }: { date: string; onClose: () => void }) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="gap-1.5 text-xs shrink-0"
+      onClick={() => {
+        onClose();
+        window.location.href = `/agenda?d=${date}&v=day`;
+      }}
+    >
+      <CalendarDays className="w-3.5 h-3.5" />
+      Day view
+    </Button>
   );
 }
 
@@ -90,7 +97,7 @@ function OverlayBody({
   onSelect: (item: AgendaWindowItem) => void;
 }) {
   const { data: items = [], isLoading } = useQuery<AgendaWindowItem[]>({
-    queryKey: ["/api/agenda", { from: date, to: date }],
+    queryKey: ["/api/agenda", "v2", { from: date, to: date }],
     queryFn: async () => {
       const r = await fetch(`/api/agenda?from=${date}&to=${date}`, {
         credentials: "include",

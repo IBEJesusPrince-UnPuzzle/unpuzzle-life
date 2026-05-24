@@ -27,7 +27,7 @@
 //     "+N more" on the last row.
 // =============================================================================
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toIsoDate } from "@/lib/agenda-utils";
 import {
@@ -38,6 +38,7 @@ import {
 import { findColor, pickContrastingText } from "@/lib/agenda-colors";
 import { packAllDay, type AllDayPlacement } from "@/lib/all-day-pack";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
+import { ExternalEventDetailSheet } from "@/components/external-event-detail-sheet";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -49,16 +50,18 @@ const CELL_MIN_HEIGHT_PX = 96;
 type Props = {
   date: string; // any date in the month to show
   onDayTap: (iso: string) => void;
+  onSelect?: (item: AgendaWindowItem) => void;
 };
 
-export function AgendaMonthView({ date, onDayTap }: Props) {
+export function AgendaMonthView({ date, onDayTap, onSelect }: Props) {
+  const [extViewing, setExtViewing] = useState<AgendaWindowItem | null>(null);
   // Fetch the entire grid window (Sun before the 1st .. Sat after the last)
   // in a single query — server already supports arbitrary ranges.
   const from = monthGridStartIso(date);
   const to = monthGridEndIso(date);
 
   const { data: items = [] } = useQuery<AgendaWindowItem[]>({
-    queryKey: ["/api/agenda", { from, to }],
+    queryKey: ["/api/agenda", "v2", { from, to }],
     queryFn: async () => {
       const r = await fetch(`/api/agenda?from=${from}&to=${to}`, {
         credentials: "include",
@@ -130,9 +133,17 @@ export function AgendaMonthView({ date, onDayTap }: Props) {
             timedByDay={timedByDay}
             todayIso={todayIso}
             onDayTap={onDayTap}
+            onSelectItem={(it) => {
+              if (it.isExternal) {
+                setExtViewing(it);
+              } else {
+                onSelect?.(it);
+              }
+            }}
           />
         ))}
       </div>
+      <ExternalEventDetailSheet item={extViewing} onClose={() => setExtViewing(null)} />
     </div>
   );
 }
@@ -148,12 +159,14 @@ function MonthWeekRow({
   timedByDay,
   todayIso,
   onDayTap,
+  onSelectItem,
 }: {
   week: { days: string[]; placements: AllDayPlacement[] };
   cells: { iso: string; day: number; inMonth: boolean }[];
   timedByDay: Map<string, AgendaWindowItem[]>;
   todayIso: string;
   onDayTap: (iso: string) => void;
+  onSelectItem?: (item: AgendaWindowItem) => void;
 }) {
   // For each column, count how many span rows are taken — those rows are
   // "consumed" before the cell's timed chips.
@@ -230,6 +243,7 @@ function MonthWeekRow({
           visibleTimed={info.visibleTimed}
           overflowCount={info.overflowCount}
           onTap={onDayTap}
+          onSelectItem={onSelectItem}
         />
       ))}
 
@@ -324,6 +338,7 @@ function MonthCell({
   visibleTimed,
   overflowCount,
   onTap,
+  onSelectItem,
 }: {
   iso: string;
   day: number;
@@ -333,6 +348,7 @@ function MonthCell({
   visibleTimed: AgendaWindowItem[];
   overflowCount: number;
   onTap: (iso: string) => void;
+  onSelectItem?: (item: AgendaWindowItem) => void;
 }) {
   return (
     <button
@@ -370,15 +386,31 @@ function MonthCell({
         ))}
         {visibleTimed.map((it) => {
           const c = findColor(it.color);
+          const isExt = !!it.isExternal;
           return (
-            <div
+            <button
               key={`m-${it.id}-${it.startDate}-${it.time ?? "ad"}`}
-              className="rounded-sm px-1 truncate text-[9px] leading-[14px] border border-white/40"
-              style={{ backgroundColor: c.hex, color: pickContrastingText(c.hex), height: 14 }}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isExt) {
+                  onSelectItem?.(it);
+                } else {
+                  onSelectItem?.(it);
+                }
+              }}
+              className="rounded-sm px-1 truncate text-[9px] leading-[14px] border border-white/40 text-left w-full"
+              style={{
+                backgroundColor: c.hex,
+                color: pickContrastingText(c.hex),
+                height: 14,
+                opacity: isExt ? 0.82 : 1,
+                backgroundImage: isExt ? "repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,0.15) 4px,rgba(255,255,255,0.15) 6px)" : undefined,
+              }}
               data-testid={`month-chip-${it.id}-${it.startDate}`}
             >
               {it.title || "(untitled)"}
-            </div>
+            </button>
           );
         })}
         {overflowCount > 0 && (

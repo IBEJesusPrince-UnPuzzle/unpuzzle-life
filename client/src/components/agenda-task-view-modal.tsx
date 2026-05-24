@@ -59,6 +59,11 @@ import {
   fromIsoDate,
 } from "@/lib/agenda-utils";
 import type { AgendaWindowItem } from "./agenda-task-modal";
+import {
+  DisruptionResponseDialog,
+  type DisruptionChoice,
+  type AffectedItem,
+} from "./disruption-response-dialog";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -84,22 +89,42 @@ type Props = {
 type CardSupport = {
   type: "people" | "places" | "things" | "providers" | "conditions";
   id: number;
+  linkId?: number;
   name: string;
   state: string; // 'available' | 'at_risk' | 'unavailable' | 'archived'
   relationshipType: string; // 'primary' | 'secondary' | 'optional' | 'temporary_workaround'
   importance: string;
+  // PR #53: ID of the critical support this workaround covers (junction row linkId)
+  coversId?: number | null;
+  // PR #53: Reason why support is unavailable (if applicable)
+  unavailableReason?: string | null;
 };
 
 type CardData =
   | {
       task: AgendaWindowItem;
       kind: "responsibility";
-      responsibility: { id: number; name: string } | null;
+      responsibility: {
+        id: number;
+        name: string;
+        response: string | null;
+        cue: string | null;
+        craving: string | null;
+        reward: string | null;
+      } | null;
       roles: string[];
       supports: CardSupport[];
       linkedProject:
         | { id: number; title: string; status: string; nextAction: string | null }
         | null;
+      schedule: {
+        startDate: string;
+        time: string | null;
+        durationMinutes: number | null;
+        isAllDay: boolean;
+        endDate: string | null;
+        recurrenceRule: string | null;
+      } | null;
     }
   | {
       task: AgendaWindowItem;
@@ -222,25 +247,47 @@ type SupportRow =
   | { kind: "warn"; support: CardSupport; workaround: CardSupport | null };
 
 function deriveSupportRows(supports: CardSupport[]): SupportRow[] {
-  const workaroundsByType = new Map<string, CardSupport[]>();
+  // Index all workarounds by their environment item id (s.id)
+  // coversId on a critical support = the environment item id of the workaround
+  const workaroundsByEnvId = new Map<number, CardSupport>();
+  
   for (const s of supports) {
     if (s.relationshipType === "temporary_workaround") {
-      const list = workaroundsByType.get(s.type) ?? [];
-      list.push(s);
-      workaroundsByType.set(s.type, list);
+      workaroundsByEnvId.set(s.id, s);
     }
   }
+
+  // Build set of active workaround env IDs (covering an unavailable critical)
+  const activeWorkaroundEnvIds = new Set(
+    supports
+      .filter((s) => s.relationshipType === "primary" && s.state === "unavailable" && s.coversId != null)
+      .map((s) => s.coversId as number)
+  );
+  
   const rows: SupportRow[] = [];
   for (const s of supports) {
     if (s.relationshipType === "temporary_workaround") {
-      // Workarounds are rendered indented under the broken record they
-      // cover; they do not get their own top-level row.
+      // If this workaround is a DIFFERENT type than the critical it covers,
+      // show it as its own "ok" row in its own category section when active.
+      // Same-type workarounds are shown nested under the critical row instead.
+      if (activeWorkaroundEnvIds.has(s.id)) {
+        const coveredCritical = supports.find(
+          (c) => c.relationshipType === "primary" && c.coversId === s.id
+        );
+        if (coveredCritical && coveredCritical.type !== s.type) {
+          rows.push({ kind: "ok", support: s });
+        }
+      }
       continue;
     }
     if (s.state === "unavailable" && s.relationshipType === "primary") {
-      const wa =
-        (workaroundsByType.get(s.type) ?? []).find((w) => w.state === "available") ?? null;
-      rows.push({ kind: "warn", support: s, workaround: wa });
+      // coversId on the critical support = environment item id of the linked workaround
+      const wa = s.coversId != null
+        ? (workaroundsByEnvId.get(s.coversId) ?? null)
+        : null;
+      // Show workaround nested under this row regardless of type
+      const activeWa = wa?.state === "available" ? wa : null;
+      rows.push({ kind: "warn", support: s, workaround: activeWa });
     } else if (s.state === "at_risk") {
       rows.push({ kind: "note", support: s });
     } else {
@@ -275,7 +322,8 @@ function relationshipLabel(rel: string): string {
  */
 function firstStatusLine(rows: SupportRow[]): { kind: "warn" | "note"; text: string } | null {
   for (const r of rows) {
-    if (r.kind === "warn") {
+    // PR #53: Skip warnings that have an available workaround — those are "ready"
+    if (r.kind === "warn" && !r.workaround) {
       return { kind: "warn", text: `${r.support.name} unavailable` };
     }
   }
@@ -299,6 +347,7 @@ export function AgendaTaskViewModal({
   onNavigateAway,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const [disruptionOpen, setDisruptionOpen] = useState(false);
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
@@ -321,6 +370,53 @@ export function AgendaTaskViewModal({
       return r.json();
     },
     enabled: open && cardId != null,
+    retry: 1, // Limit retries to prevent infinite loading
+    staleTime: 30000, // Cache for 30 seconds
+  });
+
+  // Compute support data for affected items query (must be before early return for hooks consistency)
+  const supportsForQuery: CardSupport[] = cardQuery.data
+    ? cardQuery.data.kind === "responsibility" || cardQuery.data.kind === "project" || cardQuery.data.kind === "standalone"
+      ? (cardQuery.data.supports ?? [])
+      : []
+    : [];
+  const rowsForQuery = deriveSupportRows(supportsForQuery);
+  const warningRowsForQuery = rowsForQuery.filter((r): r is { kind: "warn"; support: CardSupport; workaround: CardSupport | null } => 
+    r.kind === "warn"
+  );
+  const firstWarningForQuery = warningRowsForQuery[0];
+  const supportType = firstWarningForQuery?.support.type;
+  const supportId = firstWarningForQuery?.support.id;
+
+  // PR #53 Phase 3 — Fetch ALL items affected by the first unavailable support
+  // This shows every responsibility/project/agenda task using this support, not just current card
+  // MUST be called before any early return to maintain hooks order
+  const affectedItemsQuery = useQuery<{
+    responsibilities: Array<{ id: number; name: string }>;
+    projects: Array<{ id: number; name: string }>;
+    agendaTasks: Array<{ id: number; name: string }>;
+  }>({
+    queryKey: ["/api/environment", supportType, supportId, "affected-items"],
+    queryFn: async () => {
+      if (!supportType || !supportId) return { responsibilities: [], projects: [], agendaTasks: [] };
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      try {
+        const r = await fetch(`/api/environment/${supportType}/${supportId}/affected-items`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (!r.ok) throw new Error(`Failed to fetch affected items: ${r.status}`);
+        return r.json();
+      } catch (e) {
+        clearTimeout(timeout);
+        throw e;
+      }
+    },
+    enabled: !!supportType && !!supportId && disruptionOpen, // Only fetch when dialog is open
+    staleTime: 60000, // Cache for 1 minute
+    retry: 1, // Limit retries
   });
 
   if (!item) return null;
@@ -334,14 +430,34 @@ export function AgendaTaskViewModal({
   // user never sees a flash of empty page. Once it loads we swap in
   // supports + sublines + action buttons keyed off card.kind.
   const card = cardQuery.data ?? null;
+  const cardError = cardQuery.error;
   const supports: CardSupport[] = card
     ? card.kind === "responsibility" || card.kind === "project" || card.kind === "standalone"
-      ? card.supports
+      ? (card.supports ?? [])
       : []
     : [];
   const supportRows = deriveSupportRows(supports);
   const status = firstStatusLine(supportRows);
   const hasWarning = status?.kind === "warn";
+
+  // Build list of all Critical unavailable supports (warnings without workarounds)
+  const warningRows = supportRows.filter((r): r is { kind: "warn"; support: CardSupport; workaround: CardSupport | null } => 
+    r.kind === "warn"
+  );
+  const firstWarning = warningRows[0];
+
+  // Reuse the affectedItemsQuery from before the early return
+  // The query was already called above at component start for hooks consistency
+  // Convert server response to AffectedItem[]
+  const affectedItems: AffectedItem[] = (() => {
+    const data = affectedItemsQuery.data;
+    if (!data) return [];
+    const items: AffectedItem[] = [];
+    data.responsibilities.forEach((r) => items.push({ id: r.id, name: r.name, type: "responsibility" }));
+    data.projects.forEach((p) => items.push({ id: p.id, name: p.name, type: "project_task" }));
+    data.agendaTasks.forEach((t) => items.push({ id: t.id, name: t.name, type: "agenda_task" }));
+    return items;
+  })();
 
   // -------------------------------------------------------------------
   // Sublines per card kind.
@@ -349,11 +465,34 @@ export function AgendaTaskViewModal({
   function renderSublines(): React.ReactNode {
     if (!card) return null;
     if (card.kind === "responsibility") {
-      if (!card.roles.length) return null;
+      // Build set of workaround env IDs that are actively covering an unavailable critical.
+      // coversId on the CRITICAL support points to the workaround's env item id.
+      const activeWorkaroundEnvIds = new Set(
+        card.supports
+          .filter((s) => s.relationshipType === "primary" && s.state === "unavailable" && s.coversId != null)
+          .map((s) => s.coversId as number)
+      );
+      // Only show a place if it's NOT a workaround, OR if it IS a workaround
+      // and it's actively covering an unavailable critical (its env id is in the active set)
+      const places = card.supports
+        .filter((s) => s.type === "places" && (
+          s.relationshipType !== "temporary_workaround" ||
+          activeWorkaroundEnvIds.has(s.id)
+        ))
+        .map((s) => s.name);
       return (
-        <div className="text-sm text-muted-foreground" data-testid="text-view-subline-role">
-          as {card.roles.join(", ")}
-        </div>
+        <>
+          {card.roles.length > 0 && (
+            <div className="text-sm text-muted-foreground" data-testid="text-view-subline-role">
+              as {card.roles.join(", ")}
+            </div>
+          )}
+          {places.length > 0 && (
+            <div className="text-sm text-muted-foreground" data-testid="text-view-subline-places">
+              in {places.join(", ")}
+            </div>
+          )}
+        </>
       );
     }
     if (card.kind === "project") {
@@ -399,10 +538,88 @@ export function AgendaTaskViewModal({
   }
 
   function handleRespond() {
-    toast({
-      title: "Coming in next PR",
-      description: "Disruption flow ships next.",
-    });
+    setDisruptionOpen(true);
+  }
+
+  function handleDisruptionChoice(choice: DisruptionChoice) {
+    setDisruptionOpen(false);
+    
+    switch (choice) {
+      case "workaround": {
+        // Navigate to the CURRENT card's responsibility edit page to add workaround
+        // This ensures the workaround is added to the task the user is viewing
+        const currentRespId = card && card.kind === "responsibility" ? card.responsibility?.id : undefined;
+        if (currentRespId) {
+          const push = () => navigate(`/responsibilities/${currentRespId}/edit`);
+          setDisruptionOpen(false);
+          onOpenChange(false);
+          if (onNavigateAway) onNavigateAway(push);
+          else push();
+        } else {
+          // Fallback: if no responsibility on current card, just close the dialog
+          setDisruptionOpen(false);
+        }
+        break;
+      }
+      case "project": {
+        // Navigate to create project for disruption handling
+        const push = () => navigate("/projects/new");
+        if (onNavigateAway) onNavigateAway(push);
+        else push();
+        break;
+      }
+      case "both": {
+        // First navigate to add workaround in current responsibility edit, then can create project after
+        const currentRespId = card && card.kind === "responsibility" ? card.responsibility?.id : undefined;
+        if (currentRespId) {
+          const push = () => navigate(`/responsibilities/${currentRespId}/edit`);
+          setDisruptionOpen(false);
+          onOpenChange(false);
+          if (onNavigateAway) onNavigateAway(push);
+          else push();
+          toast({
+            title: "Step 1: Add workaround",
+            description: "After adding the workaround, you can create a project if still needed.",
+          });
+        } else {
+          // Fallback: just navigate to create project
+          const push = () => navigate("/projects/new");
+          setDisruptionOpen(false);
+          onOpenChange(false);
+          if (onNavigateAway) onNavigateAway(push);
+          else push();
+        }
+        break;
+      }
+      case "later":
+        // Just close, handle later in Review
+        break;
+    }
+  }
+
+  function handleViewAffectedItem(item: AffectedItem) {
+    // Close disruption dialog and navigate to the item
+    setDisruptionOpen(false);
+    onOpenChange(false);
+    
+    const push = () => {
+      switch (item.type) {
+        case "responsibility":
+          // Navigate to edit page so user can add workarounds
+          navigate(`/responsibilities/${item.id}/edit`);
+          break;
+        case "project_task":
+          navigate(`/projects/${item.id}/edit`);
+          break;
+        case "agenda_task":
+          // For agenda tasks, go to edit
+          navigate(`/agenda/tasks/${item.id}/edit`);
+          break;
+      }
+    };
+    
+    if (onNavigateAway) onNavigateAway(push);
+    else push();
   }
 
   function handleDelete() {
@@ -529,6 +746,13 @@ export function AgendaTaskViewModal({
 
           {/* Body */}
           <div className="px-5 pb-6 flex-1 overflow-y-auto">
+            {/* Error display */}
+            {cardError && (
+              <div className="mb-4 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+                Failed to load card data: {cardError.message}
+              </div>
+            )}
+
             {/* Title row: color swatch + bold title (Q-B locked) */}
             <div className="flex items-start gap-3 mb-1">
               <div
@@ -547,27 +771,12 @@ export function AgendaTaskViewModal({
               </div>
             </div>
 
-            {/* Date / time + recurrence */}
-            <div className="ml-8 mt-3">
-              <div className="text-sm text-foreground" data-testid="text-view-when">
-                {whenLine}
-              </div>
-              {recurrenceLine && (
-                <div
-                  className="text-sm text-muted-foreground mt-0.5"
-                  data-testid="text-view-recurrence"
-                >
-                  {recurrenceLine}
-                </div>
-              )}
-            </div>
-
-            {/* Status block (Q-A: labeled, separate from Support check) */}
-            <div className="ml-8 mt-5">
+            {/* Status block */}
+            <div className="mt-5 px-4 sm:px-0 sm:ml-8">
               <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Status
               </div>
-              <div className="mt-1 text-sm" data-testid="text-view-status">
+              <div className="mt-1 text-sm break-words" data-testid="text-view-status">
                 {status === null ? (
                   <span className="text-foreground">{"\u2713"} Ready</span>
                 ) : status.kind === "warn" ? (
@@ -581,6 +790,66 @@ export function AgendaTaskViewModal({
                 )}
               </div>
             </div>
+
+            {/* Recurrence label + date/time */}
+            <div className="mt-5 px-4 sm:px-0 sm:ml-8">
+              {recurrenceLine && (
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground" data-testid="text-view-recurrence-label">
+                  {recurrenceLine}
+                </div>
+              )}
+              <div className="mt-1 text-sm text-foreground" data-testid="text-view-when">
+                {whenLine}
+              </div>
+            </div>
+
+            {/* PR #52 — Habit loop: I will… (shown collapsed + expanded) */}
+            {card?.kind === "responsibility" && card.responsibility?.response && (
+              <div className="ml-8 mt-5">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  I will…
+                </div>
+                <div className="mt-1 text-sm text-foreground">
+                  {card.responsibility.response}
+                </div>
+              </div>
+            )}
+
+            {/* Expanded: When… (if cue exists) */}
+            {expanded && card?.kind === "responsibility" && card.responsibility?.cue && (
+              <div className="ml-8 mt-5">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  When…
+                </div>
+                <div className="mt-1 text-sm text-foreground">
+                  {card.responsibility.cue}
+                </div>
+              </div>
+            )}
+
+            {/* Expanded: Because… (if craving exists) */}
+            {expanded && card?.kind === "responsibility" && card.responsibility?.craving && (
+              <div className="ml-8 mt-5">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Because…
+                </div>
+                <div className="mt-1 text-sm text-foreground">
+                  {card.responsibility.craving}
+                </div>
+              </div>
+            )}
+
+            {/* Expanded: And be rewarded by… (if reward exists) */}
+            {expanded && card?.kind === "responsibility" && card.responsibility?.reward && (
+              <div className="ml-8 mt-5">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  And be rewarded by…
+                </div>
+                <div className="mt-1 text-sm text-foreground">
+                  {card.responsibility.reward}
+                </div>
+              </div>
+            )}
 
             {/* PR #45 — Support block split by category. Replaces the single
                 "SUPPORT CHECK" header with one section per type, each only
@@ -599,7 +868,7 @@ export function AgendaTaskViewModal({
                 (no "(none)" placeholder). Loading state still shows once
                 above all sections. */}
             {cardQuery.isLoading ? (
-              <div className="ml-8 mt-5 text-sm text-muted-foreground" data-testid="list-view-supports-loading">
+              <div className="mt-5 px-4 sm:px-0 sm:ml-8 text-sm text-muted-foreground" data-testid="list-view-supports-loading">
                 Loading…
               </div>
             ) : (
@@ -613,7 +882,7 @@ export function AgendaTaskViewModal({
                 const rowsForType = supportRows.filter((r) => r.support.type === section.type);
                 if (rowsForType.length === 0) return null;
                 return (
-                  <div className="ml-8 mt-5" key={section.type} data-testid={`block-view-supports-${section.type}`}>
+                  <div className="mt-5 px-4 sm:px-0 sm:ml-8" key={section.type} data-testid={`block-view-supports-${section.type}`}>
                     <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       {section.header}
                     </div>
@@ -638,8 +907,8 @@ export function AgendaTaskViewModal({
                             : row.support.name;
                         return (
                           <div key={`${row.support.type}-${row.support.id}`}>
-                            <div className="flex items-center justify-between gap-3">
-                              <span className={iconClass}>
+                            <div className="flex items-start justify-between gap-3">
+                              <span className={`${iconClass} break-words min-w-0 flex-1`}>
                                 {icon} {labelText}
                               </span>
                               {label && (
@@ -647,10 +916,10 @@ export function AgendaTaskViewModal({
                               )}
                             </div>
                             {row.kind === "warn" && row.workaround && (
-                              <div className="flex items-center justify-between gap-3 pl-5">
-                                <span className="text-foreground">
+                              <div className="flex items-start justify-between gap-3 pl-5">
+                                <span className="text-foreground break-words min-w-0 flex-1">
                                   {"\u2514\u2500 \u2713 "}
-                                  {row.workaround.name} available as workaround
+                                  {row.workaround.name}
                                 </span>
                                 <span className="text-xs text-muted-foreground shrink-0">
                                   {relationshipLabel(row.workaround.relationshipType)}
@@ -847,6 +1116,20 @@ export function AgendaTaskViewModal({
           </div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
+
+      {/* Disruption Response Dialog — PR #53 Phase 3 */}
+      <DisruptionResponseDialog
+        open={disruptionOpen}
+        onOpenChange={setDisruptionOpen}
+        supportName={firstWarning?.support.name ?? "Support"}
+        unavailableReason={firstWarning?.support.unavailableReason ?? null}
+        affectedItems={affectedItems}
+        isLoadingItems={affectedItemsQuery.isLoading}
+        itemsError={affectedItemsQuery.error?.message || null}
+        hasExistingWorkaround={!!firstWarning?.workaround}
+        onChoose={handleDisruptionChoice}
+        onViewItem={handleViewAffectedItem}
+      />
     </DialogPrimitive.Root>
   );
 }

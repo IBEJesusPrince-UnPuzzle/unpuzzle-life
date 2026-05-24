@@ -41,6 +41,7 @@ import {
 } from "@shared/schema";
 import { validateRecurrenceRule } from "./recurrence";
 import { z } from "zod";
+import ical from "node-ical";
 
 // Phase 1 helper: support type whitelist for /api/environment/{type} dispatch.
 const SUPPORT_TYPES = ["people", "places", "things", "providers", "conditions"] as const;
@@ -813,6 +814,68 @@ export function registerRoutes(server: Server, app: Express) {
   });
 
   // ============================================================
+  // PR #54 — DAILY REVIEW: TASK COMPLETIONS
+  // ============================================================
+
+  // GET /api/completions?date=YYYY-MM-DD — all completions for a date
+  app.get("/api/completions", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const date = String(req.query.date ?? "");
+    if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return res.status(400).json({ error: "date query param required (YYYY-MM-DD)" });
+    }
+    res.json(storage.getCompletionsForDate(userId, date));
+  });
+
+  // POST /api/completions — upsert a single completion
+  // Body: { seriesId, originalDate } OR { agendaTaskId }, plus { status, rescheduledTo? }
+  app.post("/api/completions", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const { seriesId, originalDate, agendaTaskId, status, rescheduledTo } = req.body ?? {};
+    const validStatuses = ["done", "missed", "skipped", "rescheduled"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: `status must be one of: ${validStatuses.join(", ")}` });
+    }
+    const hasRecurringKey = seriesId != null && originalDate != null;
+    const hasTaskKey = agendaTaskId != null && seriesId == null;
+    if (!hasRecurringKey && !hasTaskKey) {
+      return res.status(400).json({ error: "Provide (seriesId + originalDate) for recurring, or agendaTaskId for standalone" });
+    }
+    const result = storage.upsertCompletion(userId, {
+      seriesId: seriesId ?? null,
+      originalDate: originalDate ?? null,
+      agendaTaskId: agendaTaskId ?? null,
+      status,
+      rescheduledTo: rescheduledTo ?? null,
+    });
+    res.json(result);
+  });
+
+  // POST /api/completions/bulk — bulk upsert for "mark all" actions
+  app.post("/api/completions/bulk", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const { items } = req.body ?? {};
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "items array required" });
+    }
+    const validStatuses = ["done", "missed", "skipped", "rescheduled"];
+    for (const item of items) {
+      if (!validStatuses.includes(item.status)) {
+        return res.status(400).json({ error: `Invalid status: ${item.status}` });
+      }
+    }
+    const results = storage.bulkUpsertCompletions(userId, items);
+    res.json(results);
+  });
+
+  // DELETE /api/completions/:id — undo a completion
+  app.delete("/api/completions/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    storage.deleteCompletion(userId, Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // ============================================================
   // WEEKLY REVIEWS
   // ============================================================
   app.get("/api/weekly-reviews", (req, res) => {
@@ -1311,6 +1374,16 @@ export function registerRoutes(server: Server, app: Express) {
     res.json({ ok: true, summary });
   });
 
+  // PR #53 Phase 3 — Get all responsibilities/projects/agenda tasks using a specific support.
+  // Used by disruption dialog to show "This may affect…" list with complete cross-reference.
+  app.get("/api/environment/:type/:id/affected-items", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const { type, id } = req.params;
+    if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
+    const items = storage.getSupportAffectedItems(userId, type, Number(id));
+    res.json(items);
+  });
+
   // ----- Responsibility ↔ Role junction -----
   app.get("/api/responsibilities/:id/roles", (req, res) => {
     res.json(storage.getResponsibilityRoles(Number(req.params.id)));
@@ -1418,10 +1491,12 @@ export function registerRoutes(server: Server, app: Express) {
     if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
     const validationErr = validateRelImp(req.body);
     if (validationErr) return res.status(400).json({ error: validationErr });
-    const result = storage.updateResponsibilitySupportLink(type, Number(linkId), {
-      relationshipType: req.body.relationshipType,
-      importance: req.body.importance,
-    });
+    const updates: any = {};
+    if (req.body.relationshipType !== undefined) updates.relationshipType = req.body.relationshipType;
+    if (req.body.importance !== undefined) updates.importance = req.body.importance;
+    // PR #53: Support explicit workaround linking
+    if (req.body.coversId !== undefined) updates.coversId = req.body.coversId;
+    const result = storage.updateResponsibilitySupportLink(type, Number(linkId), updates);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
@@ -1461,10 +1536,12 @@ export function registerRoutes(server: Server, app: Express) {
     if (!isSupportType(type)) return res.status(400).json({ error: "Invalid support type" });
     const validationErr = validateRelImp(req.body);
     if (validationErr) return res.status(400).json({ error: validationErr });
-    const result = storage.updateProjectSupportLink(type, Number(linkId), {
-      relationshipType: req.body.relationshipType,
-      importance: req.body.importance,
-    });
+    const updates: any = {};
+    if (req.body.relationshipType !== undefined) updates.relationshipType = req.body.relationshipType;
+    if (req.body.importance !== undefined) updates.importance = req.body.importance;
+    // PR #53: Support explicit workaround linking
+    if (req.body.coversId !== undefined) updates.coversId = req.body.coversId;
+    const result = storage.updateProjectSupportLink(type, Number(linkId), updates);
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
@@ -1739,20 +1816,25 @@ export function registerRoutes(server: Server, app: Express) {
     type CardSupport = {
       type: "people" | "places" | "things" | "providers" | "conditions";
       id: number;
+      linkId?: number;
       name: string;
       state: string;
       relationshipType: string;
       importance: string;
+      // PR #53: ID of the critical support this workaround covers (junction row ID)
+      coversId?: number | null;
+      // PR #53: Reason why support is unavailable (if applicable)
+      unavailableReason?: string | null;
     };
 
     // Build per-type id→env lookup once. The list-getters return user-scoped
     // rows; we index them by id so the join below doesn't issue N queries.
-    const envByType: Record<"people" | "places" | "things" | "providers" | "conditions", Map<number, { name: string; state: string }>> = {
-      people: new Map(storage.getEnvironmentPeople(userId).map((r) => [r.id, { name: r.name, state: r.state }])),
-      places: new Map(storage.getEnvironmentPlaces(userId).map((r) => [r.id, { name: r.name, state: r.state }])),
-      things: new Map(storage.getEnvironmentThings(userId).map((r) => [r.id, { name: r.name, state: r.state }])),
-      providers: new Map(storage.getEnvironmentProviders(userId).map((r) => [r.id, { name: r.name, state: r.state }])),
-      conditions: new Map(storage.getEnvironmentConditions(userId).map((r) => [r.id, { name: r.name, state: r.state }])),
+    const envByType: Record<"people" | "places" | "things" | "providers" | "conditions", Map<number, { name: string; state: string; unavailableReason?: string | null }>> = {
+      people: new Map(storage.getEnvironmentPeople(userId).map((r) => [r.id, { name: r.name, state: r.state, unavailableReason: r.unavailableReason }])),
+      places: new Map(storage.getEnvironmentPlaces(userId).map((r) => [r.id, { name: r.name, state: r.state, unavailableReason: r.unavailableReason }])),
+      things: new Map(storage.getEnvironmentThings(userId).map((r) => [r.id, { name: r.name, state: r.state, unavailableReason: r.unavailableReason }])),
+      providers: new Map(storage.getEnvironmentProviders(userId).map((r) => [r.id, { name: r.name, state: r.state, unavailableReason: r.unavailableReason }])),
+      conditions: new Map(storage.getEnvironmentConditions(userId).map((r) => [r.id, { name: r.name, state: r.state, unavailableReason: r.unavailableReason }])),
     };
 
     function collectSupports(
@@ -1783,10 +1865,13 @@ export function registerRoutes(server: Server, app: Express) {
           out.push({
             type: t,
             id: supportId,
+            linkId: link.id,
             name: env.name,
             state: env.state,
             relationshipType: link.relationshipType,
             importance: link.importance,
+            coversId: link.coversId,
+            unavailableReason: env.unavailableReason,
           });
         }
       }
@@ -1852,13 +1937,25 @@ export function registerRoutes(server: Server, app: Express) {
         };
       }
 
+      // PR #52 — Include full responsibility row (response/cue/craving/reward)
+      // plus schedule for expanded card view.
+      const schedule = respWrap?.schedule ?? null;
+
       return res.json({
         task,
         kind: "responsibility",
-        responsibility: { id: resp.id, name: resp.name },
+        responsibility: {
+          id: resp.id,
+          name: resp.name,
+          response: resp.response,
+          cue: resp.cue,
+          craving: resp.craving,
+          reward: resp.reward,
+        },
         roles,
         supports,
         linkedProject,
+        schedule,
       });
     }
 
@@ -1949,10 +2046,12 @@ export function registerRoutes(server: Server, app: Express) {
         standaloneSupports.push({
           type: t,
           id: supportId,
+          linkId: (link as any).id,
           name: env.name,
           state: env.state,
           relationshipType: (link as any).relationshipType,
           importance: (link as any).importance,
+          coversId: (link as any).coversId,
         });
       }
     }
@@ -2050,7 +2149,154 @@ export function registerRoutes(server: Server, app: Express) {
       if (r.origin === "standalone") return prefs.showStandalone;
       return true;
     });
-    res.json(filtered);
+    // Merge external calendar events as read-only items.
+    const extEvents = storage.getExternalEventsInWindow(userId, from, to);
+    const extMapped = extEvents.map((ev: any) => {
+      const startTime: string | null = ev.start_time ?? ev.startTime ?? null;
+      const endTime: string | null = ev.end_time ?? ev.endTime ?? null;
+      const startDate: string = ev.start_date ?? ev.startDate;
+      const endDate: string = ev.end_date ?? ev.endDate;
+      const isAllDay: number = ev.is_all_day ?? ev.isAllDay ?? 0;
+      const calendarColor: string = ev.calendarColor ?? ev.calendar_color ?? "#4285F4";
+      return ({
+      id: -(ev.id),           // negative id signals read-only to the client
+      origin: "external" as const,
+      originId: null,
+      uid: ev.uid,
+      title: ev.title,
+      startDate,
+      endDate,
+      time: startTime,
+      endTime,
+      durationMinutes: (startTime && endTime)
+        ? (() => {
+            const [sh, sm] = startTime.split(":").map(Number);
+            const [eh, em] = endTime.split(":").map(Number);
+            return Math.max(0, (eh * 60 + em) - (sh * 60 + sm));
+          })()
+        : null,
+      isAllDay,
+      color: ev.color ?? calendarColor,
+      calendarName: ev.calendarName ?? ev.calendar_name,
+      calendarUrl: ev.calendarUrl ?? ev.calendar_url ?? null,
+      description: ev.description,
+      location: ev.location,
+      isVirtual: false,
+      isExternal: true,
+      // Fill required AgendaWindowItem fields with safe defaults.
+      status: "ready",
+      roleId: null, userId, isOverride: 0, isCancelled: 0,
+      seriesId: null, originalDate: null, masterId: -(ev.id),
+      recurrenceRule: null, recurrenceEndDate: null, notes: null,
+      responsibilityId: null, roleNames: [], projectName: null,
+      responsibilityNames: [], placeName: null, placeCount: 0,
+      createdAt: ev.created_at ?? ev.createdAt, updatedAt: ev.updated_at ?? ev.updatedAt,
+    });
+    });
+    res.json([...filtered, ...extMapped]);
+  });
+
+  // ============================================================
+  // EXTERNAL CALENDARS
+  // ============================================================
+  app.get("/api/external-calendars", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    res.json(storage.listExternalCalendars(userId));
+  });
+
+  app.post("/api/external-calendars", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const parsed = z.object({
+      name: z.string().trim().min(1),
+      url: z.string().url(),
+      color: z.string().default("#4285F4"),
+    }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    res.json(storage.createExternalCalendar(userId, parsed.data));
+  });
+
+  // PATCH /api/external-calendars/:id — update name and/or color
+  app.patch("/api/external-calendars/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const id = Number(req.params.id);
+    const { name, color } = req.body;
+    if (name !== undefined && typeof name !== "string") {
+      return res.status(400).json({ error: "name must be a string" });
+    }
+    if (color !== undefined && typeof color !== "string") {
+      return res.status(400).json({ error: "color must be a string" });
+    }
+    const result = storage.updateExternalCalendar(userId, id, { name, color });
+    if (!result) return res.status(404).json({ error: "Not found" });
+    res.json(result);
+  });
+
+  app.delete("/api/external-calendars/:id", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    storage.deleteExternalCalendar(userId, Number(req.params.id));
+    res.json({ ok: true });
+  });
+
+  app.post("/api/external-calendars/:id/sync", async (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const cal = storage.getExternalCalendar(userId, Number(req.params.id));
+    if (!cal) return res.status(404).json({ error: "Not found" });
+    try {
+      const events = await ical.async.fromURL(cal.url);
+      const toUpsert: Parameters<typeof storage.upsertExternalEvents>[1] = [];
+      for (const rawEv of Object.values(events)) {
+        if (!rawEv || rawEv.type !== "VEVENT") continue;
+        const ev = rawEv as any;
+        const start: Date | undefined = ev.start;
+        const end: Date | undefined = ev.end ?? ev.start;
+        if (!start) continue;
+        // node-ical sets datetype="date" for all-day events and
+        // datetype="date-time" (or omits it) for timed events.
+        // Guard: also treat as all-day if the Date object has no time
+        // component (midnight UTC with getUTCHours===0 && getUTCMinutes===0
+        // is how node-ical represents a bare DATE value).
+        const isAllDay =
+          ev.datetype === "date" ||
+          (ev.datetype !== "date-time" &&
+            start.getUTCHours() === 0 &&
+            start.getUTCMinutes() === 0 &&
+            start.getUTCSeconds() === 0 &&
+            start.getMilliseconds() === 0 &&
+            !String(ev.start).includes("T"));
+        // Use UTC date string for all-day; local time for timed events.
+        const toDateStrUtc = (d: Date) => d.toISOString().slice(0, 10);
+        const toDateStrLocal = (d: Date) => {
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, "0");
+          const dy = String(d.getDate()).padStart(2, "0");
+          return `${y}-${m}-${dy}`;
+        };
+        const toTimeStr = (d: Date) =>
+          `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+        const startDate = isAllDay ? toDateStrUtc(start) : toDateStrLocal(start);
+        const endRaw = end ? (isAllDay ? toDateStrUtc(end) : toDateStrLocal(end)) : startDate;
+        // iCal all-day end dates are exclusive (next day); subtract 1 day.
+        const endDate = isAllDay && endRaw > startDate
+          ? toDateStrUtc(new Date(new Date(endRaw).getTime() - 86400000))
+          : endRaw;
+        console.log(`[ical-sync] uid=${ev.uid} datetype=${ev.datetype} isAllDay=${isAllDay} start=${ev.start} startDate=${startDate} startTime=${isAllDay ? null : toTimeStr(start)}`);
+        toUpsert.push({
+          uid: String(ev.uid ?? `${startDate}-${ev.summary}`),
+          title: String(ev.summary ?? "(No title)"),
+          startDate,
+          endDate,
+          startTime: isAllDay ? null : toTimeStr(start),
+          endTime: isAllDay || !end ? null : toTimeStr(end),
+          isAllDay: isAllDay ? 1 : 0,
+          description: ev.description ? String(ev.description) : null,
+          location: ev.location ? String(ev.location) : null,
+        });
+      }
+      storage.upsertExternalEvents(cal.id, toUpsert);
+      res.json({ synced: toUpsert.length });
+    } catch (err: any) {
+      res.status(502).json({ error: `Failed to fetch calendar: ${err.message}` });
+    }
   });
 
   // Default agenda view preference (per §23).

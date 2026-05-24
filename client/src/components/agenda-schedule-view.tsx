@@ -61,6 +61,7 @@ import {
 } from "@/lib/agenda-utils";
 import { findColor, pickContrastingText } from "@/lib/agenda-colors";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
+import { ExternalEventDetailSheet } from "@/components/external-event-detail-sheet";
 
 // 14-day window per fetch in either direction. The spec lists this as the
 // default fetch chunk; could be tuned later.
@@ -401,7 +402,7 @@ export function AgendaScheduleView({
   // Fetch items for the current window. Whenever the range expands we
   // re-query the whole window (TanStack's cache keys this off the dates).
   const { data: items = [] } = useQuery<AgendaWindowItem[]>({
-    queryKey: ["/api/agenda", { from: range.from, to: range.to }],
+    queryKey: ["/api/agenda", "v2", { from: range.from, to: range.to }],
     queryFn: async () => {
       const r = await fetch(`/api/agenda?from=${range.from}&to=${range.to}`, {
         credentials: "include",
@@ -419,6 +420,9 @@ export function AgendaScheduleView({
     const n = new Date();
     return n.getHours() * 60 + n.getMinutes();
   });
+
+  // External event detail sheet state (read-only external calendar events).
+  const [extViewing, setExtViewing] = useState<AgendaWindowItem | null>(null);
   useEffect(() => {
     const tick = () => {
       const n = new Date();
@@ -739,6 +743,7 @@ export function AgendaScheduleView({
                         key={chip.key}
                         chip={chip}
                         onSelect={onSelect}
+                        onSelectExternal={setExtViewing}
                         chipRefs={chipRefs}
                         showNowLineBefore={renderNowLine}
                       />
@@ -758,6 +763,9 @@ export function AgendaScheduleView({
 
       {/* Bottom sentinel for infinite-scroll forward. */}
       <div ref={bottomSentinelRef} aria-hidden className="h-1" />
+
+      {/* External event detail sheet (read-only). */}
+      <ExternalEventDetailSheet item={extViewing} onClose={() => setExtViewing(null)} />
     </div>
   );
 }
@@ -782,6 +790,7 @@ function NowLine() {
 interface ChipFragmentProps {
   chip: DayChip;
   onSelect: (item: AgendaWindowItem) => void;
+  onSelectExternal: (item: AgendaWindowItem) => void;
   chipRefs: React.MutableRefObject<Map<string, HTMLButtonElement>>;
   showNowLineBefore: boolean;
 }
@@ -789,6 +798,7 @@ interface ChipFragmentProps {
 function ScheduleChipFragment({
   chip,
   onSelect,
+  onSelectExternal,
   chipRefs,
   showNowLineBefore,
 }: ChipFragmentProps) {
@@ -799,19 +809,25 @@ function ScheduleChipFragment({
   const sublines = getChipSublines(item);
   const timeLine = getTimeLine(chip);
   const placeLine = getPlaceLine(item);
+  const isExt = !!(item as any).isExternal;
 
   return (
     <>
       {showNowLineBefore && <NowLine />}
       <button
         type="button"
-        onClick={() => onSelect(item)}
+        onClick={() => isExt ? onSelectExternal(item) : onSelect(item)}
         ref={(el) => {
           if (el) chipRefs.current.set(chip.key, el);
           else chipRefs.current.delete(chip.key);
         }}
         className="block w-full text-left rounded-md px-2.5 py-1.5 hover:opacity-95 transition-opacity"
-        style={{ backgroundColor: bg, color: fg }}
+        style={{
+          backgroundColor: bg,
+          color: fg,
+          opacity: isExt ? 0.82 : 1,
+          backgroundImage: isExt ? "repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,0.15) 4px,rgba(255,255,255,0.15) 6px)" : undefined,
+        }}
         data-testid={`schedule-chip-${item.id}-${chip.day}`}
       >
         <div className="text-sm font-semibold truncate" data-testid="chip-title">

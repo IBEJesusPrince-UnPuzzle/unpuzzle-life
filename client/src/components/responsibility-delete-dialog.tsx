@@ -76,7 +76,7 @@ export function ResponsibilityDeleteDialog({
       queryClient.invalidateQueries({ queryKey: ["/api/responsibilities"] });
       queryClient.invalidateQueries({ queryKey: ["/api/roles"] });
       queryClient.invalidateQueries({ queryKey: ["/api/agenda-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/agenda"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agenda", "v2"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       onOpenChange(false);
       onDeleted();

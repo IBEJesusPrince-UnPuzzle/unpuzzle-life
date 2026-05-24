@@ -215,9 +215,8 @@ export function ProjectTasksCard({
       // every agenda_tasks row with origin='project' and
       // originId=:taskId; this just tells any open agenda view to
       // refetch and pick it up.
-      void queryClient.invalidateQueries({ queryKey: ["/api/agenda"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/agenda", "v2"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/agenda-tasks"] });
-      void queryClient.invalidateQueries({ queryKey: ["/api/agenda-window"] });
     },
     onError: (err: Error) => {
       toast({

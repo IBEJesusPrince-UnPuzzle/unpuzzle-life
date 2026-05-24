@@ -66,7 +66,7 @@ export function AgendaTaskFilterMenu() {
       // AND invalidate every agenda window query so the visible rows are
       // re-fetched with the new server-side filter.
       qc.invalidateQueries({ queryKey: ["/api/preferences"] });
-      qc.invalidateQueries({ queryKey: ["/api/agenda"] });
+      qc.invalidateQueries({ queryKey: ["/api/agenda", "v2"] });
     },
   });
 

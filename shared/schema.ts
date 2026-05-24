@@ -124,6 +124,7 @@ export const environmentPeople = sqliteTable("environment_people", {
   name: text("name").notNull(),
   relationship: text("relationship"),
   state: text("state").notNull().default("available"),
+  unavailableReason: text("unavailable_reason"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -133,6 +134,7 @@ export const environmentPlaces = sqliteTable("environment_places", {
   name: text("name").notNull(),
   type: text("type"),
   state: text("state").notNull().default("available"),
+  unavailableReason: text("unavailable_reason"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -142,6 +144,7 @@ export const environmentThings = sqliteTable("environment_things", {
   name: text("name").notNull(),
   category: text("category"),
   state: text("state").notNull().default("available"),
+  unavailableReason: text("unavailable_reason"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -152,6 +155,7 @@ export const environmentProviders = sqliteTable("environment_providers", {
   name: text("name").notNull(),
   type: text("type"), // free-form: 'subscription', 'service', 'institution', etc.
   state: text("state").notNull().default("available"),
+  unavailableReason: text("unavailable_reason"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -162,6 +166,7 @@ export const environmentConditions = sqliteTable("environment_conditions", {
   name: text("name").notNull(),
   description: text("description"),
   state: text("state").notNull().default("available"),
+  unavailableReason: text("unavailable_reason"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -202,6 +207,11 @@ export const responsibilities = sqliteTable("responsibilities", {
   startDate: text("start_date"),
   recurrenceEndDate: text("recurrence_end_date"),
   projectId: integer("project_id"),
+  // Habit loop fields (Atomic Habits framework)
+  response: text("response"),           // I will... (the simple action)
+  cue: text("cue"),                     // When... (anchor trigger)
+  craving: text("craving"),             // Because... (motivation/identity)
+  reward: text("reward"),                 // And I'll be rewarded by... (immediate payoff)
   createdAt: text("created_at").notNull(),
 });
 
@@ -246,6 +256,8 @@ export const responsibilityPeople = sqliteTable("responsibility_people", {
   personId: integer("person_id").notNull().references(() => environmentPeople.id),
   relationshipType: text("relationship_type").notNull().default("primary"),
   importance: text("importance").notNull().default("important"),
+  // PR #53: Explicit workaround linking - stores the ID of the critical support this workaround covers
+  coversId: integer("covers_id"),
 });
 
 export const responsibilityPlaces = sqliteTable("responsibility_places", {
@@ -254,6 +266,8 @@ export const responsibilityPlaces = sqliteTable("responsibility_places", {
   placeId: integer("place_id").notNull().references(() => environmentPlaces.id),
   relationshipType: text("relationship_type").notNull().default("primary"),
   importance: text("importance").notNull().default("important"),
+  // PR #53: Explicit workaround linking - stores the ID of the critical support this workaround covers
+  coversId: integer("covers_id"),
 });
 
 export const responsibilityThings = sqliteTable("responsibility_things", {
@@ -262,6 +276,8 @@ export const responsibilityThings = sqliteTable("responsibility_things", {
   thingId: integer("thing_id").notNull().references(() => environmentThings.id),
   relationshipType: text("relationship_type").notNull().default("primary"),
   importance: text("importance").notNull().default("important"),
+  // PR #53: Explicit workaround linking - stores the ID of the critical support this workaround covers
+  coversId: integer("covers_id"),
 });
 
 export const responsibilityProviders = sqliteTable("responsibility_providers", {
@@ -270,6 +286,8 @@ export const responsibilityProviders = sqliteTable("responsibility_providers", {
   providerId: integer("provider_id").notNull().references(() => environmentProviders.id),
   relationshipType: text("relationship_type").notNull().default("primary"),
   importance: text("importance").notNull().default("important"),
+  // PR #53: Explicit workaround linking - stores the ID of the critical support this workaround covers
+  coversId: integer("covers_id"),
 });
 
 export const responsibilityConditions = sqliteTable("responsibility_conditions", {
@@ -278,6 +296,8 @@ export const responsibilityConditions = sqliteTable("responsibility_conditions",
   conditionId: integer("condition_id").notNull().references(() => environmentConditions.id),
   relationshipType: text("relationship_type").notNull().default("primary"),
   importance: text("importance").notNull().default("important"),
+  // PR #53: Explicit workaround linking - stores the ID of the critical support this workaround covers
+  coversId: integer("covers_id"),
 });
 
 // PR #23 — PROJECT ↔ SUPPORT junctions.
@@ -316,6 +336,7 @@ export const projectProviders = sqliteTable("project_providers", {
   providerId: integer("provider_id").notNull().references(() => environmentProviders.id),
   relationshipType: text("relationship_type").notNull().default("primary"),
   importance: text("importance").notNull().default("important"),
+  coversId: integer("covers_id"),
 });
 
 export const projectConditions = sqliteTable("project_conditions", {
@@ -324,6 +345,7 @@ export const projectConditions = sqliteTable("project_conditions", {
   conditionId: integer("condition_id").notNull().references(() => environmentConditions.id),
   relationshipType: text("relationship_type").notNull().default("primary"),
   importance: text("importance").notNull().default("important"),
+  coversId: integer("covers_id"),
 });
 
 // PR #32 — AGENDA TASK ↔ SUPPORT junctions.
@@ -545,6 +567,41 @@ export const filedNotes = sqliteTable("filed_notes", {
   // (e.g. directly on a Role page in a future phase).
   sourceInboxItemId: integer("source_inbox_item_id").references(() => inboxItems.id),
   createdAt: text("created_at").notNull(),
+});
+
+// ============================================================
+// EXTERNAL CALENDARS (iCal feed sync)
+// ============================================================
+// Each row is a user-added iCal/ICS feed URL (Google, Outlook, Apple).
+// Syncing is on-demand: POST /api/external-calendars/:id/sync fetches
+// the URL and upserts events into external_events.
+export const externalCalendars = sqliteTable("external_calendars", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().default(1),
+  name: text("name").notNull(),
+  url: text("url").notNull(),
+  color: text("color").notNull().default("#4285F4"), // default Google blue
+  lastSyncedAt: text("last_synced_at"), // ISO-8601 or null if never synced
+  createdAt: text("created_at").notNull(),
+});
+
+// Individual events fetched from an external iCal feed.
+// uid is the VEVENT UID from the iCal file — used for upsert dedup.
+export const externalEvents = sqliteTable("external_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  calendarId: integer("calendar_id").notNull().references(() => externalCalendars.id, { onDelete: "cascade" }),
+  uid: text("uid").notNull(),
+  title: text("title").notNull().default("(No title)"),
+  startDate: text("start_date").notNull(), // YYYY-MM-DD
+  endDate: text("end_date").notNull(),     // YYYY-MM-DD (same as startDate for single-day)
+  startTime: text("start_time"),           // HH:MM or null for all-day
+  endTime: text("end_time"),               // HH:MM or null for all-day
+  isAllDay: integer("is_all_day").notNull().default(0),
+  description: text("description"),
+  location: text("location"),
+  color: text("color"),                    // null = inherit from calendar
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
 });
 
 // ============================================================
@@ -830,6 +887,27 @@ export const INBOX_PROCESS_ACTIONS = [
   "trash_it",
 ] as const;
 export type InboxProcessAction = typeof INBOX_PROCESS_ACTIONS[number];
+
+// PR #54 — Daily Review: task completion log.
+// Records the outcome of each agenda item per occurrence.
+// Keyed by (series_id + original_date) for recurring virtual instances,
+// or (agenda_task_id) for standalone/override rows.
+// status: 'done' | 'missed' | 'skipped' | 'rescheduled'
+export const taskCompletions = sqliteTable("task_completions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  // For recurring instances: the series master id + the occurrence date
+  seriesId: integer("series_id"),
+  originalDate: text("original_date"), // YYYY-MM-DD
+  // For standalone/override rows: the direct agenda_task id
+  agendaTaskId: integer("agenda_task_id"),
+  status: text("status").notNull(), // 'done' | 'missed' | 'skipped' | 'rescheduled'
+  rescheduledTo: text("rescheduled_to"), // YYYY-MM-DD, set when status='rescheduled'
+  completedAt: text("completed_at").notNull(), // ISO timestamp
+});
+export type TaskCompletion = typeof taskCompletions.$inferSelect;
+export type InsertTaskCompletion = typeof taskCompletions.$inferInsert;
+export const insertTaskCompletionSchema = createInsertSchema(taskCompletions);
 
 // PR #29a — processedAs values written by the orchestrator.
 //   do_it_now    -> 'done'

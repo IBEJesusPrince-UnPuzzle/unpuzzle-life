@@ -31,14 +31,19 @@ export const AGENDA_PALETTE: AgendaColor[] = [
 
 export const DEFAULT_AGENDA_COLOR_HEX = "#039BE5"; // Peacock
 
-/** Find palette entry by hex; falls back to graphite on miss. */
+/** Find palette entry by hex; falls back to graphite on miss.
+ *  For arbitrary hex strings (e.g. external calendar colors) a synthetic
+ *  AgendaColor is returned so the chip renders with the correct color. */
 export function findColor(hex?: string | null): AgendaColor {
   if (!hex) return AGENDA_PALETTE[AGENDA_PALETTE.length - 1];
   const lower = hex.toLowerCase();
-  return (
-    AGENDA_PALETTE.find((c) => c.hex.toLowerCase() === lower) ??
-    AGENDA_PALETTE[AGENDA_PALETTE.length - 1]
-  );
+  const match = AGENDA_PALETTE.find((c) => c.hex.toLowerCase() === lower);
+  if (match) return match;
+  // Accept any valid 3- or 6-digit hex as a pass-through color.
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(lower)) {
+    return { id: lower, label: lower, hex: lower, softHex: lower };
+  }
+  return AGENDA_PALETTE[AGENDA_PALETTE.length - 1];
 }
 
 /**

@@ -30,8 +30,11 @@
 // cards measure inside it, not against the whole page.
 // =============================================================================
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { useDragReschedule } from "@/hooks/use-drag-reschedule";
+import { apiRequest } from "@/lib/queryClient";
 import { packLanes } from "@/lib/lane-pack";
 import {
   toIsoDate,
@@ -45,6 +48,7 @@ import {
   useTodayScrollToPreviousHour,
 } from "@/components/agenda-time-grid-shared";
 import { AgendaChipContent } from "@/components/agenda-chip-content";
+import { ExternalEventDetailSheet } from "@/components/external-event-detail-sheet";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 
 const MIN_CARD_HEIGHT_PX = 22;
@@ -53,16 +57,41 @@ const GUTTER_WIDTH_PX = 60;
 type Props = {
   date: string; // YYYY-MM-DD
   onSelect: (item: AgendaWindowItem) => void;
-  /** PR #40 — incremented on each Today tap so the view auto-scrolls to
-   *  the previous full hour. */
   todayScrollKey?: number;
 };
 
+function slotTime(offsetY: number, hourHeightPx: number): string {
+  const totalMin = Math.max(0, Math.min(23 * 60 + 30, Math.round((offsetY / hourHeightPx) * 60 / 30) * 30));
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 export function AgendaDayView({ date, onSelect, todayScrollKey = 0 }: Props) {
+  const [extViewing, setExtViewing] = useState<AgendaWindowItem | null>(null);
+  const [, navigate] = useLocation();
+  const qc = useQueryClient();
   const { hourHeightPx } = useAgendaZoom();
   const pinchHandlers = usePinchZoom();
+  const cardColumnRef = useRef<HTMLDivElement | null>(null);
+
+  const { chipHandlers, columnHandlers, dragState } = useDragReschedule({
+    columnRef: cardColumnRef,
+    hourHeightPx,
+    columnDate: date,
+    onTap: onSelect,
+    onCommit: async ({ item, newDate, newTime }) => {
+      await apiRequest("PATCH", `/api/agenda-tasks/${item.id}`, {
+        startDate: newDate,
+        time: newTime,
+        updatedAt: new Date().toISOString(),
+      });
+      qc.invalidateQueries({ queryKey: ["/api/agenda", "v2"] });
+    },
+  });
+
   const { data: items = [] } = useQuery<AgendaWindowItem[]>({
-    queryKey: ["/api/agenda", { from: date, to: date }],
+    queryKey: ["/api/agenda", "v2", { from: date, to: date }],
     queryFn: async () => {
       const r = await fetch(`/api/agenda?from=${date}&to=${date}`, {
         credentials: "include",
@@ -120,6 +149,7 @@ export function AgendaDayView({ date, onSelect, todayScrollKey = 0 }: Props) {
 
   const totalHeight = hourHeightPx * 24;
   const hours = Array.from({ length: 24 }, (_, h) => h);
+  const halfHours = Array.from({ length: 24 }, (_, h) => h);
 
   // PR #40 — Today button time-scroll. Only fires when this view's date
   // is today AND the Today key has been bumped by a Today tap.
@@ -127,6 +157,7 @@ export function AgendaDayView({ date, onSelect, todayScrollKey = 0 }: Props) {
   useTodayScrollToPreviousHour(gridRef, isToday, todayScrollKey, hourHeightPx);
 
   return (
+    <>
     <div className="flex flex-col" ref={gridRef}>
       {/* Time grid — CSS grid with a fixed gutter and a flexible card column.
           The whole block sits in normal page flow; <main> handles scroll. */}
@@ -158,13 +189,25 @@ export function AgendaDayView({ date, onSelect, todayScrollKey = 0 }: Props) {
         </div>
 
         {/* Card column — relative so cards position inside it */}
-        <div className="relative border-l">
+        <div
+          ref={cardColumnRef}
+          className="relative border-l"
+          {...columnHandlers}
+        >
           {/* Hour gridlines */}
           {hours.map((h) => (
             <div
               key={h}
               className="absolute left-0 right-0 border-t border-border/60"
               style={{ top: `${h * hourHeightPx}px` }}
+            />
+          ))}
+          {/* Half-hour gridlines */}
+          {halfHours.map((h) => (
+            <div
+              key={`half-${h}`}
+              className="absolute left-0 right-0 border-t border-border/30"
+              style={{ top: `${h * hourHeightPx + hourHeightPx / 2}px` }}
             />
           ))}
 
@@ -179,19 +222,25 @@ export function AgendaDayView({ date, onSelect, todayScrollKey = 0 }: Props) {
             );
             const widthPct = 100 / p.laneCount;
             const leftPct = p.lane * widthPct;
+            const isExt = !!(it as any).isExternal;
             return (
               <button
                 key={`${it.id}-${it.startDate}-${p.startMin}`}
-                onClick={() => onSelect(it)}
-                className="absolute rounded-md text-left overflow-hidden hover:opacity-95 transition-opacity border border-white/40 shadow-sm"
+                onClick={(e) => { e.stopPropagation(); if (isExt) setExtViewing(it); }}
+                className="absolute rounded-md text-left overflow-hidden hover:opacity-95 transition-opacity border shadow-sm touch-none"
                 style={{
                   top: `${top}px`,
                   height: `${height}px`,
                   left: `calc(${leftPct}% + 2px)`,
                   width: `calc(${widthPct}% - 4px)`,
                   backgroundColor: c.hex,
+                  opacity: isExt ? 0.82 : (dragState.draggingId === it.id ? 0.35 : 1),
+                  cursor: isExt ? "default" : "grab",
+                  borderColor: isExt ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.4)",
+                  backgroundImage: isExt ? "repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,0.15) 4px,rgba(255,255,255,0.15) 6px)" : undefined,
                 }}
                 data-testid={`button-card-${it.id}`}
+                {...(isExt ? {} : chipHandlers(it, p.startMin))}
               >
                 {/* PR #39 — locked chip layout (agenda-grid-chip-layout-spec).
                    Title → subline(s) → time + duration → place. Whatever
@@ -211,6 +260,26 @@ export function AgendaDayView({ date, onSelect, todayScrollKey = 0 }: Props) {
             );
           })}
 
+          {/* Drag ghost */}
+          {dragState.draggingId != null && dragState.ghostTopPx != null && (() => {
+            const dragging = packed.find((p) => p.item.id === dragState.draggingId);
+            if (!dragging) return null;
+            const ghostHeight = Math.max(MIN_CARD_HEIGHT_PX, ((dragging.endMin - dragging.startMin) / 60) * hourHeightPx - 2);
+            const c = findColor(dragging.item.color);
+            return (
+              <div
+                className="absolute rounded-md pointer-events-none z-20 border border-white/60 shadow-lg opacity-90"
+                style={{
+                  top: `${dragState.ghostTopPx}px`,
+                  height: `${ghostHeight}px`,
+                  left: "2px",
+                  right: "2px",
+                  backgroundColor: c.hex,
+                }}
+              />
+            );
+          })()}
+
           {/* Current-time line (today only) */}
           {isToday && (
             <div
@@ -227,5 +296,7 @@ export function AgendaDayView({ date, onSelect, todayScrollKey = 0 }: Props) {
         </div>
       </div>
     </div>
+    <ExternalEventDetailSheet item={extViewing} onClose={() => setExtViewing(null)} />
+    </>
   );
 }

@@ -41,7 +41,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Plus, Users as UsersIcon, X, Lock } from "lucide-react";
+import { Plus, Users as UsersIcon, X, Lock, ChevronDown, ChevronUp, Expand } from "lucide-react";
 import { EditPageHeader } from "@/components/edit-page-header";
 import { EditPageUndoBar } from "@/components/edit-page-undo-bar";
 import { MarkedForRemovalSection } from "@/components/marked-for-removal-section";
@@ -59,6 +59,10 @@ import type { Role, Responsibility, ResponsibilityRole } from "@shared/schema";
 
 interface RespDraft {
   name: string;
+  response: string;  // I will... (make it simple)
+  cue: string;       // When... (anchor trigger)
+  craving: string;   // Because... (motivation/identity)
+  reward: string;    // And I'll be rewarded by... (immediate payoff)
 }
 
 // PR #19 — schedule snapshot returned by GET /api/responsibilities/:id/schedule.
@@ -79,6 +83,40 @@ type ResponsibilityWithSchedule = {
 
 const PLEASURE_NAME = "UnPuzzle Pleasure";
 
+// Expandable section component for habit loop fields
+function HabitSection({
+  title,
+  subtitle,
+  expanded,
+  onToggle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full p-4 flex items-center justify-between text-left hover:bg-muted/30 transition-colors"
+      >
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">{title}</span>
+            {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          </div>
+          <p className="text-[11px] italic text-muted-foreground -mt-0.5">{subtitle}</p>
+        </div>
+      </button>
+      {expanded && <CardContent className="pt-0 pb-4 px-4">{children}</CardContent>}
+    </Card>
+  );
+}
+
 export default function ResponsibilityEditPage({
   params,
 }: {
@@ -87,6 +125,25 @@ export default function ResponsibilityEditPage({
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  // Expand/collapse state for all sections
+  const [expandedSections, setExpandedSections] = useState<{
+    response: boolean;
+    cue: boolean;
+    craving: boolean;
+    reward: boolean;
+    schedule: boolean;
+    role: boolean;
+    support: boolean;
+  }>({
+    response: false,
+    cue: false,
+    craving: false,
+    reward: false,
+    schedule: false,
+    role: false,
+    support: false,
+  });
 
   // PR #46 — Same anti-remount pattern as support-role-edit. On atomic
   // create, stash the new id locally and stay mounted instead of
@@ -104,6 +161,7 @@ export default function ResponsibilityEditPage({
   const { data: responsibilities = [] } = useQuery<Responsibility[]>({
     queryKey: ["/api/responsibilities"],
     enabled: validId,
+    staleTime: Infinity, // Prevent background refetches from resetting draft while editing
   });
   const { data: roles = [] } = useQuery<Role[]>({
     queryKey: ["/api/roles"],
@@ -132,8 +190,14 @@ export default function ResponsibilityEditPage({
   // Draft state (name only) wired through useAutosaveDraft
   // ============================================================
   const serverDraft: RespDraft = useMemo(
-    () => ({ name: responsibility?.name ?? "" }),
-    [responsibility?.name],
+    () => ({
+      name: responsibility?.name ?? "",
+      response: responsibility?.response ?? "",
+      cue: responsibility?.cue ?? "",
+      craving: responsibility?.craving ?? "",
+      reward: responsibility?.reward ?? "",
+    }),
+    [responsibility?.name, responsibility?.response, responsibility?.cue, responsibility?.craving, responsibility?.reward],
   );
 
   // PR #19 — pendingSchedule holds the latest schedule snapshot the
@@ -169,6 +233,10 @@ export default function ResponsibilityEditPage({
       try {
         await apiRequest("PATCH", `/api/responsibilities/${id}`, {
           name: trimmedName,
+          response: next.response,
+          cue: next.cue,
+          craving: next.craving,
+          reward: next.reward,
         });
       } catch (err) {
         const msg = parseServerError(err as Error, "Couldn't save");
@@ -257,8 +325,8 @@ export default function ResponsibilityEditPage({
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/responsibilities"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/responsibilities/${id}/schedule`] });
+      // PR #46 — No invalidateQueries during autosave. Refetches happen on
+      // remount or when user clicks Done (handleDone batches invalidations).
     },
     onError: (err: Error) => {
       toast({
@@ -290,6 +358,10 @@ export default function ResponsibilityEditPage({
           name: trimmedName,
           color: pendingSchedule.color,
           recurrenceRule: pendingSchedule.recurrenceRule,
+          response: draftState.draft.response,
+          cue: draftState.draft.cue,
+          craving: draftState.draft.craving,
+          reward: draftState.draft.reward,
           schedule: {
             startDate: pendingSchedule.startDate,
             isAllDay: pendingSchedule.isAllDay,
@@ -350,61 +422,79 @@ export default function ResponsibilityEditPage({
   });
 
   async function handleDone() {
-    // Flush pending name autosave.
-    await done();
-    // PR #46 — Use the stashed created id (if a create just happened) or
-    // the URL id. Falls back through state too via `id` (= effectiveId).
-    const targetId = createdIdRef.current ?? id;
-    if (!isCreate) {
-      const ops: Promise<unknown>[] = [];
-      const supportTypesTouched = new Set<SupportType>();
-      markedForRemoval.forEach(key => {
-        const roleM = key.match(/^resp-role:(\d+)$/);
-        if (roleM) {
-          ops.push(removeRoleLink.mutateAsync(Number(roleM[1])));
-          return;
-        }
-        const supportM = key.match(
-          /^resp-support:(people|places|things|providers|conditions):(\d+)$/,
-        );
-        if (supportM) {
-          const supportType = supportM[1] as SupportType;
-          const linkId = Number(supportM[2]);
-          supportTypesTouched.add(supportType);
-          ops.push(removeSupportLink.mutateAsync({ supportType, linkId }));
-        }
-      });
-      if (ops.length > 0) {
-        try {
-          await Promise.all(ops);
-        } catch {
-          // toasts already shown in onError
-        }
+    try {
+      // Flush pending name autosave with timeout to prevent hanging.
+      try {
+        await Promise.race([
+          done(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Autosave timeout")), 3000))
+        ]);
+      } catch (e) {
+        // Log but continue - draft may have already saved or failed
+        console.warn("Autosave flush issue:", e);
       }
-      clearRemovals();
-    }
-    // PR #46 — Single batched invalidate before navigating. No invalidates
-    // fire during typing/autosave, so the form doesn't get yanked.
-    await queryClient.invalidateQueries({ queryKey: ["/api/responsibilities"] });
-    await queryClient.invalidateQueries({ queryKey: ["/api/responsibility-roles"] });
-    if (targetId != null) {
-      await queryClient.invalidateQueries({
-        queryKey: [`/api/responsibilities/${targetId}/schedule`],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: [`/api/responsibilities/${targetId}/roles`],
-      });
-      for (const st of ["people", "places", "things", "providers", "conditions"] as SupportType[]) {
-        await queryClient.invalidateQueries({
-          queryKey: [`/api/responsibilities/${targetId}/support/${st}`],
+      // PR #46 — Use the stashed created id (if a create just happened) or
+      // the URL id. Falls back through state too via `id` (= effectiveId).
+      const targetId = createdIdRef.current ?? id;
+      if (!isCreate) {
+        const ops: Promise<unknown>[] = [];
+        const supportTypesTouched = new Set<SupportType>();
+        markedForRemoval.forEach(key => {
+          const roleM = key.match(/^resp-role:(\d+)$/);
+          if (roleM) {
+            ops.push(removeRoleLink.mutateAsync(Number(roleM[1])));
+            return;
+          }
+          const supportM = key.match(
+            /^resp-support:(people|places|things|providers|conditions):(\d+)$/,
+          );
+          if (supportM) {
+            const supportType = supportM[1] as SupportType;
+            const linkId = Number(supportM[2]);
+            supportTypesTouched.add(supportType);
+            ops.push(removeSupportLink.mutateAsync({ supportType, linkId }));
+          }
         });
+        if (ops.length > 0) {
+          try {
+            await Promise.all(ops);
+          } catch {
+            // toasts already shown in onError
+          }
+        }
+        clearRemovals();
       }
-    }
-    if (isCreateUrl && createdIdRef.current == null) {
-      setLocation("/support");
-    } else {
-      // §11a compact saved view.
-      setLocation(`/responsibilities/${targetId}`);
+      // PR #46 — Single batched invalidate before navigating. No invalidates
+      // fire during typing/autosave, so the form doesn't get yanked.
+      await queryClient.invalidateQueries({ queryKey: ["/api/responsibilities"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/responsibility-roles"] });
+      if (targetId != null) {
+        await queryClient.invalidateQueries({
+          queryKey: [`/api/responsibilities/${targetId}/schedule`],
+        });
+        await queryClient.invalidateQueries({
+          queryKey: [`/api/responsibilities/${targetId}/roles`],
+        });
+        for (const st of ["people", "places", "things", "providers", "conditions"] as SupportType[]) {
+          await queryClient.invalidateQueries({
+            queryKey: [`/api/responsibilities/${targetId}/support/${st}`],
+          });
+        }
+      }
+      console.log("Navigating to:", isCreateUrl && createdIdRef.current == null ? "/support" : `/responsibilities/${targetId}`);
+      if (isCreateUrl && createdIdRef.current == null) {
+        setLocation("/support");
+      } else {
+        // §11a compact saved view.
+        setLocation(`/responsibilities/${targetId}`);
+      }
+    } catch (err) {
+      console.error("handleDone failed:", err);
+      toast({
+        variant: "destructive",
+        title: "Couldn't finish",
+        description: "Something went wrong. Please try again.",
+      });
     }
   }
 
@@ -431,6 +521,7 @@ export default function ResponsibilityEditPage({
   }
 
   const headerTitle = isCreate ? "New responsibility" : "Edit responsibility";
+  const headerSubtitle = !isCreate && draft.name ? draft.name : undefined;
   const backHref = isCreate ? "/support" : `/responsibilities/${id}`;
   const linkedRoleIds = linkedRoles.map(lr => lr.role.id);
 
@@ -439,6 +530,7 @@ export default function ResponsibilityEditPage({
       <EditPageHeader
         backHref={backHref}
         title={headerTitle}
+        subtitle={headerSubtitle}
         infoContent={
           <div className="space-y-1 text-xs">
             <p className="font-medium">Editing a responsibility</p>
@@ -484,44 +576,145 @@ export default function ResponsibilityEditPage({
               onChange={e => setDraft({ ...draft, name: e.target.value })}
               placeholder="School drop-off"
               maxLength={120}
-              className="text-sm h-9"
+              className="text-sm h-9 scroll-mt-24"
+              autoCapitalize="off"
               data-testid="input-responsibility-name"
             />
+            {/* Expand/Collapse All buttons */}
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs px-2"
+                onClick={() => setExpandedSections({
+                  response: true,
+                  cue: true,
+                  craving: true,
+                  reward: true,
+                  schedule: true,
+                  role: true,
+                  support: true,
+                })}
+              >
+                <Expand className="w-3.5 h-3.5 mr-1" />
+                Expand all
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs px-2"
+                onClick={() => setExpandedSections({
+                  response: false,
+                  cue: false,
+                  craving: false,
+                  reward: false,
+                  schedule: false,
+                  role: false,
+                  support: false,
+                })}
+              >
+                <ChevronUp className="w-3.5 h-3.5 mr-1" />
+                Collapse all
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Schedule (§11, PR #18c–#18e, expanded in PR #19)
-            — sits directly under the Responsibility name so the language
-            flows: "recurring duty" → "how often you complete this duty".
-            Visible from the start so the create flow is single-screen
-            (locked PR #19 decision). Saves cascade to all instances per
-            Google's calendar-level pattern; no scope prompt at this level.
-            On create, the card emits onSave once name + time are valid; the
-            atomic-create effect above POSTs both rows in one transaction. */}
-        <CalendarSettingsCard
-          initial={{
-            color: responsibility?.color ?? null,
-            recurrenceRule: responsibility?.recurrenceRule ?? null,
-            schedule: scheduleData?.schedule ?? null,
-          }}
-          onSave={(next) => {
-            if (isCreate) {
-              setPendingSchedule(next);
-            } else {
-              saveCalendarSettings.mutate(next);
-            }
-          }}
-        />
+        {/* Habit Loop: I will… (Response) */}
+        <HabitSection
+          title="I will…"
+          subtitle="- make the duty simple to execute — clear structure, no guesswork"
+          expanded={expandedSections.response}
+          onToggle={() => setExpandedSections(s => ({ ...s, response: !s.response }))}
+        >
+          <textarea
+            value={draft.response}
+            onChange={e => setDraft({ ...draft, response: e.target.value })}
+            placeholder="Describe the simple action..."
+            className="w-full min-h-[80px] p-3 text-sm rounded-md border border-input bg-background resize-y scroll-mt-32"
+            autoCapitalize="off"
+          />
+        </HabitSection>
+
+        {/* Habit Loop: When… (Cue) */}
+        <HabitSection
+          title="When…"
+          subtitle="- anchor the action to a specific time, place, or preceding habit so it's unmistakable"
+          expanded={expandedSections.cue}
+          onToggle={() => setExpandedSections(s => ({ ...s, cue: !s.cue }))}
+        >
+          <textarea
+            value={draft.cue}
+            onChange={e => setDraft({ ...draft, cue: e.target.value })}
+            placeholder="Describe the trigger..."
+            className="w-full min-h-[80px] p-3 text-sm rounded-md border border-input bg-background resize-y scroll-mt-32"
+            autoCapitalize="off"
+          />
+        </HabitSection>
+
+        {/* Habit Loop: Because… (Craving) */}
+        <HabitSection
+          title="Because…"
+          subtitle="- pair the action with something you enjoy or the identity you're becoming, so you want to start"
+          expanded={expandedSections.craving}
+          onToggle={() => setExpandedSections(s => ({ ...s, craving: !s.craving }))}
+        >
+          <textarea
+            value={draft.craving}
+            onChange={e => setDraft({ ...draft, craving: e.target.value })}
+            placeholder="Describe the motivation or identity..."
+            className="w-full min-h-[80px] p-3 text-sm rounded-md border border-input bg-background resize-y scroll-mt-32"
+            autoCapitalize="off"
+          />
+        </HabitSection>
+
+        {/* Habit Loop: And I'll be rewarded by… (Reward) */}
+        <HabitSection
+          title="And I'll be rewarded by…"
+          subtitle="- choose an immediate, small payoff that closes the loop and signals 'do this again'"
+          expanded={expandedSections.reward}
+          onToggle={() => setExpandedSections(s => ({ ...s, reward: !s.reward }))}
+        >
+          <textarea
+            value={draft.reward}
+            onChange={e => setDraft({ ...draft, reward: e.target.value })}
+            placeholder="Describe the immediate payoff..."
+            className="w-full min-h-[80px] p-3 text-sm rounded-md border border-input bg-background resize-y scroll-mt-32"
+            autoCapitalize="off"
+          />
+        </HabitSection>
+
+        {/* Schedule (§11, PR #18c–#18e, expanded in PR #19) */}
+        <HabitSection
+          title="Schedule"
+          subtitle="-how often you complete this duty, and how it shows on your calendar"
+          expanded={expandedSections.schedule}
+          onToggle={() => setExpandedSections(s => ({ ...s, schedule: !s.schedule }))}
+        >
+          <CalendarSettingsCard
+            initial={{
+              color: responsibility?.color ?? null,
+              recurrenceRule: responsibility?.recurrenceRule ?? null,
+              schedule: scheduleData?.schedule ?? null,
+            }}
+            onSave={(next) => {
+              if (isCreate) {
+                setPendingSchedule(next);
+              } else {
+                saveCalendarSettings.mutate(next);
+              }
+            }}
+          />
+        </HabitSection>
 
         {/* Role multi-add + Linked Roles (§11) */}
-        <Card>
-          <CardContent className="p-4 space-y-3">
-            <div className="space-y-0.5">
-              <Label className="text-xs">Role</Label>
-              <p className="text-[11px] italic text-muted-foreground -mt-0.5">
-                -which role does this responsibility belong to?
-              </p>
-            </div>
+        <HabitSection
+          title="As…"
+          subtitle="-which role does this responsibility belong to?"
+          expanded={expandedSections.role}
+          onToggle={() => setExpandedSections(s => ({ ...s, role: !s.role }))}
+        >
+          <div className="space-y-3">
 
             {isCreate ? (
               <p className="text-xs text-muted-foreground italic">
@@ -627,64 +820,70 @@ export default function ResponsibilityEditPage({
                 </div>
               </>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </HabitSection>
 
-        {/* 5 Support sections (§11) — only shown after the responsibility row
-            exists, since they all need an id to link against. */}
+        {/* Support sections (§11) — collapsible container for 5 subsections */}
         {!isCreate && (
-          <>
-            <SupportSection
-              responsibilityId={id as number}
-              supportType="people"
-              title="People"
-              helperLine="-who does this responsibility involve or depend on?"
-              addLabel="person"
-              markedForRemoval={markedForRemoval}
-              markForRemoval={markForRemoval}
-              undoRemoval={undoRemoval}
-            />
-            <SupportSection
-              responsibilityId={id as number}
-              supportType="places"
-              title="Places"
-              helperLine="-where do you go to carry this out?"
-              addLabel="place"
-              markedForRemoval={markedForRemoval}
-              markForRemoval={markForRemoval}
-              undoRemoval={undoRemoval}
-            />
-            <SupportSection
-              responsibilityId={id as number}
-              supportType="things"
-              title="Things"
-              helperLine="-what do you need to have, carry, or use?"
-              addLabel="thing"
-              markedForRemoval={markedForRemoval}
-              markForRemoval={markForRemoval}
-              undoRemoval={undoRemoval}
-            />
-            <SupportSection
-              responsibilityId={id as number}
-              supportType="providers"
-              title="Providers"
-              helperLine="-who supplies or maintains part of this support?"
-              addLabel="provider"
-              markedForRemoval={markedForRemoval}
-              markForRemoval={markForRemoval}
-              undoRemoval={undoRemoval}
-            />
-            <SupportSection
-              responsibilityId={id as number}
-              supportType="conditions"
-              title="Conditions"
-              helperLine="-what must be true before this can happen smoothly?"
-              addLabel="condition"
-              markedForRemoval={markedForRemoval}
-              markForRemoval={markForRemoval}
-              undoRemoval={undoRemoval}
-            />
-          </>
+          <HabitSection
+            title="Support"
+            subtitle="-the people, places, things, providers, and conditions that support this duty"
+            expanded={expandedSections.support}
+            onToggle={() => setExpandedSections(s => ({ ...s, support: !s.support }))}
+          >
+            <div className="space-y-4">
+              <SupportSection
+                responsibilityId={id as number}
+                supportType="people"
+                title="People"
+                helperLine="-who does this responsibility involve or depend on?"
+                addLabel="person"
+                markedForRemoval={markedForRemoval}
+                markForRemoval={markForRemoval}
+                undoRemoval={undoRemoval}
+              />
+              <SupportSection
+                responsibilityId={id as number}
+                supportType="places"
+                title="Places"
+                helperLine="-where do you go to carry this out?"
+                addLabel="place"
+                markedForRemoval={markedForRemoval}
+                markForRemoval={markForRemoval}
+                undoRemoval={undoRemoval}
+              />
+              <SupportSection
+                responsibilityId={id as number}
+                supportType="things"
+                title="Things"
+                helperLine="-what do you need to have, carry, or use?"
+                addLabel="thing"
+                markedForRemoval={markedForRemoval}
+                markForRemoval={markForRemoval}
+                undoRemoval={undoRemoval}
+              />
+              <SupportSection
+                responsibilityId={id as number}
+                supportType="providers"
+                title="Providers"
+                helperLine="-who supplies or maintains part of this support?"
+                addLabel="provider"
+                markedForRemoval={markedForRemoval}
+                markForRemoval={markForRemoval}
+                undoRemoval={undoRemoval}
+              />
+              <SupportSection
+                responsibilityId={id as number}
+                supportType="conditions"
+                title="Conditions"
+                helperLine="-what must be true before this can happen smoothly?"
+                addLabel="condition"
+                markedForRemoval={markedForRemoval}
+                markForRemoval={markForRemoval}
+                undoRemoval={undoRemoval}
+              />
+            </div>
+          </HabitSection>
         )}
 
         {isCreate && (

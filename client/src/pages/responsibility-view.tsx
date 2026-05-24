@@ -193,7 +193,7 @@ export default function ResponsibilityViewPage({
               data-testid="text-responsibility-name"
             >
               <CheckSquare className="w-5 h-5 text-muted-foreground shrink-0" />
-              <span className="truncate">{responsibility.name}</span>
+              <span className="whitespace-normal">{responsibility.name}</span>
             </h1>
             <p className="text-xs text-muted-foreground mt-0.5">
               Roles:{" "}
@@ -206,15 +206,24 @@ export default function ResponsibilityViewPage({
               )}
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setLocation(`/responsibilities/${id}/edit`)}
-            data-testid="button-edit-responsibility"
-          >
-            <Pencil className="w-3.5 h-3.5 mr-1.5" />
-            Edit
-          </Button>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/agenda?d=${new Date().toISOString().slice(0, 10)}&v=schedule&resp=${id}`}
+              className="text-xs text-muted-foreground hover:text-foreground underline"
+              data-testid="link-schedule-view"
+            >
+              Schedule view
+            </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setLocation(`/responsibilities/${id}/edit`)}
+              data-testid="button-edit-responsibility"
+            >
+              <Pencil className="w-3.5 h-3.5 mr-1.5" />
+              Edit
+            </Button>
+          </div>
         </div>
       </div>
 

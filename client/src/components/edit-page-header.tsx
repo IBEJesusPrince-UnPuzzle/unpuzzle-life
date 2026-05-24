@@ -23,6 +23,8 @@ export interface EditPageHeaderProps {
   backHref: string;
   // Right-of-arrow page title, e.g. "Edit project" or "Edit responsibility".
   title: string;
+  // Optional name of the item being edited (shown below title, no truncation).
+  subtitle?: string;
   // Optional helper content shown when the user taps the [i] icon.
   // Pass null to omit the info button entirely.
   infoContent?: React.ReactNode;
@@ -62,6 +64,7 @@ function formatSavedLabel(
 export function EditPageHeader({
   backHref,
   title,
+  subtitle,
   infoContent,
   savedAt,
   isSaving,
@@ -101,12 +104,19 @@ export function EditPageHeader({
             <span className="sr-only">Back</span>
           </Button>
         </Link>
-        <h1
-          className="flex-1 text-sm font-semibold tracking-tight truncate"
-          data-testid="text-edit-title"
-        >
-          {title}
-        </h1>
+        <div className="flex-1 min-w-0">
+          <h1
+            className="text-sm font-semibold tracking-tight"
+            data-testid="text-edit-title"
+          >
+            {title}
+          </h1>
+          {subtitle && (
+            <p className="text-xs text-muted-foreground whitespace-normal leading-tight mt-0.5" data-testid="text-edit-subtitle">
+              {subtitle}
+            </p>
+          )}
+        </div>
         {infoContent != null ? (
           <Popover>
             <PopoverTrigger asChild>

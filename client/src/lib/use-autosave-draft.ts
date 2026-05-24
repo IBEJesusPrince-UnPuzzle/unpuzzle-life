@@ -116,6 +116,9 @@ export function useAutosaveDraft<T>(
     baselineRef.current = baseline;
   }, [baseline]);
   useEffect(() => {
+    // PR #51 — Once editing starts, lock the draft completely.
+    // This prevents any external resets while the user is typing.
+    if (hasLockedRef.current) return;
     // Already in sync with the saved baseline — nothing to do.
     if (isEqual(value, baselineRef.current)) return;
     // The hook's own save normalised the value before sending; the server
@@ -196,6 +199,11 @@ export function useAutosaveDraft<T>(
   // to tell "this prop change came in after the user kept typing" (in
   // which case the guard is voided and we DO accept the incoming value).
   const lastUserEditRef = useRef<number>(0);
+  // PR #51 — Editing lock. Once the user has made ANY edit (draft != value
+  // on first setDraft call), we lock the draft completely. This prevents
+  // ANY external resets while editing, including subtle race conditions
+  // that bypass the echo guard. The lock clears on unmount.
+  const hasLockedRef = useRef<boolean>(false);
 
   const flushSave = useCallback(async () => {
     if (debounceTimerRef.current) {
@@ -241,6 +249,11 @@ export function useAutosaveDraft<T>(
       // continued typing (don't swallow it) vs landed during a quiet
       // window after save (swallow it).
       lastUserEditRef.current = Date.now();
+      // PR #51 — Lock the draft on first user edit. Once editing starts,
+      // we ignore all external value-prop changes until unmount.
+      if (!hasLockedRef.current) {
+        hasLockedRef.current = true;
+      }
       // Restart debounce window.
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);

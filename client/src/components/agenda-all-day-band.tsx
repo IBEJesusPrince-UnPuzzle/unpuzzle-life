@@ -22,7 +22,7 @@ type Props = {
 
 export function AgendaAllDayBand({ date, onSelect }: Props) {
   const { data: items = [] } = useQuery<AgendaWindowItem[]>({
-    queryKey: ["/api/agenda", { from: date, to: date }],
+    queryKey: ["/api/agenda", "v2", { from: date, to: date }],
     queryFn: async () => {
       const r = await fetch(`/api/agenda?from=${date}&to=${date}`, {
         credentials: "include",

@@ -194,6 +194,13 @@ export type AgendaWindowItem = AgendaTask & {
   responsibilityNames?: string[];
   placeName?: string | null;
   placeCount?: number;
+  // iCal feed events — read-only, not editable in the app.
+  isExternal?: boolean;
+  uid?: string | null;
+  calendarName?: string | null;
+  calendarUrl?: string | null;
+  endTime?: string | null;
+  location?: string | null;
 };
 
 type Props = {
@@ -201,6 +208,10 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   // Pre-fill the create form with this date (Day view's current day).
   defaultDate: string; // YYYY-MM-DD
+  // Pre-fill the start time when opening in create mode (slot-tap feature).
+  defaultTime?: string | null; // HH:MM
+  // Pre-fill the duration (minutes) when opening via drag-to-create.
+  defaultDuration?: number | null;
   // When set, modal is in edit mode. Otherwise it's create mode.
   editing?: AgendaWindowItem | null;
   // PR #29c (Phase 8 Inbox processing) — when "page", omit the Dialog chrome
@@ -232,6 +243,8 @@ export function AgendaTaskModal({
   open,
   onOpenChange,
   defaultDate,
+  defaultTime,
+  defaultDuration,
   editing,
   displayMode = "dialog",
   inboxItemId,
@@ -487,8 +500,10 @@ export function AgendaTaskModal({
       // defaults to start + 60 min (Q2-B).
       setEndDate(defaultDate);
       setIsAllDay(false);
-      setTime("09:00");
-      const { time: defaultEnd } = addMinutesToDateTime(defaultDate, "09:00", 60);
+      const seedTime = defaultTime ?? "09:00";
+      setTime(seedTime);
+      const seedDur = (defaultDuration != null && defaultDuration > 0) ? defaultDuration : 60;
+      const { time: defaultEnd } = addMinutesToDateTime(defaultDate, seedTime, seedDur);
       setEndTime(defaultEnd);
       setColor(DEFAULT_AGENDA_COLOR_HEX);
       setNotes("");
@@ -507,7 +522,7 @@ export function AgendaTaskModal({
       setSupportDraft(emptySupportDraft);
       setSupportMarkedForRemoval(new Set());
     }
-  }, [open, editing, defaultDate, isPageMode, defaultTitle]);
+  }, [open, editing, defaultDate, defaultTime, defaultDuration, isPageMode, defaultTitle]);
 
   // PR #29e — Q5-C auto-expand: when the inbox item was captured with a
   // referenceProjectId, open the collapsible on mount and prefill the
@@ -854,7 +869,7 @@ export function AgendaTaskModal({
       return r.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/agenda"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agenda", "v2"] });
       // PR #29g — when the edited row was project-linked, the project's
       // task list cache may now hold a stale title (we just PATCHed
       // project_tasks). Invalidate it so any open /projects/:id/edit page
@@ -962,7 +977,7 @@ export function AgendaTaskModal({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/agenda"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agenda", "v2"] });
       // PR #29f -- project linkage is now wired, so when a project was
       // picked we also invalidate that project's task list so the chip
       // appears at the chosen sortOrder position immediately.
@@ -1064,7 +1079,7 @@ export function AgendaTaskModal({
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/agenda"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agenda", "v2"] });
       // PR #29g — mirror saveMutation: invalidate the project task list
       // and the project_tasks/:id detail key so any open project edit
       // page reflects the cascade on next focus.

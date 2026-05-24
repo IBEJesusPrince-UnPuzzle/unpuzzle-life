@@ -52,10 +52,23 @@ import {
   type SupportEntryDeleteSummary,
   type SupportType,
 } from "@/components/support-entry-delete-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Shape of any env entry — all 5 tables share { id, userId, name, state, ... }.
-// We only read id + name here, so the loose shape is enough.
-type EnvEntry = { id: number; name: string };
+type EnvEntry = { id: number; name: string; state?: string; unavailableReason?: string | null };
+
+type SupportState = "available" | "unavailable" | "archived";
+const SUPPORT_STATES: { value: SupportState; label: string }[] = [
+  { value: "available", label: "Available" },
+  { value: "unavailable", label: "Unavailable" },
+  { value: "archived", label: "Archived" },
+];
 
 type LinkSummary = {
   responsibilities: { count: number; items: { id: number; name: string }[] };
@@ -307,7 +320,22 @@ function SupportEntryEditSheet({
   const queryClient = useQueryClient();
 
   const [name, setName] = useState(initialName);
+  const [state, setState] = useState<SupportState>("available");
+  const [unavailableReason, setUnavailableReason] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  // Fetch current entry to get state/unavailableReason
+  const entryQuery = useQuery<EnvEntry>({
+    queryKey: [`/api/environment/${supportType}/${entryId}`],
+  });
+
+  // Sync local state with fetched data
+  useState(() => {
+    if (entryQuery.data) {
+      setState((entryQuery.data.state as SupportState) || "available");
+      setUnavailableReason(entryQuery.data.unavailableReason || "");
+    }
+  });
 
   // Pull the link summary (counts + names) for the "Used by" rollup. Same
   // endpoint the delete dialog uses, so the cache is shared.
@@ -320,13 +348,23 @@ function SupportEntryEditSheet({
     mutationFn: async () => {
       const trimmed = name.trim();
       if (!trimmed) throw new Error("Name can't be empty");
-      await apiRequest("PATCH", `/api/environment/${supportType}/${entryId}`, {
+      const payload: { name: string; state?: SupportState; unavailableReason?: string | null } = {
         name: trimmed,
-      });
+        state,
+      };
+      if (state === "unavailable") {
+        payload.unavailableReason = unavailableReason.trim() || null;
+      } else {
+        payload.unavailableReason = null;
+      }
+      await apiRequest("PATCH", `/api/environment/${supportType}/${entryId}`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: [`/api/environment/${supportType}`],
+      });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/environment/${supportType}/${entryId}`],
       });
       // The rollup endpoint embeds the entry's name on parent rows
       // indirectly, but the entry's own name doesn't affect counts; still
@@ -384,7 +422,9 @@ function SupportEntryEditSheet({
   const canSave =
     !saveMutation.isPending &&
     name.trim().length > 0 &&
-    name.trim() !== initialName;
+    (name.trim() !== initialName ||
+      state !== (entryQuery.data?.state as SupportState) ||
+      unavailableReason !== (entryQuery.data?.unavailableReason || ""));
 
   return (
     <>
@@ -418,6 +458,44 @@ function SupportEntryEditSheet({
                 data-testid="input-support-entry-name"
               />
             </div>
+
+            {/* Availability State */}
+            <div className="space-y-1.5">
+              <Label htmlFor="support-entry-state" className="text-xs">
+                Status
+              </Label>
+              <Select
+                value={state}
+                onValueChange={(v) => setState(v as SupportState)}
+              >
+                <SelectTrigger id="support-entry-state" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SUPPORT_STATES.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Unavailable Reason (only when unavailable) */}
+            {state === "unavailable" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="support-entry-reason" className="text-xs">
+                  Why unavailable? (optional)
+                </Label>
+                <Input
+                  id="support-entry-reason"
+                  value={unavailableReason}
+                  onChange={(e) => setUnavailableReason(e.target.value)}
+                  placeholder="e.g., On vacation, broken, out of stock"
+                  data-testid="input-support-entry-reason"
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

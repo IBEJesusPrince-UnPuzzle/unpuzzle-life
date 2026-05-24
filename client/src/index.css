@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* react-remove-scroll (used by Radix Dialog/Sheet) injects a <style> tag that
+   adds .block-interactivity-{id} { pointer-events:none } to <body> whenever
+   any Dialog/Sheet is mounted — even when closed. This silently swallows all
+   desktop clicks. We force pointer-events back on body at all times. */
+body {
+  pointer-events: auto !important;
+}
+
 /* MOMENTUM - Warm amber accent on cream neutrals. Calm clarity, focused energy. */
 
 /* LIGHT MODE */
