@@ -23,6 +23,7 @@ import { formatTimeLabel, timeToMinutes, toIsoDate, addDays, formatDateContextLa
 import { cn } from "@/lib/utils";
 import { AgendaTaskViewModal } from "@/components/agenda-task-view-modal";
 import { SidebarMenuButton } from "@/components/sidebar-menu";
+import { ReviewScheduleView } from "@/components/review-schedule-view";
 
 // Completion status options for each agenda item
 type CompletionStatus = "done" | "missed" | "skipped" | "rescheduled";
@@ -385,6 +386,33 @@ export default function ReviewPage() {
     }
   }
 
+  // Render 3-day/Week/Month views (grouped by date with stacked task blocks)
+  function renderMultiDayView() {
+    return (
+      <div className="space-y-4 mt-4">
+        {sortedDates.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center">No items scheduled for this period.</p>
+        ) : (
+          sortedDates.map(date => {
+            const items = itemsByDate[date];
+            const dayLabel = formatDateContextLabel(date);
+            const isToday = date === today;
+            return (
+              <div key={date} className="space-y-2">
+                <div className={cn("text-sm font-medium", isToday ? "text-primary" : "text-muted-foreground")}>
+                  {dayLabel}
+                </div>
+                <div className="space-y-1">
+                  {items.map(renderTaskBlock)}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
+  }
+
   // Group items by date for multi-day views
   const itemsByDate = useMemo(() => {
     const groups: Record<string, ReviewItem[]> = {};
@@ -407,7 +435,7 @@ export default function ReviewPage() {
     const isSelected = selectedIds.has(key);
     const startMin = timeToMinutes(item.time);
     const timeLabel = item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
-    const isExternal = item.origin === "external" || (item as any).isExternal;
+    const external = isExternal(item);
 
     return (
       <div
@@ -436,7 +464,7 @@ export default function ReviewPage() {
             <p className="text-xs text-muted-foreground">in {item.placeName}</p>
           )}
         </div>
-        {!isExternal && (
+        {!external && (
           <div className="flex items-center gap-1 shrink-0">
             {(["done", "missed", "skipped"] as CompletionStatus[]).map(s => {
               const cfg = STATUS_CONFIG[s];
@@ -466,30 +494,17 @@ export default function ReviewPage() {
     );
   }
 
-  // Render Schedule view (date-based y-axis)
+  // Render Schedule view (date-based y-axis with infinite scroll)
   function renderScheduleView() {
     return (
-      <div className="space-y-4 mt-4">
-        {sortedDates.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center">No items scheduled for this period.</p>
-        ) : (
-          sortedDates.map(date => {
-            const items = itemsByDate[date];
-            const dayLabel = formatDateContextLabel(date);
-            const isToday = date === today;
-            return (
-              <div key={date} className="space-y-2">
-                <div className={cn("text-sm font-medium", isToday ? "text-primary" : "text-muted-foreground")}>
-                  {dayLabel}
-                </div>
-                <div className="space-y-1">
-                  {items.map(renderTaskBlock)}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+      <ReviewScheduleView
+        date={date}
+        onOpenView={setViewingItem}
+        onReschedule={setRescheduleItem}
+        onMark={(item, status) => markMutation.mutate({ item, status })}
+        onUndo={(id) => undoMutation.mutate(id)}
+        isExternal={isExternal}
+      />
     );
   }
 
@@ -970,9 +985,7 @@ export default function ReviewPage() {
           <>
             {view === "schedule" && renderScheduleView()}
             {view === "day" && renderDayView()}
-            {view === "3day" && renderScheduleView()}
-            {view === "week" && renderScheduleView()}
-            {view === "month" && renderScheduleView()}
+            {(view === "3day" || view === "week" || view === "month") && renderMultiDayView()}
           </>
         )}
       </div>
