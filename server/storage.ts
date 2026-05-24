@@ -213,6 +213,23 @@ tryMigration("preferences.show_responsibility", `ALTER TABLE preferences ADD COL
 tryMigration("preferences.show_project_task",  `ALTER TABLE preferences ADD COLUMN show_project_task INTEGER NOT NULL DEFAULT 1`);
 tryMigration("preferences.show_standalone",    `ALTER TABLE preferences ADD COLUMN show_standalone INTEGER NOT NULL DEFAULT 1`);
 
+// PR #53 Phase 3 — Add covers_id column to support junction tables
+tryMigration("responsibility_people.covers_id", `ALTER TABLE responsibility_people ADD COLUMN covers_id INTEGER`);
+tryMigration("responsibility_places.covers_id", `ALTER TABLE responsibility_places ADD COLUMN covers_id INTEGER`);
+tryMigration("responsibility_things.covers_id", `ALTER TABLE responsibility_things ADD COLUMN covers_id INTEGER`);
+tryMigration("responsibility_providers.covers_id", `ALTER TABLE responsibility_providers ADD COLUMN covers_id INTEGER`);
+tryMigration("responsibility_conditions.covers_id", `ALTER TABLE responsibility_conditions ADD COLUMN covers_id INTEGER`);
+tryMigration("project_people.covers_id", `ALTER TABLE project_people ADD COLUMN covers_id INTEGER`);
+tryMigration("project_places.covers_id", `ALTER TABLE project_places ADD COLUMN covers_id INTEGER`);
+tryMigration("project_things.covers_id", `ALTER TABLE project_things ADD COLUMN covers_id INTEGER`);
+tryMigration("project_providers.covers_id", `ALTER TABLE project_providers ADD COLUMN covers_id INTEGER`);
+tryMigration("project_conditions.covers_id", `ALTER TABLE project_conditions ADD COLUMN covers_id INTEGER`);
+tryMigration("agenda_task_people.covers_id", `ALTER TABLE agenda_task_people ADD COLUMN covers_id INTEGER`);
+tryMigration("agenda_task_places.covers_id", `ALTER TABLE agenda_task_places ADD COLUMN covers_id INTEGER`);
+tryMigration("agenda_task_things.covers_id", `ALTER TABLE agenda_task_things ADD COLUMN covers_id INTEGER`);
+tryMigration("agenda_task_providers.covers_id", `ALTER TABLE agenda_task_providers ADD COLUMN covers_id INTEGER`);
+tryMigration("agenda_task_conditions.covers_id", `ALTER TABLE agenda_task_conditions ADD COLUMN covers_id INTEGER`);
+
 // PR #24 — Rename agenda_tasks.date → start_date.
 // Migration strategy: dual-column transitional. Add the new column, backfill
 // from the legacy `date` column on existing rows, then dual-write at every
