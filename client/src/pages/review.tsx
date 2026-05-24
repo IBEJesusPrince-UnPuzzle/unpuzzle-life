@@ -184,7 +184,7 @@ export default function ReviewPage() {
   const [view, setView] = useState<ReviewView>("day");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["pending", "done", "external"]));
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["pending", "done"]));
   const [viewingItem, setViewingItem] = useState<AgendaWindowItem | null>(null);
 
   function shiftDate(days: number) {
@@ -346,15 +346,13 @@ export default function ReviewPage() {
   );
 
   const isExternal = (i: AgendaWindowItem) => i.origin === "external" || (i as any).isExternal;
-  const externalItems = reviewItems.filter(i => isExternal(i));
-  const actionableItems = reviewItems.filter(i => !isExternal(i));
-  const pending = actionableItems.filter(i => !i.completion);
-  const completed = actionableItems.filter(i => i.completion);
-  const done = actionableItems.filter(i => i.completion?.status === "done");
-  const missed = actionableItems.filter(i => i.completion?.status === "missed");
-  const skipped = actionableItems.filter(i => i.completion?.status === "skipped");
+  const pending = reviewItems.filter(i => !i.completion);
+  const completed = reviewItems.filter(i => i.completion);
+  const done = reviewItems.filter(i => i.completion?.status === "done");
+  const missed = reviewItems.filter(i => i.completion?.status === "missed");
+  const skipped = reviewItems.filter(i => i.completion?.status === "skipped");
   const doneCount = done.length;
-  const total = actionableItems.length;
+  const total = reviewItems.length;
 
   function toggleSection(key: string) {
     setExpandedSections(prev => {
@@ -551,7 +549,30 @@ export default function ReviewPage() {
                   const key = itemKey(item);
                   const isSelected = selectedIds.has(key);
                   const startMin = timeToMinutes(item.time);
-                  const timeLabel = item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  const endMin = timeToMinutes((item as any).endTime);
+                  const external = isExternal(item);
+                  const timeLabel = external
+                    ? item.isAllDay
+                      ? "All day"
+                      : startMin != null
+                        ? endMin != null && endMin > startMin
+                          ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
+                          : formatTimeLabel(startMin)
+                        : ""
+                    : item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  const calUrl = (() => {
+                    if (!external) return null;
+                    const uid = (item as any).uid as string | null | undefined;
+                    const calendarUrl = (item as any).calendarUrl as string | null | undefined;
+                    try {
+                      if (uid?.endsWith("@google.com") && item.startDate) {
+                        const [y, mo, d] = item.startDate.split("-");
+                        return `https://calendar.google.com/calendar/u/0/r/day/${y}/${mo}/${d}`;
+                      }
+                      if (calendarUrl) return calendarUrl;
+                    } catch { /* ignore */ }
+                    return null;
+                  })();
                   return (
                     <div
                       key={key}
@@ -577,6 +598,9 @@ export default function ReviewPage() {
                         )}
                         {item.placeName && (
                           <p className="text-xs text-muted-foreground">in {item.placeName}</p>
+                        )}
+                        {external && (item as any).calendarName && (
+                          <p className="text-xs text-muted-foreground">{(item as any).calendarName}</p>
                         )}
                       </div>
                       {/* Quick action buttons */}
@@ -631,7 +655,30 @@ export default function ReviewPage() {
                   const key = itemKey(item);
                   const isSelected = selectedIds.has(key);
                   const startMin = timeToMinutes(item.time);
-                  const timeLabel = item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  const endMin = timeToMinutes((item as any).endTime);
+                  const external = isExternal(item);
+                  const timeLabel = external
+                    ? item.isAllDay
+                      ? "All day"
+                      : startMin != null
+                        ? endMin != null && endMin > startMin
+                          ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
+                          : formatTimeLabel(startMin)
+                        : ""
+                    : item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  const calUrl = (() => {
+                    if (!external) return null;
+                    const uid = (item as any).uid as string | null | undefined;
+                    const calendarUrl = (item as any).calendarUrl as string | null | undefined;
+                    try {
+                      if (uid?.endsWith("@google.com") && item.startDate) {
+                        const [y, mo, d] = item.startDate.split("-");
+                        return `https://calendar.google.com/calendar/u/0/r/day/${y}/${mo}/${d}`;
+                      }
+                      if (calendarUrl) return calendarUrl;
+                    } catch { /* ignore */ }
+                    return null;
+                  })();
                   return (
                     <div
                       key={key}
@@ -657,6 +704,15 @@ export default function ReviewPage() {
                         )}
                         {item.placeName && (
                           <p className="text-xs text-muted-foreground">in {item.placeName}</p>
+                        )}
+                        {external && (item as any).calendarName && (
+                          <p className="text-xs text-muted-foreground">{(item as any).calendarName}</p>
+                        )}
+                        {external && item.completion?.status === "rescheduled" && calUrl && (
+                          <a href={calUrl} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs text-primary underline underline-offset-2 mt-0.5">
+                            <ExternalLink className="w-3 h-3" /> Reschedule in calendar
+                          </a>
                         )}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
@@ -703,7 +759,30 @@ export default function ReviewPage() {
                   const key = itemKey(item);
                   const isSelected = selectedIds.has(key);
                   const startMin = timeToMinutes(item.time);
-                  const timeLabel = item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  const endMin = timeToMinutes((item as any).endTime);
+                  const external = isExternal(item);
+                  const timeLabel = external
+                    ? item.isAllDay
+                      ? "All day"
+                      : startMin != null
+                        ? endMin != null && endMin > startMin
+                          ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
+                          : formatTimeLabel(startMin)
+                        : ""
+                    : item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  const calUrl = (() => {
+                    if (!external) return null;
+                    const uid = (item as any).uid as string | null | undefined;
+                    const calendarUrl = (item as any).calendarUrl as string | null | undefined;
+                    try {
+                      if (uid?.endsWith("@google.com") && item.startDate) {
+                        const [y, mo, d] = item.startDate.split("-");
+                        return `https://calendar.google.com/calendar/u/0/r/day/${y}/${mo}/${d}`;
+                      }
+                      if (calendarUrl) return calendarUrl;
+                    } catch { /* ignore */ }
+                    return null;
+                  })();
                   return (
                     <div
                       key={key}
@@ -729,6 +808,15 @@ export default function ReviewPage() {
                         )}
                         {item.placeName && (
                           <p className="text-xs text-muted-foreground">in {item.placeName}</p>
+                        )}
+                        {external && (item as any).calendarName && (
+                          <p className="text-xs text-muted-foreground">{(item as any).calendarName}</p>
+                        )}
+                        {external && item.completion?.status === "rescheduled" && calUrl && (
+                          <a href={calUrl} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs text-primary underline underline-offset-2 mt-0.5">
+                            <ExternalLink className="w-3 h-3" /> Reschedule in calendar
+                          </a>
                         )}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
@@ -775,7 +863,30 @@ export default function ReviewPage() {
                   const key = itemKey(item);
                   const isSelected = selectedIds.has(key);
                   const startMin = timeToMinutes(item.time);
-                  const timeLabel = item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  const endMin = timeToMinutes((item as any).endTime);
+                  const external = isExternal(item);
+                  const timeLabel = external
+                    ? item.isAllDay
+                      ? "All day"
+                      : startMin != null
+                        ? endMin != null && endMin > startMin
+                          ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
+                          : formatTimeLabel(startMin)
+                        : ""
+                    : item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  const calUrl = (() => {
+                    if (!external) return null;
+                    const uid = (item as any).uid as string | null | undefined;
+                    const calendarUrl = (item as any).calendarUrl as string | null | undefined;
+                    try {
+                      if (uid?.endsWith("@google.com") && item.startDate) {
+                        const [y, mo, d] = item.startDate.split("-");
+                        return `https://calendar.google.com/calendar/u/0/r/day/${y}/${mo}/${d}`;
+                      }
+                      if (calendarUrl) return calendarUrl;
+                    } catch { /* ignore */ }
+                    return null;
+                  })();
                   return (
                     <div
                       key={key}
@@ -801,6 +912,15 @@ export default function ReviewPage() {
                         )}
                         {item.placeName && (
                           <p className="text-xs text-muted-foreground">in {item.placeName}</p>
+                        )}
+                        {external && (item as any).calendarName && (
+                          <p className="text-xs text-muted-foreground">{(item as any).calendarName}</p>
+                        )}
+                        {external && item.completion?.status === "rescheduled" && calUrl && (
+                          <a href={calUrl} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs text-primary underline underline-offset-2 mt-0.5">
+                            <ExternalLink className="w-3 h-3" /> Reschedule in calendar
+                          </a>
                         )}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
@@ -828,99 +948,6 @@ export default function ReviewPage() {
           </div>
         )}
 
-        {/* EXTERNAL CALENDAR section — action buttons + calendar link on rescheduled */}
-        {externalItems.length > 0 && (
-          <div className="mt-5">
-            <button
-              className="flex items-center gap-1.5 w-full text-left mb-2"
-              onClick={() => toggleSection("external")}
-            >
-              {expandedSections.has("external") ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Calendar Events · {externalItems.length}
-              </span>
-            </button>
-
-            {expandedSections.has("external") && (
-              <div className="space-y-1">
-                <div className="flex items-start gap-2 px-3 py-2 mb-1 rounded-md bg-muted/40 text-xs text-muted-foreground">
-                  <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <span>Synced from your calendar. Review badges carry over when you edit an event in place. If you delete and recreate an event, the badge won't carry over to the new one.</span>
-                </div>
-                {externalItems.map(item => {
-                  const key = itemKey(item);
-                  const startMin = timeToMinutes(item.time);
-                  const endMin = timeToMinutes((item as any).endTime);
-                  const timeLabel = item.isAllDay
-                    ? "All day"
-                    : startMin != null
-                      ? endMin != null && endMin > startMin
-                        ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
-                        : formatTimeLabel(startMin)
-                      : "";
-                  const calUrl = (() => {
-                    const uid = (item as any).uid as string | null | undefined;
-                    const calendarUrl = (item as any).calendarUrl as string | null | undefined;
-                    try {
-                      if (uid?.endsWith("@google.com") && item.startDate) {
-                        const [y, mo, d] = item.startDate.split("-");
-                        return `https://calendar.google.com/calendar/u/0/r/day/${y}/${mo}/${d}`;
-                      }
-                      if (calendarUrl) return calendarUrl;
-                    } catch { /* ignore */ }
-                    return null;
-                  })();
-                  const logged = item.completion;
-                  return (
-                    <div key={key} className="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-transparent">
-                      <div className="flex-1 min-w-0">
-                        <p className={cn("text-sm font-medium truncate", logged?.status === "done" ? "line-through text-muted-foreground" : "")}>
-                          {item.title ?? "Untitled"}
-                        </p>
-                        {timeLabel && <p className="text-xs text-muted-foreground">{timeLabel}</p>}
-                        {(item as any).calendarName && (
-                          <p className="text-xs text-muted-foreground">{(item as any).calendarName}</p>
-                        )}
-                        {/* Show calendar link when rescheduled */}
-                        {logged?.status === "rescheduled" && calUrl && (
-                          <a href={calUrl} target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-xs text-primary underline underline-offset-2 mt-0.5">
-                            <ExternalLink className="w-3 h-3" /> Reschedule in calendar
-                          </a>
-                        )}
-                      </div>
-                      {!logged ? (
-                        <div className="flex items-center gap-1 shrink-0">
-                          {(["done", "missed", "skipped", "rescheduled"] as CompletionStatus[]).map(s => {
-                            const cfg = STATUS_CONFIG[s];
-                            const Icon = cfg.icon;
-                            return (
-                              <button key={s} title={cfg.label}
-                                disabled={markMutation.isPending}
-                                onClick={() => markMutation.mutate({ item, status: s })}
-                                className={cn("p-1 rounded hover:bg-accent transition-colors", cfg.className)}>
-                                <Icon className="w-4 h-4" />
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 shrink-0">
-                          <StatusBadge status={logged.status as CompletionStatus} />
-                          <button title="Undo" disabled={undoMutation.isPending}
-                            onClick={() => undoMutation.mutate(logged.id)}
-                            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2">
-                            Undo
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
       </>
     );
   }
