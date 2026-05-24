@@ -22,6 +22,7 @@ import type { TaskCompletion } from "@shared/schema";
 import { formatTimeLabel, timeToMinutes, toIsoDate, addDays, formatDateContextLabel, formatMonthLabel, formatRangeLabel, threeDayRange, weekRange, fromIsoDate } from "@/lib/agenda-utils";
 import { cn } from "@/lib/utils";
 import { AgendaTaskViewModal } from "@/components/agenda-task-view-modal";
+import { ExternalEventDetailSheet } from "@/components/external-event-detail-sheet";
 import { SidebarMenuButton } from "@/components/sidebar-menu";
 import { AgendaTaskFilterMenu } from "@/components/agenda-task-filter-menu";
 
@@ -186,6 +187,7 @@ export default function ReviewPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["pending", "done"]));
   const [viewingItem, setViewingItem] = useState<AgendaWindowItem | null>(null);
+  const [externalEvent, setExternalEvent] = useState<AgendaWindowItem | null>(null);
 
   function shiftDate(days: number) {
     const d = new Date(date + "T12:00:00");
@@ -588,7 +590,13 @@ export default function ReviewPage() {
                       />
                       <div className="flex-1 min-w-0">
                         <button
-                          onClick={() => setViewingItem(item)}
+                          onClick={() => {
+                            if (external) {
+                              setExternalEvent(item);
+                            } else {
+                              setViewingItem(item);
+                            }
+                          }}
                           className="text-sm font-medium truncate text-left hover:text-primary transition-colors"
                         >
                           {item.title ?? "Untitled"}
@@ -694,7 +702,13 @@ export default function ReviewPage() {
                       />
                       <div className="flex-1 min-w-0">
                         <button
-                          onClick={() => setViewingItem(item)}
+                          onClick={() => {
+                            if (external) {
+                              setExternalEvent(item);
+                            } else {
+                              setViewingItem(item);
+                            }
+                          }}
                           className="text-sm font-medium truncate text-left hover:text-primary transition-colors"
                         >
                           {item.title ?? "Untitled"}
@@ -798,7 +812,13 @@ export default function ReviewPage() {
                       />
                       <div className="flex-1 min-w-0">
                         <button
-                          onClick={() => setViewingItem(item)}
+                          onClick={() => {
+                            if (external) {
+                              setExternalEvent(item);
+                            } else {
+                              setViewingItem(item);
+                            }
+                          }}
                           className="text-sm font-medium truncate text-left hover:text-primary transition-colors"
                         >
                           {item.title ?? "Untitled"}
@@ -902,7 +922,13 @@ export default function ReviewPage() {
                       />
                       <div className="flex-1 min-w-0">
                         <button
-                          onClick={() => setViewingItem(item)}
+                          onClick={() => {
+                            if (external) {
+                              setExternalEvent(item);
+                            } else {
+                              setViewingItem(item);
+                            }
+                          }}
                           className="text-sm font-medium truncate text-left hover:text-primary transition-colors"
                         >
                           {item.title ?? "Untitled"}
@@ -1096,6 +1122,10 @@ export default function ReviewPage() {
           // Navigate to edit page
           window.location.href = `/agenda/tasks/${item.id}/edit`;
         }}
+      />
+      <ExternalEventDetailSheet
+        item={externalEvent}
+        onClose={() => setExternalEvent(null)}
       />
     </div>
   );
