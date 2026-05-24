@@ -22,7 +22,7 @@ import type { TaskCompletion } from "@shared/schema";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CheckCircle2, SkipForward, XCircle, CalendarClock } from "lucide-react";
 
-const WINDOW_DAYS = 14;
+const WINDOW_DAYS = 7;
 
 type ReviewItem = AgendaWindowItem & {
   completion: TaskCompletion | null;
@@ -68,7 +68,7 @@ export function ReviewScheduleView({
 
   // Fetch agenda items for the visible range
   const { data: agendaItems = [], isLoading } = useQuery<AgendaWindowItem[]>({
-    queryKey: ["/api/agenda", visibleRange],
+    queryKey: ["/api/agenda", "v2", visibleRange],
     queryFn: async () => {
       const r = await fetch(`/api/agenda?from=${visibleRange.from}&to=${visibleRange.to}`, { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());

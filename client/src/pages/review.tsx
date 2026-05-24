@@ -23,13 +23,12 @@ import { formatTimeLabel, timeToMinutes, toIsoDate, addDays, formatDateContextLa
 import { cn } from "@/lib/utils";
 import { AgendaTaskViewModal } from "@/components/agenda-task-view-modal";
 import { SidebarMenuButton } from "@/components/sidebar-menu";
-import { ReviewScheduleView } from "@/components/review-schedule-view";
 import { AgendaTaskFilterMenu } from "@/components/agenda-task-filter-menu";
 
 // Completion status options for each agenda item
 type CompletionStatus = "done" | "missed" | "skipped" | "rescheduled";
 type RecurrenceScope = "this" | "following" | "all";
-type ReviewView = "day" | "schedule" | "3day" | "week" | "month";
+type ReviewView = "day" | "3day" | "week" | "month";
 
 // Enriched item = agenda item + its current completion record (if any)
 type ReviewItem = AgendaWindowItem & {
@@ -222,7 +221,7 @@ export default function ReviewPage() {
 
   // Calculate date range based on view
   const dateRange = useMemo(() => {
-    if (view === "day" || view === "schedule") {
+    if (view === "day") {
       return { from: date, to: date };
     }
     if (view === "3day") {
@@ -242,7 +241,7 @@ export default function ReviewPage() {
 
   // Fetch agenda items for the date range
   const { data: agendaItems = [], isLoading: agendaLoading } = useQuery<AgendaWindowItem[]>({
-    queryKey: ["/api/agenda", dateRange],
+    queryKey: ["/api/agenda", "v2", dateRange],
     queryFn: async () => {
       const r = await fetch(`/api/agenda?from=${dateRange.from}&to=${dateRange.to}`, { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
@@ -492,20 +491,6 @@ export default function ReviewPage() {
           </div>
         )}
       </div>
-    );
-  }
-
-  // Render Schedule view (date-based y-axis with infinite scroll)
-  function renderScheduleView() {
-    return (
-      <ReviewScheduleView
-        date={date}
-        onOpenView={setViewingItem}
-        onReschedule={setRescheduleItem}
-        onMark={(item, status) => markMutation.mutate({ item, status })}
-        onUndo={(id) => undoMutation.mutate(id)}
-        isExternal={isExternal}
-      />
     );
   }
 
@@ -956,7 +941,7 @@ export default function ReviewPage() {
             className="inline-flex shrink-0 rounded-md border bg-muted p-0.5"
             data-testid="review-view-selector"
           >
-            {(["day", "schedule", "3day", "week", "month"] as const).map((v) => (
+            {(["day", "3day", "week", "month"] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -970,8 +955,6 @@ export default function ReviewPage() {
               >
                 {v === "3day"
                   ? "3 Days"
-                  : v === "schedule"
-                  ? "Schedule"
                   : v[0].toUpperCase() + v.slice(1)}
               </button>
             ))}
@@ -987,7 +970,6 @@ export default function ReviewPage() {
           <p className="text-sm text-muted-foreground mt-6 text-center">No items scheduled for this period.</p>
         ) : (
           <>
-            {view === "schedule" && renderScheduleView()}
             {view === "day" && renderDayView()}
             {(view === "3day" || view === "week" || view === "month") && renderMultiDayView()}
           </>
