@@ -1486,7 +1486,17 @@ export function AgendaTaskModal({
                   value={time}
                   className="w-full"
                   onChange={(e) => {
-                    setTime(e.target.value);
+                    const nextStart = e.target.value;
+                    setTime(nextStart);
+                    // Google parity: if end time is at or before new start time, push it out by 1 hour
+                    if (endTime <= nextStart) {
+                      const { time: newEnd } = addMinutesToDateTime(date, nextStart, 60);
+                      setEndTime(newEnd);
+                      // Reset end date to start date if it was rolled forward
+                      if (endDate !== date) {
+                        setEndDate(date);
+                      }
+                    }
                   }}
                   data-testid="input-task-time"
                 />

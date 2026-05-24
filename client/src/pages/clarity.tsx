@@ -1,14 +1,18 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Lightbulb } from "lucide-react";
+import { SidebarMenuButton } from "@/components/sidebar-menu";
 
 export default function ClarityPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Clarity</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Clarity ritual surface — coming in Phase 4.
-        </p>
+      <div className="flex items-center gap-2">
+        <SidebarMenuButton />
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Clarity</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Clarity ritual surface — coming in Phase 4.
+          </p>
+        </div>
       </div>
 
       <Card>

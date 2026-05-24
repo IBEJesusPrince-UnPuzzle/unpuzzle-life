@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Trash2, Save } from "lucide-react";
 import { usePreferences } from "@/hooks/use-preferences";
+import { SidebarMenuButton } from "@/components/sidebar-menu";
 
 export default function DataPage() {
   const { toast } = useToast();
@@ -54,9 +55,12 @@ export default function DataPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Data</h1>
-        <p className="text-sm text-muted-foreground">Preferences and account data</p>
+      <div className="flex items-center gap-2">
+        <SidebarMenuButton />
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Data</h1>
+          <p className="text-sm text-muted-foreground">Preferences and account data</p>
+        </div>
       </div>
 
       {/* Preferences */}

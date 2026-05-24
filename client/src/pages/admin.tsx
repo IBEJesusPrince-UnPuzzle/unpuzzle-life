@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff, KeyRound, ArrowLeft } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { SidebarMenuButton } from "@/components/sidebar-menu";
 
 interface SupportRequestRow {
   id: number;
@@ -62,12 +63,7 @@ export default function AdminPage() {
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <button
-          onClick={() => window.history.back()}
-          className="p-2 rounded-md hover:bg-accent transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
+        <SidebarMenuButton />
         <h1 className="text-2xl font-bold">Admin Panel</h1>
       </div>
       <Tabs defaultValue="users">
