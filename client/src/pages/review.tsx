@@ -345,7 +345,10 @@ export default function ReviewPage() {
   const actionableItems = reviewItems.filter(i => !isExternal(i));
   const pending = actionableItems.filter(i => !i.completion);
   const completed = actionableItems.filter(i => i.completion);
-  const doneCount = actionableItems.filter(i => i.completion?.status === "done").length;
+  const done = actionableItems.filter(i => i.completion?.status === "done");
+  const missed = actionableItems.filter(i => i.completion?.status === "missed");
+  const skipped = actionableItems.filter(i => i.completion?.status === "skipped");
+  const doneCount = done.length;
   const total = actionableItems.length;
 
   function toggleSection(key: string) {
@@ -450,6 +453,13 @@ export default function ReviewPage() {
                 </button>
               );
             })}
+            <button
+              title="Reschedule"
+              onClick={() => setRescheduleItem(item)}
+              className={cn("p-1 rounded hover:bg-accent transition-colors", STATUS_CONFIG.rescheduled.className)}
+            >
+              <CalendarClock className="w-4 h-4" />
+            </button>
           </div>
         )}
       </div>
