@@ -247,6 +247,8 @@ export default function ReviewPage() {
       if (!r.ok) throw new Error(await r.text());
       return r.json();
     },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
   });
 
   // Fetch completions for the date range
@@ -257,6 +259,8 @@ export default function ReviewPage() {
       if (!r.ok) throw new Error(await r.text());
       return r.json();
     },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
   });
 
   // Mark single item
