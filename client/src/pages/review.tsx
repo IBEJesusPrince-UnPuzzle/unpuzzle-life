@@ -449,8 +449,30 @@ export default function ReviewPage() {
     const key = itemKey(item);
     const isSelected = selectedIds.has(key);
     const startMin = timeToMinutes(item.time);
-    const timeLabel = item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+    const endMin = timeToMinutes((item as any).endTime);
     const external = isExternal(item);
+    const timeLabel = external
+      ? item.isAllDay
+        ? "All day"
+        : startMin != null
+          ? endMin != null && endMin > startMin
+            ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
+            : formatTimeLabel(startMin)
+          : ""
+      : item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+    const calUrl = (() => {
+      if (!external) return null;
+      const uid = (item as any).uid as string | null | undefined;
+      const calendarUrl = (item as any).calendarUrl as string | null | undefined;
+      try {
+        if (uid?.endsWith("@google.com") && item.startDate) {
+          const [y, mo, d] = item.startDate.split("-");
+          return `https://calendar.google.com/calendar/u/0/r/day/${y}/${mo}/${d}`;
+        }
+        if (calendarUrl) return calendarUrl;
+      } catch { /* ignore */ }
+      return null;
+    })();
 
     return (
       <div
@@ -467,7 +489,13 @@ export default function ReviewPage() {
         />
         <div className="flex-1 min-w-0">
           <button
-            onClick={() => setViewingItem(item)}
+            onClick={() => {
+              if (external) {
+                setExternalEvent(item);
+              } else {
+                setViewingItem(item);
+              }
+            }}
             className="text-sm font-medium truncate text-left hover:text-primary transition-colors block"
           >
             {item.title ?? "Untitled"}
@@ -478,10 +506,20 @@ export default function ReviewPage() {
           {item.placeName && (
             <p className="text-xs text-muted-foreground">in {item.placeName}</p>
           )}
+          {external && (item as any).calendarName && (
+            <p className="text-xs text-muted-foreground">{(item as any).calendarName}</p>
+          )}
+          {external && item.completion?.status === "rescheduled" && calUrl && (
+            <a href={calUrl} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-primary underline underline-offset-2 mt-0.5">
+              <ExternalLink className="w-3 h-3" /> Reschedule in calendar
+            </a>
+          )}
         </div>
-        {!external && (
-          <div className="flex items-center gap-1 shrink-0">
-            {(["done", "missed", "skipped"] as CompletionStatus[]).map(s => {
+        <div className="flex items-center gap-1 shrink-0">
+          {(() => {
+            const statuses: CompletionStatus[] = external ? ["done", "missed", "skipped", "rescheduled"] : ["done", "missed", "skipped"];
+            return statuses.map((s: CompletionStatus) => {
               const cfg = STATUS_CONFIG[s];
               const Icon = cfg.icon;
               return (
@@ -495,7 +533,9 @@ export default function ReviewPage() {
                   <Icon className="w-4 h-4" />
                 </button>
               );
-            })}
+            });
+          })()}
+          {!external && (
             <button
               title="Reschedule"
               onClick={() => setRescheduleItem(item)}
@@ -503,8 +543,8 @@ export default function ReviewPage() {
             >
               <CalendarClock className="w-4 h-4" />
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     );
   }
