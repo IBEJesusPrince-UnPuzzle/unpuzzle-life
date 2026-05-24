@@ -613,28 +613,33 @@ export default function ReviewPage() {
                       </div>
                       {/* Quick action buttons */}
                       <div className="flex items-center gap-1 shrink-0">
-                        {(["done", "missed", "skipped"] as CompletionStatus[]).map(s => {
-                          const cfg = STATUS_CONFIG[s];
-                          const Icon = cfg.icon;
-                          return (
-                            <button
-                              key={s}
-                              title={cfg.label}
-                              disabled={markMutation.isPending}
-                              onClick={() => markMutation.mutate({ item, status: s })}
-                              className={cn("p-1 rounded hover:bg-accent transition-colors", cfg.className)}
-                            >
-                              <Icon className="w-4 h-4" />
-                            </button>
-                          );
-                        })}
-                        <button
-                          title="Reschedule"
-                          onClick={() => setRescheduleItem(item)}
-                          className={cn("p-1 rounded hover:bg-accent transition-colors", STATUS_CONFIG.rescheduled.className)}
-                        >
-                          <CalendarClock className="w-4 h-4" />
-                        </button>
+                        {(() => {
+                          const statuses: CompletionStatus[] = external ? ["done", "missed", "skipped", "rescheduled"] : ["done", "missed", "skipped"];
+                          return statuses.map((s: CompletionStatus) => {
+                            const cfg = STATUS_CONFIG[s];
+                            const Icon = cfg.icon;
+                            return (
+                              <button
+                                key={s}
+                                title={cfg.label}
+                                disabled={markMutation.isPending}
+                                onClick={() => markMutation.mutate({ item, status: s })}
+                                className={cn("p-1 rounded hover:bg-accent transition-colors", cfg.className)}
+                              >
+                                <Icon className="w-4 h-4" />
+                              </button>
+                            );
+                          });
+                        })()}
+                        {!external && (
+                          <button
+                            title="Reschedule"
+                            onClick={() => setRescheduleItem(item)}
+                            className={cn("p-1 rounded hover:bg-accent transition-colors", STATUS_CONFIG.rescheduled.className)}
+                          >
+                            <CalendarClock className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -738,13 +743,15 @@ export default function ReviewPage() {
                         >
                           <XCircle className="w-4 h-4" />
                         </button>
-                        <button
-                          title="Reschedule"
-                          onClick={() => setRescheduleItem(item)}
-                          className={cn("p-1 rounded hover:bg-accent transition-colors", STATUS_CONFIG.rescheduled.className)}
-                        >
-                          <CalendarClock className="w-4 h-4" />
-                        </button>
+                        {!external && (
+                          <button
+                            title="Reschedule"
+                            onClick={() => setRescheduleItem(item)}
+                            className={cn("p-1 rounded hover:bg-accent transition-colors", STATUS_CONFIG.rescheduled.className)}
+                          >
+                            <CalendarClock className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -848,13 +855,15 @@ export default function ReviewPage() {
                         >
                           <XCircle className="w-4 h-4" />
                         </button>
-                        <button
-                          title="Reschedule"
-                          onClick={() => setRescheduleItem(item)}
-                          className={cn("p-1 rounded hover:bg-accent transition-colors", STATUS_CONFIG.rescheduled.className)}
-                        >
-                          <CalendarClock className="w-4 h-4" />
-                        </button>
+                        {!external && (
+                          <button
+                            title="Reschedule"
+                            onClick={() => setRescheduleItem(item)}
+                            className={cn("p-1 rounded hover:bg-accent transition-colors", STATUS_CONFIG.rescheduled.className)}
+                          >
+                            <CalendarClock className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -958,13 +967,15 @@ export default function ReviewPage() {
                         >
                           <XCircle className="w-4 h-4" />
                         </button>
-                        <button
-                          title="Reschedule"
-                          onClick={() => setRescheduleItem(item)}
-                          className={cn("p-1 rounded hover:bg-accent transition-colors", STATUS_CONFIG.rescheduled.className)}
-                        >
-                          <CalendarClock className="w-4 h-4" />
-                        </button>
+                        {!external && (
+                          <button
+                            title="Reschedule"
+                            onClick={() => setRescheduleItem(item)}
+                            className={cn("p-1 rounded hover:bg-accent transition-colors", STATUS_CONFIG.rescheduled.className)}
+                          >
+                            <CalendarClock className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
