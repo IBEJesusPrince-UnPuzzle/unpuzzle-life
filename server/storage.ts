@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, and, desc, asc, isNull, gte, or, inArray } from "drizzle-orm";
+import { eq, and, desc, asc, isNull, gte, lte, or, inArray } from "drizzle-orm";
 import {
   users, invitations,
   projects, inboxItems, weeklyReviews,
@@ -1166,6 +1166,14 @@ export interface IStorage {
   setAgendaDefaultView(userId: number, view: string): void;
   getAgendaHourHeightPx(userId: number): number;
   setAgendaHourHeightPx(userId: number, hourHeightPx: number): void;
+
+  // PR #54 — Task Completions (Daily Review)
+  getCompletionsForDate(userId: number, date: string): TaskCompletion[];
+  getCompletionsForRange(userId: number, from: string, to: string): TaskCompletion[];
+  getCompletion(userId: number, key: { seriesId: number; originalDate: string } | { agendaTaskId: number }): TaskCompletion | undefined;
+  upsertCompletion(userId: number, data: Omit<InsertTaskCompletion, "id" | "userId" | "completedAt">): TaskCompletion;
+  deleteCompletion(userId: number, id: number): void;
+  bulkUpsertCompletions(userId: number, items: Omit<InsertTaskCompletion, "id" | "userId" | "completedAt">[]): TaskCompletion[];
 
   // Reset
   resetDatabase(userId: number): void;
@@ -3250,6 +3258,17 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(taskCompletions.userId, userId),
         eq(taskCompletions.originalDate, date),
+      ))
+      .all();
+  }
+
+  // Get all completions for a user in a date range (for multi-day review views).
+  getCompletionsForRange(userId: number, from: string, to: string): TaskCompletion[] {
+    return db.select().from(taskCompletions)
+      .where(and(
+        eq(taskCompletions.userId, userId),
+        gte(taskCompletions.originalDate, from),
+        lte(taskCompletions.originalDate, to),
       ))
       .all();
   }

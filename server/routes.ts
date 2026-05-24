@@ -833,14 +833,30 @@ export function registerRoutes(server: Server, app: Express) {
   // PR #54 — DAILY REVIEW: TASK COMPLETIONS
   // ============================================================
 
-  // GET /api/completions?date=YYYY-MM-DD — all completions for a date
+  // GET /api/completions?date=YYYY-MM-DD OR ?from=YYYY-MM-DD&to=YYYY-MM-DD
   app.get("/api/completions", (req, res) => {
     const userId = getEffectiveUserId(req);
     const date = String(req.query.date ?? "");
-    if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      return res.status(400).json({ error: "date query param required (YYYY-MM-DD)" });
+    const from = String(req.query.from ?? "");
+    const to = String(req.query.to ?? "");
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    
+    if (date) {
+      if (!dateRe.test(date)) {
+        return res.status(400).json({ error: "date query param required (YYYY-MM-DD)" });
+      }
+      res.json(storage.getCompletionsForDate(userId, date));
+    } else if (from && to) {
+      if (!dateRe.test(from) || !dateRe.test(to)) {
+        return res.status(400).json({ error: "from and to must be YYYY-MM-DD" });
+      }
+      if (from > to) {
+        return res.status(400).json({ error: "from must be <= to" });
+      }
+      res.json(storage.getCompletionsForRange(userId, from, to));
+    } else {
+      return res.status(400).json({ error: "Provide either date OR (from AND to)" });
     }
-    res.json(storage.getCompletionsForDate(userId, date));
   });
 
   // POST /api/completions — upsert a single completion
