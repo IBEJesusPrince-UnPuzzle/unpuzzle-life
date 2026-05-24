@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { AgendaTaskViewModal } from "@/components/agenda-task-view-modal";
 import { SidebarMenuButton } from "@/components/sidebar-menu";
 import { ReviewScheduleView } from "@/components/review-schedule-view";
+import { AgendaTaskFilterMenu } from "@/components/agenda-task-filter-menu";
 
 // Completion status options for each agenda item
 type CompletionStatus = "done" | "missed" | "skipped" | "rescheduled";
@@ -892,11 +893,14 @@ export default function ReviewPage() {
               <p className="text-xs text-muted-foreground mt-0.5">{formatDate(date)}</p>
             </div>
           </div>
-          {total > 0 && (
-            <Badge variant="secondary" className="text-xs tabular-nums">
-              {doneCount}/{total} done
-            </Badge>
-          )}
+          <div className="flex items-center gap-2">
+            {total > 0 && (
+              <Badge variant="secondary" className="text-xs tabular-nums">
+                {doneCount}/{total} done
+              </Badge>
+            )}
+            <AgendaTaskFilterMenu />
+          </div>
         </div>
 
         {/* Date navigation */}
