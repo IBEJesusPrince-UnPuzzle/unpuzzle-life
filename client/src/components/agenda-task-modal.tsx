@@ -798,18 +798,18 @@ export function AgendaTaskModal({
         // Overrides themselves never carry recurrence (Google parity:
         // "Only this event" can't change the rule).
         //
-        // PR #29g — Q2b lock: scope=this writes an override row only, never
-        // touches the project task. The override row itself stays
-        // origin='standalone' (it's a one-off, not part of the project
-        // task's series). This matches the legacy override behavior.
+        // Preserve project origin when editing a single occurrence of a project task
         const { recurrenceRule: _r, recurrenceEndDate: _re, ...overrideBase } = buildPayload();
-        const payload = {
+        const payload: Record<string, unknown> = {
           ...overrideBase,
-          origin: "standalone" as const,
+          origin: projectLinkOriginId != null ? ("project" as const) : ("standalone" as const),
           seriesId: masterId,
           originalDate: occurrenceDate,
           isOverride: 1,
         };
+        if (projectLinkOriginId != null) {
+          payload.originId = projectLinkOriginId;
+        }
         const r = await apiRequest("POST", "/api/agenda-tasks", payload);
         return r.json();
       }
@@ -1409,11 +1409,11 @@ export function AgendaTaskModal({
   const renderFormBody = () => (
     <div className="space-y-4 py-2">
       {/* Show linked project when editing a project task */}
-      {editing?.origin === "project" && linkedProject && (
+      {editing?.origin === "project" && editing.projectName && (
         <div className="rounded-md border border-border bg-muted/30 p-3">
           <div className="text-sm">
             <span className="text-muted-foreground">Project:</span>{" "}
-            <span className="font-medium">{linkedProject.title}</span>
+            <span className="font-medium">{editing.projectName}</span>
           </div>
         </div>
       )}
