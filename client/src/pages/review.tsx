@@ -19,7 +19,7 @@ import { useSwipeNav } from "@/hooks/use-swipe-nav";
 import { Link } from "wouter";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 import type { TaskCompletion } from "@shared/schema";
-import { formatTimeLabel, timeToMinutes, toIsoDate } from "@/lib/agenda-utils";
+import { formatTimeLabel, timeToMinutes, toIsoDate, addDays, formatDateContextLabel, formatMonthLabel, formatRangeLabel, threeDayRange, weekRange, fromIsoDate } from "@/lib/agenda-utils";
 import { cn } from "@/lib/utils";
 import { AgendaTaskViewModal } from "@/components/agenda-task-view-modal";
 import { SidebarMenuButton } from "@/components/sidebar-menu";
@@ -27,6 +27,7 @@ import { SidebarMenuButton } from "@/components/sidebar-menu";
 // Completion status options for each agenda item
 type CompletionStatus = "done" | "missed" | "skipped" | "rescheduled";
 type RecurrenceScope = "this" | "following" | "all";
+type ReviewView = "day" | "schedule" | "3day" | "week" | "month";
 
 // Enriched item = agenda item + its current completion record (if any)
 type ReviewItem = AgendaWindowItem & {
@@ -179,6 +180,7 @@ export default function ReviewPage() {
     return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : today;
   })();
   const [date, setDate] = useState(initialDate);
+  const [view, setView] = useState<ReviewView>("day");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["pending", "done", "external"]));
@@ -191,31 +193,66 @@ export default function ReviewPage() {
     setSelectedIds(new Set());
   }
 
+  function step(direction: -1 | 1) {
+    if (view === "month") {
+      const d = fromIsoDate(date);
+      const next = new Date(d.getFullYear(), d.getMonth() + direction, d.getDate());
+      const lastOfNext = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+      if (next.getDate() !== d.getDate()) {
+        next.setDate(Math.min(d.getDate(), lastOfNext));
+      }
+      setDate(toIsoDate(next));
+      return;
+    }
+    const stepDays = view === "day" ? 1 : view === "3day" ? 3 : 7;
+    setDate(addDays(date, direction * stepDays));
+  }
+
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
   const swipeHandlers = useSwipeNav({
-    onPrev: () => shiftDate(-1),
-    onNext: () => shiftDate(1),
+    onPrev: () => step(-1),
+    onNext: () => step(1),
     disabled: pickerOpen,
   });
   const [rescheduleItem, setRescheduleItem] = useState<AgendaWindowItem | null>(null);
   const [pendingReschedule, setPendingReschedule] = useState<{ item: AgendaWindowItem; newDate: string; newTime: string } | null>(null);
 
-  // Fetch today's agenda items
+  // Calculate date range based on view
+  const dateRange = useMemo(() => {
+    if (view === "day" || view === "schedule") {
+      return { from: date, to: date };
+    }
+    if (view === "3day") {
+      const range = threeDayRange(date);
+      return { from: range.from, to: range.to };
+    }
+    if (view === "week") {
+      const range = weekRange(date);
+      return { from: range.from, to: range.to };
+    }
+    // Month view - get first and last day of month
+    const d = fromIsoDate(date);
+    const firstDay = new Date(d.getFullYear(), d.getMonth(), 1);
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    return { from: toIsoDate(firstDay), to: toIsoDate(lastDay) };
+  }, [view, date]);
+
+  // Fetch agenda items for the date range
   const { data: agendaItems = [], isLoading: agendaLoading } = useQuery<AgendaWindowItem[]>({
-    queryKey: ["/api/agenda", { from: date, to: date }],
+    queryKey: ["/api/agenda", dateRange],
     queryFn: async () => {
-      const r = await fetch(`/api/agenda?from=${date}&to=${date}`, { credentials: "include" });
+      const r = await fetch(`/api/agenda?from=${dateRange.from}&to=${dateRange.to}`, { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       return r.json();
     },
   });
 
-  // Fetch completions for this date
+  // Fetch completions for the date range
   const { data: completions = [], isLoading: completionsLoading } = useQuery<TaskCompletion[]>({
-    queryKey: ["/api/completions", date],
+    queryKey: ["/api/completions", dateRange],
     queryFn: async () => {
-      const r = await fetch(`/api/completions?date=${date}`, { credentials: "include" });
+      const r = await fetch(`/api/completions?from=${dateRange.from}&to=${dateRange.to}`, { credentials: "include" });
       if (!r.ok) throw new Error(await r.text());
       return r.json();
     },
@@ -227,13 +264,13 @@ export default function ReviewPage() {
       const key = completionKey(payload.item);
       return apiRequest("POST", "/api/completions", { ...key, status: payload.status });
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/completions", date] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/completions", dateRange] }),
   });
 
   // Undo completion
   const undoMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/completions/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/completions", date] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/completions", dateRange] }),
   });
 
   const rescheduleMutation = useMutation({
@@ -271,7 +308,7 @@ export default function ReviewPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/agenda"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/completions", date] });
+      queryClient.invalidateQueries({ queryKey: ["/api/completions", dateRange] });
       setPendingReschedule(null);
     },
   });
@@ -283,10 +320,18 @@ export default function ReviewPage() {
       return apiRequest("POST", "/api/completions/bulk", { items });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/completions", date] });
+      queryClient.invalidateQueries({ queryKey: ["/api/completions", dateRange] });
       setSelectedIds(new Set());
     },
   });
+
+  // Date label per view
+  const dateLabel = useMemo(() => {
+    if (view === "day") return formatDateContextLabel(date);
+    if (view === "month") return formatMonthLabel(date);
+    const range = view === "3day" ? threeDayRange(date) : weekRange(date);
+    return formatRangeLabel(range.from, range.to);
+  }, [view, date]);
 
   // Merge all items (including external) with completions
   const reviewItems: ReviewItem[] = useMemo(() =>
@@ -361,7 +406,7 @@ export default function ReviewPage() {
         {/* Date navigation */}
         <div className="flex items-center gap-2 mt-3">
           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs"
-            onClick={() => { const d = new Date(date + "T12:00:00"); d.setDate(d.getDate() - 1); setDate(d.toISOString().split("T")[0]); setSelectedIds(new Set()); }}>
+            onClick={() => { step(-1); setSelectedIds(new Set()); }}>
             ← Prev
           </Button>
           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs flex-1"
@@ -369,7 +414,7 @@ export default function ReviewPage() {
             {date === today ? "Today" : "Go to Today"}
           </Button>
           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs"
-            onClick={() => { const d = new Date(date + "T12:00:00"); d.setDate(d.getDate() + 1); setDate(d.toISOString().split("T")[0]); setSelectedIds(new Set()); }}>
+            onClick={() => { step(1); setSelectedIds(new Set()); }}>
             Next →
           </Button>
           <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
@@ -403,6 +448,33 @@ export default function ReviewPage() {
               </div>
             </PopoverContent>
           </Popover>
+          <div className="flex-1" />
+
+          {/* View selector */}
+          <div
+            className="inline-flex shrink-0 rounded-md border bg-muted p-0.5"
+            data-testid="review-view-selector"
+          >
+            {(["day", "schedule", "3day", "week", "month"] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={
+                  "px-2 h-7 text-xs rounded-sm transition-colors whitespace-nowrap " +
+                  (view === v
+                    ? "bg-background shadow-sm font-medium"
+                    : "text-muted-foreground hover:text-foreground")
+                }
+                data-testid={`button-review-view-${v}`}
+              >
+                {v === "3day"
+                  ? "3 Days"
+                  : v === "schedule"
+                  ? "Schedule"
+                  : v[0].toUpperCase() + v.slice(1)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
