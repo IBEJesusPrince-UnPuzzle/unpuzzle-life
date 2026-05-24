@@ -1953,7 +1953,18 @@ export function AgendaTaskModal({
         <h1 className="text-base font-semibold" data-testid="text-page-title">
           {titleText}
         </h1>
-        <span className="w-12" aria-hidden />
+        {mode !== "create" ? (
+          <Button
+            size="sm"
+            onClick={onSaveClick}
+            disabled={!canSave || saveIsPending}
+            data-testid="button-task-save-top"
+          >
+            Save
+          </Button>
+        ) : (
+          <span className="w-12" aria-hidden />
+        )}
       </div>
 
       {renderFormBody()}
