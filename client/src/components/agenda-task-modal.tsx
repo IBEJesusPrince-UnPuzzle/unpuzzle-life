@@ -1410,10 +1410,11 @@ export function AgendaTaskModal({
     <div className="space-y-4 py-2">
       {/* Show linked project when editing a project task */}
       {editing?.origin === "project" && editing.projectName && (
-        <div className="rounded-md border border-border bg-muted/30 p-3">
-          <div className="text-sm">
-            <span className="text-muted-foreground">Project:</span>{" "}
-            <span className="font-medium">{editing.projectName}</span>
+        <div className="rounded-md border-2 border-primary/20 bg-primary/5 p-4">
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-primary" />
+            <span className="text-sm font-semibold text-primary">Project:</span>
+            <span className="text-base font-bold">{editing.projectName}</span>
           </div>
         </div>
       )}
