@@ -1787,12 +1787,18 @@ export function registerRoutes(server: Server, app: Express) {
     if (!result) return res.status(404).json({ error: "Not found" });
     // Enrich with projectName for project tasks
     if (result.origin === "project" && result.originId) {
-      const projectTask = storage.getProjectTask(userId, result.originId);
-      if (projectTask) {
-        const project = storage.getProject(userId, projectTask.projectId);
-        if (project) {
-          (result as any).projectName = project.title;
+      try {
+        const projectTask = storage.getProjectTask(userId, result.originId);
+        if (projectTask) {
+          const projects = storage.getProjects(userId);
+          const project = projects.find(p => p.id === projectTask.projectId);
+          if (project) {
+            (result as any).projectName = project.title;
+          }
         }
+      } catch (e) {
+        // If project lookup fails, still return the task without projectName
+        console.error("Error enriching project name:", e);
       }
     }
     res.json(result);
