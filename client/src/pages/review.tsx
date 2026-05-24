@@ -21,6 +21,7 @@ import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 import type { TaskCompletion } from "@shared/schema";
 import { formatTimeLabel, timeToMinutes, toIsoDate } from "@/lib/agenda-utils";
 import { cn } from "@/lib/utils";
+import { AgendaTaskViewModal } from "@/components/agenda-task-view-modal";
 
 // Completion status options for each agenda item
 type CompletionStatus = "done" | "missed" | "skipped" | "rescheduled";
@@ -180,6 +181,7 @@ export default function ReviewPage() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["pending", "done", "external"]));
+  const [viewingItem, setViewingItem] = useState<AgendaWindowItem | null>(null);
 
   function shiftDate(days: number) {
     const d = new Date(date + "T12:00:00");
@@ -472,7 +474,12 @@ export default function ReviewPage() {
                             className="mt-0.5 shrink-0"
                           />
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{item.title ?? "Untitled"}</p>
+                            <button
+                              onClick={() => setViewingItem(item)}
+                              className="text-sm font-medium truncate text-left hover:text-primary transition-colors"
+                            >
+                              {item.title ?? "Untitled"}
+                            </button>
                             {timeLabel && (
                               <p className="text-xs text-muted-foreground">{timeLabel}</p>
                             )}
@@ -693,6 +700,15 @@ export default function ReviewPage() {
           if (pendingReschedule) {
             rescheduleMutation.mutate({ ...pendingReschedule, scope });
           }
+        }}
+      />
+      <AgendaTaskViewModal
+        open={viewingItem !== null}
+        onOpenChange={(open) => !open && setViewingItem(null)}
+        item={viewingItem}
+        onEdit={(item) => {
+          // Navigate to edit page
+          window.location.href = `/agenda/tasks/${item.id}/edit`;
         }}
       />
     </div>
