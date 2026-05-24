@@ -581,6 +581,7 @@ export const externalCalendars = sqliteTable("external_calendars", {
   name: text("name").notNull(),
   url: text("url").notNull(),
   color: text("color").notNull().default("#4285F4"), // default Google blue
+  visible: integer("visible").notNull().default(1), // Calendar source visibility (Google parity)
   lastSyncedAt: text("last_synced_at"), // ISO-8601 or null if never synced
   createdAt: text("created_at").notNull(),
 });

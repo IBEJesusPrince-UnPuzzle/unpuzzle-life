@@ -34,10 +34,22 @@ type Prefs = {
   showStandalone: boolean;
 };
 
+type ExternalCalendar = {
+  id: number;
+  name: string;
+  url: string;
+  color: string;
+  visible: number;
+};
+
 export function AgendaTaskFilterMenu() {
   const qc = useQueryClient();
   const { data } = useQuery<Prefs & Record<string, unknown>>({
     queryKey: ["/api/preferences"],
+  });
+
+  const { data: calendars } = useQuery<ExternalCalendar[]>({
+    queryKey: ["/api/external-calendars"],
   });
 
   // Local mirror so toggles feel instant while the PUT round-trips.
@@ -66,6 +78,17 @@ export function AgendaTaskFilterMenu() {
       // AND invalidate every agenda window query so the visible rows are
       // re-fetched with the new server-side filter.
       qc.invalidateQueries({ queryKey: ["/api/preferences"] });
+      qc.invalidateQueries({ queryKey: ["/api/agenda", "v2"] });
+    },
+  });
+
+  const calendarMutation = useMutation({
+    mutationFn: async ({ id, visible }: { id: number; visible: number }) => {
+      const r = await apiRequest("PATCH", `/api/external-calendars/${id}`, { visible });
+      return r.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/external-calendars"] });
       qc.invalidateQueries({ queryKey: ["/api/agenda", "v2"] });
     },
   });
@@ -128,6 +151,36 @@ export function AgendaTaskFilterMenu() {
             Standalone tasks
           </label>
         </div>
+        {calendars && calendars.length > 0 && (
+          <>
+            <div className="border-t my-3" />
+            <div className="text-xs font-medium text-muted-foreground mb-2">
+              Calendar sources
+            </div>
+            <div className="space-y-2">
+              {calendars.map((cal) => (
+                <label
+                  key={cal.id}
+                  className="flex items-center gap-2 text-sm cursor-pointer select-none"
+                >
+                  <Checkbox
+                    checked={cal.visible === 1}
+                    onCheckedChange={(checked) =>
+                      calendarMutation.mutate({ id: cal.id, visible: checked ? 1 : 0 })
+                    }
+                  />
+                  <span className="flex items-center gap-2">
+                    <span
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: cal.color }}
+                    />
+                    {cal.name}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
       </PopoverContent>
     </Popover>
   );

@@ -213,6 +213,9 @@ tryMigration("preferences.show_responsibility", `ALTER TABLE preferences ADD COL
 tryMigration("preferences.show_project_task",  `ALTER TABLE preferences ADD COLUMN show_project_task INTEGER NOT NULL DEFAULT 1`);
 tryMigration("preferences.show_standalone",    `ALTER TABLE preferences ADD COLUMN show_standalone INTEGER NOT NULL DEFAULT 1`);
 
+// Calendar source visibility (Google parity)
+tryMigration("external_calendars.visible", `ALTER TABLE external_calendars ADD COLUMN visible INTEGER NOT NULL DEFAULT 1`);
+
 // PR #53 Phase 3 — Add covers_id column to support junction tables
 tryMigration("responsibility_people.covers_id", `ALTER TABLE responsibility_people ADD COLUMN covers_id INTEGER`);
 tryMigration("responsibility_places.covers_id", `ALTER TABLE responsibility_places ADD COLUMN covers_id INTEGER`);
@@ -3119,13 +3122,14 @@ export class DatabaseStorage implements IStorage {
       .get() ?? null;
   }
 
-  updateExternalCalendar(userId: number, id: number, data: { name?: string; color?: string }) {
+  updateExternalCalendar(userId: number, id: number, data: { name?: string; color?: string; visible?: number }) {
     const cal = this.getExternalCalendar(userId, id);
     if (!cal) return null;
     db.update(externalCalendars)
       .set({
         name: data.name ?? cal.name,
         color: data.color ?? cal.color,
+        visible: data.visible ?? (cal as any).visible ?? 1,
       })
       .where(and(eq(externalCalendars.id, id), eq(externalCalendars.userId, userId)))
       .run();
@@ -3169,6 +3173,7 @@ export class DatabaseStorage implements IStorage {
       FROM external_events ee
       JOIN external_calendars ec ON ec.id = ee.calendar_id
       WHERE ec.user_id = ?
+        AND ec.visible = 1
         AND ee.end_date >= ? AND ee.start_date <= ?
       ORDER BY ee.start_date, COALESCE(ee.start_time, '99:99')
     `).all(userId, windowStart, windowEnd) as Array<{

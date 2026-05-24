@@ -2216,18 +2216,21 @@ export function registerRoutes(server: Server, app: Express) {
     res.json(storage.createExternalCalendar(userId, parsed.data));
   });
 
-  // PATCH /api/external-calendars/:id — update name and/or color
+  // PATCH /api/external-calendars/:id — update name, color, and/or visibility
   app.patch("/api/external-calendars/:id", (req, res) => {
     const userId = getEffectiveUserId(req);
     const id = Number(req.params.id);
-    const { name, color } = req.body;
+    const { name, color, visible } = req.body;
     if (name !== undefined && typeof name !== "string") {
       return res.status(400).json({ error: "name must be a string" });
     }
     if (color !== undefined && typeof color !== "string") {
       return res.status(400).json({ error: "color must be a string" });
     }
-    const result = storage.updateExternalCalendar(userId, id, { name, color });
+    if (visible !== undefined && typeof visible !== "number") {
+      return res.status(400).json({ error: "visible must be a number" });
+    }
+    const result = storage.updateExternalCalendar(userId, id, { name, color, visible });
     if (!result) return res.status(404).json({ error: "Not found" });
     res.json(result);
   });
