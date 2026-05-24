@@ -185,7 +185,7 @@ export default function ReviewPage() {
   const [view, setView] = useState<ReviewView>("day");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["pending", "done"]));
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["pending", "done", "rescheduled"]));
   const [viewingItem, setViewingItem] = useState<AgendaWindowItem | null>(null);
   const [externalEvent, setExternalEvent] = useState<AgendaWindowItem | null>(null);
 
@@ -212,6 +212,17 @@ export default function ReviewPage() {
   }
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
+
+  // Sync date to URL so it persists on refresh
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (date !== today) {
+      url.searchParams.set("d", date);
+    } else {
+      url.searchParams.delete("d");
+    }
+    window.history.replaceState({}, "", url.toString());
+  }, [date, today]);
 
   const swipeHandlers = useSwipeNav({
     onPrev: () => step(-1),
@@ -353,6 +364,7 @@ export default function ReviewPage() {
   const done = reviewItems.filter(i => i.completion?.status === "done");
   const missed = reviewItems.filter(i => i.completion?.status === "missed");
   const skipped = reviewItems.filter(i => i.completion?.status === "skipped");
+  const rescheduled = reviewItems.filter(i => i.completion?.status === "rescheduled");
   const doneCount = done.length;
   const total = reviewItems.length;
 
@@ -976,6 +988,109 @@ export default function ReviewPage() {
                             <CalendarClock className="w-4 h-4" />
                           </button>
                         )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* RESCHEDULED section */}
+        {rescheduled.length > 0 && (
+          <div className="mt-4">
+            <button
+              className="flex items-center gap-1.5 w-full text-left mb-2"
+              onClick={() => toggleSection("rescheduled")}
+            >
+              {expandedSections.has("rescheduled") ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Rescheduled · {rescheduled.length}
+              </span>
+            </button>
+
+            {expandedSections.has("rescheduled") && (
+              <div className="space-y-1">
+                {rescheduled.map(item => {
+                  const key = itemKey(item);
+                  const isSelected = selectedIds.has(key);
+                  const startMin = timeToMinutes(item.time);
+                  const endMin = timeToMinutes((item as any).endTime);
+                  const external = isExternal(item);
+                  const timeLabel = external
+                    ? item.isAllDay
+                      ? "All day"
+                      : startMin != null
+                        ? endMin != null && endMin > startMin
+                          ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
+                          : formatTimeLabel(startMin)
+                        : ""
+                    : item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  const calUrl = (() => {
+                    if (!external) return null;
+                    const uid = (item as any).uid as string | null | undefined;
+                    const calendarUrl = (item as any).calendarUrl as string | null | undefined;
+                    try {
+                      if (uid?.endsWith("@google.com") && item.startDate) {
+                        const [y, mo, d] = item.startDate.split("-");
+                        return `https://calendar.google.com/calendar/u/0/r/day/${y}/${mo}/${d}`;
+                      }
+                      if (calendarUrl) return calendarUrl;
+                    } catch { /* ignore */ }
+                    return null;
+                  })();
+                  return (
+                    <div
+                      key={key}
+                      className={cn(
+                        "flex items-start gap-3 px-3 py-2.5 rounded-lg border transition-colors",
+                        isSelected ? "bg-primary/5 border-primary/20" : "border-transparent hover:bg-accent"
+                      )}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleSelect(key)}
+                        className="mt-0.5 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <button
+                          onClick={() => {
+                            if (external) {
+                              setExternalEvent(item);
+                            } else {
+                              setViewingItem(item);
+                            }
+                          }}
+                          className="text-sm font-medium truncate text-left hover:text-primary transition-colors"
+                        >
+                          {item.title ?? "Untitled"}
+                        </button>
+                        {timeLabel && (
+                          <p className="text-xs text-muted-foreground">{timeLabel}</p>
+                        )}
+                        {item.placeName && (
+                          <p className="text-xs text-muted-foreground">in {item.placeName}</p>
+                        )}
+                        {external && (item as any).calendarName && (
+                          <p className="text-xs text-muted-foreground">{(item as any).calendarName}</p>
+                        )}
+                        {external && calUrl && (
+                          <a href={calUrl} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs text-primary underline underline-offset-2 mt-0.5">
+                            <ExternalLink className="w-3 h-3" /> Reschedule in calendar
+                          </a>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          title="Undo"
+                          disabled={undoMutation.isPending}
+                          onClick={() => undoMutation.mutate(item.completion!.id)}
+                          className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
                   );
