@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Trash2, Save } from "lucide-react";
+import { Trash2, Save, Download, Upload } from "lucide-react";
 import { usePreferences } from "@/hooks/use-preferences";
 import { SidebarMenuButton } from "@/components/sidebar-menu";
 
@@ -131,14 +131,40 @@ export default function DataPage() {
         </CardContent>
       </Card>
 
-      {/* Import / Export — coming back later */}
+      {/* Import / Export */}
       <Card>
-        <CardContent className="p-5 space-y-2">
+        <CardContent className="p-5 space-y-3">
           <h2 className="text-base font-semibold">Import / Export</h2>
           <p className="text-sm text-muted-foreground">
-            Workbook import/export was removed in Phase 0 along with the legacy
-            Atomic Habits schema. It will return after the v8 schema stabilizes.
+            Export your data to an Excel workbook or import from a previously exported file.
           </p>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={async () => {
+                try {
+                  const response = await fetch("/api/export");
+                  if (!response.ok) throw new Error("Export failed");
+                  const blob = await response.blob();
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `unpuzzle-life-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+                  document.body.appendChild(a);
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                  document.body.removeChild(a);
+                } catch (err) {
+                  console.error("Export error:", err);
+                }
+              }}
+            >
+              <Download className="w-4 h-4 mr-1.5" /> Export Data
+            </Button>
+            <Button variant="outline" disabled>
+              <Upload className="w-4 h-4 mr-1.5" /> Import Data
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

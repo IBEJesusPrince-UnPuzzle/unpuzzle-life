@@ -3,6 +3,7 @@ import type { Server } from "http";
 import { storage, sqlite } from "./storage";
 import { requireAuth, requireAdmin, getEffectiveUserId } from "./auth";
 import { format, toZonedTime } from "date-fns-tz";
+import ExcelJS from "exceljs";
 import {
   insertProjectSchema,
   PROJECT_STATUSES,
@@ -2398,6 +2399,196 @@ export function registerRoutes(server: Server, app: Express) {
     const clamped = Math.min(112, Math.max(28, Math.round(n)));
     storage.setAgendaHourHeightPx(userId, clamped);
     res.json({ hourHeightPx: clamped });
+  });
+
+  // ============================================================
+  // IMPORT / EXPORT
+  // ============================================================
+  app.get("/api/export", async (req, res) => {
+    try {
+      const userId = getEffectiveUserId(req);
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "UnPuzzle Life";
+      workbook.created = new Date();
+
+      // Overview sheet
+      const overviewSheet = workbook.addWorksheet("Overview");
+      overviewSheet.addRow(["Export Date", new Date().toISOString()]);
+      overviewSheet.addRow(["User ID", userId]);
+      overviewSheet.addRow(["Version", "1.0"]);
+      overviewSheet.addRow([]);
+
+      // Agenda Tasks sheet
+      const agendaTasksSheet = workbook.addWorksheet("Agenda Tasks");
+      agendaTasksSheet.columns = [
+        { header: "ID", key: "id" },
+        { header: "Title", key: "title" },
+        { header: "Origin", key: "origin" },
+        { header: "Start Date", key: "startDate" },
+        { header: "Time", key: "time" },
+        { header: "Duration Minutes", key: "durationMinutes" },
+        { header: "End Date", key: "endDate" },
+        { header: "Is All Day", key: "isAllDay" },
+        { header: "Recurrence Rule", key: "recurrenceRule" },
+        { header: "Color", key: "color" },
+        { header: "Status", key: "status" },
+        { header: "Notes", key: "notes" },
+        { header: "Project ID", key: "projectId" },
+        { header: "Responsibility ID", key: "responsibilityId" },
+        { header: "Created At", key: "createdAt" },
+        { header: "Updated At", key: "updatedAt" },
+      ];
+      // Get all agenda tasks by querying with a wide date range
+      const agendaTasks = storage.getAgendaWindow(userId, "2000-01-01", "2100-12-31");
+      agendaTasksSheet.addRows(agendaTasks);
+
+      // Project Tasks sheet
+      const projectTasksSheet = workbook.addWorksheet("Project Tasks");
+      projectTasksSheet.columns = [
+        { header: "ID", key: "id" },
+        { header: "Project ID", key: "projectId" },
+        { header: "Title", key: "title" },
+        { header: "Notes", key: "notes" },
+        { header: "Status", key: "status" },
+        { header: "Start Date", key: "startDate" },
+        { header: "Time", key: "time" },
+        { header: "Duration Minutes", key: "durationMinutes" },
+        { header: "End Date", key: "endDate" },
+        { header: "Is All Day", key: "isAllDay" },
+        { header: "Recurrence Rule", key: "recurrenceRule" },
+        { header: "Created At", key: "createdAt" },
+        { header: "Updated At", key: "updatedAt" },
+      ];
+      const projectTasks = storage.getProjectTasks(userId);
+      projectTasksSheet.addRows(projectTasks);
+
+      // Projects sheet
+      const projectsSheet = workbook.addWorksheet("Projects");
+      projectsSheet.columns = [
+        { header: "ID", key: "id" },
+        { header: "Name", key: "name" },
+        { header: "Description", key: "description" },
+        { header: "Status", key: "status" },
+        { header: "Priority", key: "priority" },
+        { header: "Trigger", key: "trigger" },
+        { header: "Outcome", key: "outcome" },
+        { header: "Blockers", key: "blockers" },
+        { header: "Risks", key: "risks" },
+        { header: "Notes", key: "notes" },
+        { header: "Start Date", key: "startDate" },
+        { header: "End Date", key: "endDate" },
+        { header: "Color", key: "color" },
+        { header: "Created At", key: "createdAt" },
+        { header: "Updated At", key: "updatedAt" },
+      ];
+      const projects = storage.getProjects(userId);
+      projectsSheet.addRows(projects);
+
+      // Responsibilities sheet
+      const responsibilitiesSheet = workbook.addWorksheet("Responsibilities");
+      responsibilitiesSheet.columns = [
+        { header: "ID", key: "id" },
+        { header: "Title", key: "title" },
+        { header: "Description", key: "description" },
+        { header: "Color", key: "color" },
+        { header: "Start Date", key: "startDate" },
+        { header: "Time", key: "time" },
+        { header: "Duration Minutes", key: "durationMinutes" },
+        { header: "End Date", key: "endDate" },
+        { header: "Is All Day", key: "isAllDay" },
+        { header: "Recurrence Rule", key: "recurrenceRule" },
+        { header: "Created At", key: "createdAt" },
+        { header: "Updated At", key: "updatedAt" },
+      ];
+      const responsibilities = storage.getResponsibilities(userId);
+      responsibilitiesSheet.addRows(responsibilities);
+
+      // Support taxonomy sheets
+      const people = storage.getEnvironmentPeople(userId);
+      const peopleSheet = workbook.addWorksheet("People");
+      peopleSheet.columns = [
+        { header: "ID", key: "id" },
+        { header: "Name", key: "name" },
+        { header: "State", key: "state" },
+        { header: "Notes", key: "notes" },
+        { header: "Created At", key: "createdAt" },
+        { header: "Updated At", key: "updatedAt" },
+      ];
+      peopleSheet.addRows(people);
+
+      const places = storage.getEnvironmentPlaces(userId);
+      const placesSheet = workbook.addWorksheet("Places");
+      placesSheet.columns = [
+        { header: "ID", key: "id" },
+        { header: "Name", key: "name" },
+        { header: "State", key: "state" },
+        { header: "Notes", key: "notes" },
+        { header: "Created At", key: "createdAt" },
+        { header: "Updated At", key: "updatedAt" },
+      ];
+      placesSheet.addRows(places);
+
+      const things = storage.getEnvironmentThings(userId);
+      const thingsSheet = workbook.addWorksheet("Things");
+      thingsSheet.columns = [
+        { header: "ID", key: "id" },
+        { header: "Name", key: "name" },
+        { header: "State", key: "state" },
+        { header: "Notes", key: "notes" },
+        { header: "Created At", key: "createdAt" },
+        { header: "Updated At", key: "updatedAt" },
+      ];
+      thingsSheet.addRows(things);
+
+      const providers = storage.getEnvironmentProviders(userId);
+      const providersSheet = workbook.addWorksheet("Providers");
+      providersSheet.columns = [
+        { header: "ID", key: "id" },
+        { header: "Name", key: "name" },
+        { header: "State", key: "state" },
+        { header: "Notes", key: "notes" },
+        { header: "Created At", key: "createdAt" },
+        { header: "Updated At", key: "updatedAt" },
+      ];
+      providersSheet.addRows(providers);
+
+      const conditions = storage.getEnvironmentConditions(userId);
+      const conditionsSheet = workbook.addWorksheet("Conditions");
+      conditionsSheet.columns = [
+        { header: "ID", key: "id" },
+        { header: "Name", key: "name" },
+        { header: "State", key: "state" },
+        { header: "Notes", key: "notes" },
+        { header: "Created At", key: "createdAt" },
+        { header: "Updated At", key: "updatedAt" },
+      ];
+      conditionsSheet.addRows(conditions);
+
+      // Task Completions sheet
+      const completionsSheet = workbook.addWorksheet("Task Completions");
+      completionsSheet.columns = [
+        { header: "ID", key: "id" },
+        { header: "Agenda Task ID", key: "agendaTaskId" },
+        { header: "Series ID", key: "seriesId" },
+        { header: "Original Date", key: "originalDate" },
+        { header: "Status", key: "status" },
+        { header: "Notes", key: "notes" },
+        { header: "Completed At", key: "completedAt" },
+      ];
+      // Get all completions by querying with a wide date range
+      const completions = storage.getCompletionsForRange(userId, "2000-01-01", "2100-12-31");
+      completionsSheet.addRows(completions);
+
+      // Generate buffer
+      const buffer = await workbook.xlsx.writeBuffer();
+      const filename = `unpuzzle-life-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.send(buffer);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // ============================================================
