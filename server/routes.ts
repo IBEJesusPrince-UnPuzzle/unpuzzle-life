@@ -2629,57 +2629,7 @@ export function registerRoutes(server: Server, app: Express) {
 
       const results: { sheet: string; imported: number; errors: string[] }[] = [];
 
-      // Import Agenda Tasks
-      const agendaHeaders = getHeaders("Agenda Tasks");
-      const agendaData = readSheetData("Agenda Tasks");
-      let agendaImported = 0;
-      const agendaErrors: string[] = [];
-      for (const row of agendaData) {
-        try {
-          const task: any = {};
-          agendaHeaders.forEach((header, i) => {
-            if (row[i] !== undefined && row[i] !== null) {
-              task[header.toLowerCase().replace(/ /g, '')] = row[i];
-            }
-          });
-          if (task.id) {
-            storage.updateAgendaTask(userId, task.id, task);
-          } else {
-            storage.createAgendaTask(userId, task);
-          }
-          agendaImported++;
-        } catch (e: any) {
-          agendaErrors.push(e.message);
-        }
-      }
-      results.push({ sheet: "Agenda Tasks", imported: agendaImported, errors: agendaErrors });
-
-      // Import Project Tasks
-      const projectTaskHeaders = getHeaders("Project Tasks");
-      const projectTaskData = readSheetData("Project Tasks");
-      let projectTaskImported = 0;
-      const projectTaskErrors: string[] = [];
-      for (const row of projectTaskData) {
-        try {
-          const task: any = {};
-          projectTaskHeaders.forEach((header, i) => {
-            if (row[i] !== undefined && row[i] !== null) {
-              task[header.toLowerCase().replace(/ /g, '')] = row[i];
-            }
-          });
-          if (task.id) {
-            storage.updateProjectTask(userId, task.id, task);
-          } else {
-            storage.createProjectTask(userId, task);
-          }
-          projectTaskImported++;
-        } catch (e: any) {
-          projectTaskErrors.push(e.message);
-        }
-      }
-      results.push({ sheet: "Project Tasks", imported: projectTaskImported, errors: projectTaskErrors });
-
-      // Import Projects
+      // Import Projects (no dependencies)
       const projectHeaders = getHeaders("Projects");
       const projectData = readSheetData("Projects");
       let projectImported = 0;
@@ -2704,32 +2654,7 @@ export function registerRoutes(server: Server, app: Express) {
       }
       results.push({ sheet: "Projects", imported: projectImported, errors: projectErrors });
 
-      // Import Responsibilities
-      const respHeaders = getHeaders("Responsibilities");
-      const respData = readSheetData("Responsibilities");
-      let respImported = 0;
-      const respErrors: string[] = [];
-      for (const row of respData) {
-        try {
-          const resp: any = {};
-          respHeaders.forEach((header, i) => {
-            if (row[i] !== undefined && row[i] !== null) {
-              resp[header.toLowerCase().replace(/ /g, '')] = row[i];
-            }
-          });
-          if (resp.id) {
-            storage.updateResponsibility(userId, resp.id, resp);
-          } else {
-            storage.createResponsibility(userId, resp);
-          }
-          respImported++;
-        } catch (e: any) {
-          respErrors.push(e.message);
-        }
-      }
-      results.push({ sheet: "Responsibilities", imported: respImported, errors: respErrors });
-
-      // Import People
+      // Import People (no dependencies)
       const peopleHeaders = getHeaders("People");
       const peopleData = readSheetData("People");
       let peopleImported = 0;
@@ -2754,7 +2679,7 @@ export function registerRoutes(server: Server, app: Express) {
       }
       results.push({ sheet: "People", imported: peopleImported, errors: peopleErrors });
 
-      // Import Places
+      // Import Places (no dependencies)
       const placesHeaders = getHeaders("Places");
       const placesData = readSheetData("Places");
       let placesImported = 0;
@@ -2779,7 +2704,7 @@ export function registerRoutes(server: Server, app: Express) {
       }
       results.push({ sheet: "Places", imported: placesImported, errors: placesErrors });
 
-      // Import Things
+      // Import Things (no dependencies)
       const thingsHeaders = getHeaders("Things");
       const thingsData = readSheetData("Things");
       let thingsImported = 0;
@@ -2804,7 +2729,7 @@ export function registerRoutes(server: Server, app: Express) {
       }
       results.push({ sheet: "Things", imported: thingsImported, errors: thingsErrors });
 
-      // Import Providers
+      // Import Providers (no dependencies)
       const providersHeaders = getHeaders("Providers");
       const providersData = readSheetData("Providers");
       let providersImported = 0;
@@ -2829,7 +2754,7 @@ export function registerRoutes(server: Server, app: Express) {
       }
       results.push({ sheet: "Providers", imported: providersImported, errors: providersErrors });
 
-      // Import Conditions
+      // Import Conditions (no dependencies)
       const conditionsHeaders = getHeaders("Conditions");
       const conditionsData = readSheetData("Conditions");
       let conditionsImported = 0;
@@ -2853,6 +2778,106 @@ export function registerRoutes(server: Server, app: Express) {
         }
       }
       results.push({ sheet: "Conditions", imported: conditionsImported, errors: conditionsErrors });
+
+      // Import Roles (depends on People)
+      const rolesHeaders = getHeaders("Roles");
+      const rolesData = readSheetData("Roles");
+      let rolesImported = 0;
+      const rolesErrors: string[] = [];
+      for (const row of rolesData) {
+        try {
+          const role: any = {};
+          rolesHeaders.forEach((header, i) => {
+            if (row[i] !== undefined && row[i] !== null) {
+              role[header.toLowerCase().replace(/ /g, '')] = row[i];
+            }
+          });
+          if (role.id) {
+            storage.updateRole(userId, role.id, role);
+          } else {
+            storage.createRole(userId, role);
+          }
+          rolesImported++;
+        } catch (e: any) {
+          rolesErrors.push(e.message);
+        }
+      }
+      results.push({ sheet: "Roles", imported: rolesImported, errors: rolesErrors });
+
+      // Import Responsibilities (depends on People, Places, Things, Providers, Conditions, Projects, Roles)
+      const respHeaders = getHeaders("Responsibilities");
+      const respData = readSheetData("Responsibilities");
+      let respImported = 0;
+      const respErrors: string[] = [];
+      for (const row of respData) {
+        try {
+          const resp: any = {};
+          respHeaders.forEach((header, i) => {
+            if (row[i] !== undefined && row[i] !== null) {
+              resp[header.toLowerCase().replace(/ /g, '')] = row[i];
+            }
+          });
+          if (resp.id) {
+            storage.updateResponsibility(userId, resp.id, resp);
+          } else {
+            storage.createResponsibility(userId, resp);
+          }
+          respImported++;
+        } catch (e: any) {
+          respErrors.push(e.message);
+        }
+      }
+      results.push({ sheet: "Responsibilities", imported: respImported, errors: respErrors });
+
+      // Import Project Tasks (depends on Projects)
+      const projectTaskHeaders = getHeaders("Project Tasks");
+      const projectTaskData = readSheetData("Project Tasks");
+      let projectTaskImported = 0;
+      const projectTaskErrors: string[] = [];
+      for (const row of projectTaskData) {
+        try {
+          const task: any = {};
+          projectTaskHeaders.forEach((header, i) => {
+            if (row[i] !== undefined && row[i] !== null) {
+              task[header.toLowerCase().replace(/ /g, '')] = row[i];
+            }
+          });
+          if (task.id) {
+            storage.updateProjectTask(userId, task.id, task);
+          } else {
+            storage.createProjectTask(userId, task);
+          }
+          projectTaskImported++;
+        } catch (e: any) {
+          projectTaskErrors.push(e.message);
+        }
+      }
+      results.push({ sheet: "Project Tasks", imported: projectTaskImported, errors: projectTaskErrors });
+
+      // Import Agenda Tasks (depends on Responsibilities, Project Tasks, Roles)
+      const agendaHeaders = getHeaders("Agenda Tasks");
+      const agendaData = readSheetData("Agenda Tasks");
+      let agendaImported = 0;
+      const agendaErrors: string[] = [];
+      for (const row of agendaData) {
+        try {
+          const task: any = {};
+          agendaHeaders.forEach((header, i) => {
+            if (row[i] !== undefined && row[i] !== null) {
+              task[header.toLowerCase().replace(/ /g, '')] = row[i];
+            }
+          });
+          if (task.id) {
+            storage.updateAgendaTask(userId, task.id, task);
+          } else {
+            storage.createAgendaTask(userId, task);
+          }
+          agendaImported++;
+        } catch (e: any) {
+          agendaErrors.push(e.message);
+        }
+      }
+      results.push({ sheet: "Agenda Tasks", imported: agendaImported, errors: agendaErrors });
 
       res.json({ success: true, results });
     } catch (err: any) {
