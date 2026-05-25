@@ -158,7 +158,11 @@ export default function DataPage() {
                   a.click();
                   window.URL.revokeObjectURL(url);
                   document.body.removeChild(a);
-                  toast({ title: "Export successful", description: "Your data has been downloaded." });
+                  const filename = `unpuzzle-life-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+                  toast({ 
+                    title: "Export successful", 
+                    description: `Your data has been downloaded as ${filename}. Check your Downloads folder.`
+                  });
                 } catch (err) {
                   console.error("Export error:", err);
                   toast({ 
