@@ -2440,7 +2440,9 @@ export function registerRoutes(server: Server, app: Express) {
         
         // Add new data starting at row 4
         if (data.length > 0) {
-          sheet.addRows(data);
+          data.forEach((row) => {
+            sheet.addRow(row);
+          });
         }
       };
 
