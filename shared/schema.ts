@@ -198,8 +198,6 @@ export const responsibilities = sqliteTable("responsibilities", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().default(1),
   name: text("name").notNull(),
-  cadence: text("cadence").notNull().default("weekly"), // daily | weekly | biweekly | monthly | custom
-  dayOfWeek: text("day_of_week"),
   customCronExpr: text("custom_cron_expr"),
   isPreset: integer("is_preset").notNull().default(0),
   color: text("color"),

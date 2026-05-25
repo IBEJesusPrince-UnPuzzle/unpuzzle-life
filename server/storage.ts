@@ -216,6 +216,10 @@ tryMigration("roles.drop_day_of_week",               `ALTER TABLE roles DROP COL
 tryMigration("project_tasks.drop_recurrence_rule",   `ALTER TABLE project_tasks DROP COLUMN recurrence_rule`);
 tryMigration("project_tasks.drop_recurrence_end_date", `ALTER TABLE project_tasks DROP COLUMN recurrence_end_date`);
 
+// Remove unused cadence and day_of_week columns from responsibilities
+tryMigration("responsibilities.drop_cadence",       `ALTER TABLE responsibilities DROP COLUMN cadence`);
+tryMigration("responsibilities.drop_day_of_week",   `ALTER TABLE responsibilities DROP COLUMN day_of_week`);
+
 // PR #30b — Agenda task-type visibility (Google parity, per-user server state).
 // Three booleans on the existing preferences row; all default 1 (on).
 tryMigration("preferences.show_responsibility", `ALTER TABLE preferences ADD COLUMN show_responsibility INTEGER NOT NULL DEFAULT 1`);

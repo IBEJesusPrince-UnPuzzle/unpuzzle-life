@@ -1249,9 +1249,7 @@ export function registerRoutes(server: Server, app: Express) {
   app.patch("/api/roles/:id", (req, res) => {
     const userId = getEffectiveUserId(req);
     const id = Number(req.params.id);
-    // Strip cadence/dayOfWeek from PATCH bodies per addendum A7.1 — the
-    // edit screen never touches them; preserve whatever's on disk.
-    const { cadence: _c, dayOfWeek: _d, ...patch } = req.body ?? {};
+    const patch = req.body ?? {};
     // Duplicate-name guard on rename per addendum A4.2.
     if (typeof patch.name === "string") {
       const trimmed = patch.name.trim();
