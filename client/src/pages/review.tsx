@@ -803,7 +803,7 @@ export default function ReviewPage() {
           onCheckedChange={() => toggleSelect(key)}
           className="mt-0.5 shrink-0"
         />
-        <div className="flex-1 min-w-0 overflow-hidden">
+        <div className="flex-1 min-w-0">
           <button
             onClick={() => {
               if (external) {
@@ -812,7 +812,7 @@ export default function ReviewPage() {
                 setViewingItem(item);
               }
             }}
-            className="text-sm font-medium text-left hover:text-primary transition-colors"
+            className="text-sm font-medium text-left hover:text-primary transition-colors min-w-0"
           >
             <span className="block truncate">{item.title ?? "Untitled"}</span>
           </button>
