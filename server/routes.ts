@@ -2471,7 +2471,18 @@ export function registerRoutes(server: Server, app: Express) {
               dbField = dbField.replace(/ID$/g, 'Id');
               // Ensure first letter is lowercase
               const camelCaseField = dbField.charAt(0).toLowerCase() + dbField.slice(1);
-              const value = row[camelCaseField];
+              
+              // Special case: For Agenda Tasks, "Responsibility ID" should use originId when origin='responsibility'
+              // and "Project ID" should use originId when origin='project'
+              let value = row[camelCaseField];
+              if (sheetName === 'Agenda Tasks') {
+                if (camelCaseField === 'responsibilityId' && row.origin === 'responsibility') {
+                  value = row.originId;
+                }
+                if (camelCaseField === 'projectId' && row.origin === 'project') {
+                  value = row.originId;
+                }
+              }
               
               // Log first row's values for debugging
               if (rowIndex === 0 && (value !== null && value !== undefined)) {
