@@ -359,11 +359,39 @@ export default function ReviewPage() {
   );
 
   const isExternal = (i: AgendaWindowItem) => i.origin === "external" || (i as any).isExternal;
-  const pending = reviewItems.filter(i => !i.completion);
+  const pending = reviewItems.filter(i => !i.completion).sort((a, b) => {
+    const aStart = timeToMinutes(a.time) ?? Infinity;
+    const bStart = timeToMinutes(b.time) ?? Infinity;
+    const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
+    const bEnd = timeToMinutes((b as any).endTime) ?? Infinity;
+    if (aStart !== bStart) return aStart - bStart;
+    return aEnd - bEnd;
+  });
   const completed = reviewItems.filter(i => i.completion);
-  const done = reviewItems.filter(i => i.completion?.status === "done" || i.completion?.status === "rescheduled");
-  const missed = reviewItems.filter(i => i.completion?.status === "missed");
-  const skipped = reviewItems.filter(i => i.completion?.status === "skipped");
+  const done = reviewItems.filter(i => i.completion?.status === "done" || i.completion?.status === "rescheduled").sort((a, b) => {
+    const aStart = timeToMinutes(a.time) ?? Infinity;
+    const bStart = timeToMinutes(b.time) ?? Infinity;
+    const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
+    const bEnd = timeToMinutes((b as any).endTime) ?? Infinity;
+    if (aStart !== bStart) return aStart - bStart;
+    return aEnd - bEnd;
+  });
+  const missed = reviewItems.filter(i => i.completion?.status === "missed").sort((a, b) => {
+    const aStart = timeToMinutes(a.time) ?? Infinity;
+    const bStart = timeToMinutes(b.time) ?? Infinity;
+    const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
+    const bEnd = timeToMinutes((b as any).endTime) ?? Infinity;
+    if (aStart !== bStart) return aStart - bStart;
+    return aEnd - bEnd;
+  });
+  const skipped = reviewItems.filter(i => i.completion?.status === "skipped").sort((a, b) => {
+    const aStart = timeToMinutes(a.time) ?? Infinity;
+    const bStart = timeToMinutes(b.time) ?? Infinity;
+    const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
+    const bEnd = timeToMinutes((b as any).endTime) ?? Infinity;
+    if (aStart !== bStart) return aStart - bStart;
+    return aEnd - bEnd;
+  });
   const doneCount = done.length;
   const total = reviewItems.length;
 
@@ -412,10 +440,38 @@ export default function ReviewPage() {
             const items = itemsByDate[date];
             const dayLabel = formatDateContextLabel(date);
             const isToday = date === today;
-            const pending = items.filter(i => !i.completion);
-            const done = items.filter(i => i.completion?.status === "done" || i.completion?.status === "rescheduled");
-            const missed = items.filter(i => i.completion?.status === "missed");
-            const skipped = items.filter(i => i.completion?.status === "skipped");
+            const pending = items.filter(i => !i.completion).sort((a, b) => {
+              const aStart = timeToMinutes(a.time) ?? Infinity;
+              const bStart = timeToMinutes(b.time) ?? Infinity;
+              const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
+              const bEnd = timeToMinutes((b as any).endTime) ?? Infinity;
+              if (aStart !== bStart) return aStart - bStart;
+              return aEnd - bEnd;
+            });
+            const done = items.filter(i => i.completion?.status === "done" || i.completion?.status === "rescheduled").sort((a, b) => {
+              const aStart = timeToMinutes(a.time) ?? Infinity;
+              const bStart = timeToMinutes(b.time) ?? Infinity;
+              const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
+              const bEnd = timeToMinutes((b as any).endTime) ?? Infinity;
+              if (aStart !== bStart) return aStart - bStart;
+              return aEnd - bEnd;
+            });
+            const missed = items.filter(i => i.completion?.status === "missed").sort((a, b) => {
+              const aStart = timeToMinutes(a.time) ?? Infinity;
+              const bStart = timeToMinutes(b.time) ?? Infinity;
+              const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
+              const bEnd = timeToMinutes((b as any).endTime) ?? Infinity;
+              if (aStart !== bStart) return aStart - bStart;
+              return aEnd - bEnd;
+            });
+            const skipped = items.filter(i => i.completion?.status === "skipped").sort((a, b) => {
+              const aStart = timeToMinutes(a.time) ?? Infinity;
+              const bStart = timeToMinutes(b.time) ?? Infinity;
+              const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
+              const bEnd = timeToMinutes((b as any).endTime) ?? Infinity;
+              if (aStart !== bStart) return aStart - bStart;
+              return aEnd - bEnd;
+            });
 
             return (
               <div key={date} className="space-y-2">
@@ -533,15 +589,13 @@ export default function ReviewPage() {
     const startMin = timeToMinutes(item.time);
     const endMin = timeToMinutes((item as any).endTime);
     const external = isExternal(item);
-    const timeLabel = external
-      ? item.isAllDay
-        ? "All day"
-        : startMin != null
-          ? endMin != null && endMin > startMin
-            ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
-            : formatTimeLabel(startMin)
-          : ""
-      : item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+    const timeLabel = item.isAllDay
+      ? "All day"
+      : startMin != null
+        ? endMin != null && endMin > startMin
+          ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
+          : formatTimeLabel(startMin)
+        : "";
     const calUrl = (() => {
       if (!external) return null;
       const uid = (item as any).uid as string | null | undefined;
@@ -686,15 +740,13 @@ export default function ReviewPage() {
                   const startMin = timeToMinutes(item.time);
                   const endMin = timeToMinutes((item as any).endTime);
                   const external = isExternal(item);
-                  const timeLabel = external
-                    ? item.isAllDay
-                      ? "All day"
-                      : startMin != null
-                        ? endMin != null && endMin > startMin
-                          ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
-                          : formatTimeLabel(startMin)
-                        : ""
-                    : item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  const timeLabel = item.isAllDay
+                    ? "All day"
+                    : startMin != null
+                      ? endMin != null && endMin > startMin
+                        ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
+                        : formatTimeLabel(startMin)
+                      : "";
                   const calUrl = (() => {
                     if (!external) return null;
                     const uid = (item as any).uid as string | null | undefined;
@@ -803,15 +855,13 @@ export default function ReviewPage() {
                   const startMin = timeToMinutes(item.time);
                   const endMin = timeToMinutes((item as any).endTime);
                   const external = isExternal(item);
-                  const timeLabel = external
-                    ? item.isAllDay
-                      ? "All day"
-                      : startMin != null
-                        ? endMin != null && endMin > startMin
-                          ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
-                          : formatTimeLabel(startMin)
-                        : ""
-                    : item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  const timeLabel = item.isAllDay
+                    ? "All day"
+                    : startMin != null
+                      ? endMin != null && endMin > startMin
+                        ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
+                        : formatTimeLabel(startMin)
+                      : "";
                   const calUrl = (() => {
                     if (!external) return null;
                     const uid = (item as any).uid as string | null | undefined;
@@ -915,15 +965,13 @@ export default function ReviewPage() {
                   const startMin = timeToMinutes(item.time);
                   const endMin = timeToMinutes((item as any).endTime);
                   const external = isExternal(item);
-                  const timeLabel = external
-                    ? item.isAllDay
-                      ? "All day"
-                      : startMin != null
-                        ? endMin != null && endMin > startMin
-                          ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
-                          : formatTimeLabel(startMin)
-                        : ""
-                    : item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  const timeLabel = item.isAllDay
+                    ? "All day"
+                    : startMin != null
+                      ? endMin != null && endMin > startMin
+                        ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
+                        : formatTimeLabel(startMin)
+                      : "";
                   const calUrl = (() => {
                     if (!external) return null;
                     const uid = (item as any).uid as string | null | undefined;
@@ -1027,15 +1075,13 @@ export default function ReviewPage() {
                   const startMin = timeToMinutes(item.time);
                   const endMin = timeToMinutes((item as any).endTime);
                   const external = isExternal(item);
-                  const timeLabel = external
-                    ? item.isAllDay
-                      ? "All day"
-                      : startMin != null
-                        ? endMin != null && endMin > startMin
-                          ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
-                          : formatTimeLabel(startMin)
-                        : ""
-                    : item.isAllDay ? "All day" : (startMin != null ? formatTimeLabel(startMin) : "");
+                  const timeLabel = item.isAllDay
+                    ? "All day"
+                    : startMin != null
+                      ? endMin != null && endMin > startMin
+                        ? `${formatTimeLabel(startMin)} – ${formatTimeLabel(endMin)}`
+                        : formatTimeLabel(startMin)
+                      : "";
                   const calUrl = (() => {
                     if (!external) return null;
                     const uid = (item as any).uid as string | null | undefined;
