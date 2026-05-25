@@ -19,7 +19,7 @@ import { useSwipeNav } from "@/hooks/use-swipe-nav";
 import { Link } from "wouter";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 import type { TaskCompletion } from "@shared/schema";
-import { formatTimeLabel, timeToMinutes, toIsoDate, addDays, formatDateContextLabel, formatMonthLabel, formatRangeLabel, threeDayRange, weekRange, fromIsoDate } from "@/lib/agenda-utils";
+import { formatTimeLabel, timeToMinutes, toIsoDate, addDays, addDaysIso, formatDateContextLabel, formatMonthLabel, formatRangeLabel, threeDayRange, weekRange, fromIsoDate } from "@/lib/agenda-utils";
 import { cn } from "@/lib/utils";
 import { AgendaTaskViewModal } from "@/components/agenda-task-view-modal";
 import { ExternalEventDetailSheet } from "@/components/external-event-detail-sheet";
@@ -112,14 +112,45 @@ function StatusBadge({ status }: { status: CompletionStatus }) {
 function RescheduleSheet({ item, onClose, onConfirm }: {
   item: AgendaWindowItem | null;
   onClose: () => void;
-  onConfirm: (newDate: string, newTime: string) => void;
+  onConfirm: (newDate: string, newTime: string, newEndDate: string, newEndTime: string) => void;
 }) {
   const [newDate, setNewDate] = useState("");
   const [newTime, setNewTime] = useState("");
+  const [newEndDate, setNewEndDate] = useState("");
+  const [newEndTime, setNewEndTime] = useState("");
   const [calOpen, setCalOpen] = useState(false);
+  const [isAllDay, setIsAllDay] = useState(false);
+
   useEffect(() => {
-    if (item) { setNewDate(item.startDate ?? ""); setNewTime(item.time ?? ""); }
+    if (item) {
+      setNewDate(item.startDate ?? "");
+      setNewTime(item.time ?? "");
+      setNewEndDate(item.endDate ?? item.startDate ?? "");
+      const endMin = item.time && item.durationMinutes
+        ? timeToMinutes(addMinutesToDateTime(item.startDate, item.time, item.durationMinutes).time)
+        : null;
+      setNewEndTime(endMin !== null ? minutesToTime(endMin) : "");
+      setIsAllDay(item.isAllDay === 1);
+    }
   }, [item]);
+
+  const handleTimeChange = (value: string) => {
+    setNewTime(value);
+    // Auto-adjust end time if it's before start time
+    if (newEndTime && value && newEndTime <= value) {
+      const { time: adjustedEnd } = addMinutesToDateTime(newDate, value, 60);
+      setNewEndTime(adjustedEnd);
+    }
+  };
+
+  const handleEndTimeChange = (value: string) => {
+    setNewEndTime(value);
+    // Auto-roll end date if end time is before start time on same date
+    if (newEndDate === newDate && value && value <= newTime) {
+      setNewEndDate(addDaysIso(newDate, 1));
+    }
+  };
+
   return (
     <Sheet open={item !== null} onOpenChange={(o) => { if (!o) onClose(); }}>
       <SheetContent side="bottom" className="p-0 max-h-[90vh] overflow-y-auto">
@@ -127,29 +158,60 @@ function RescheduleSheet({ item, onClose, onConfirm }: {
           <SheetTitle className="text-base">Reschedule: {item?.title ?? ""}</SheetTitle>
         </SheetHeader>
         <div className="px-5 py-4 space-y-4">
-          <div className="space-y-1.5">
-            <Label>New date</Label>
-            <Popover open={calOpen} onOpenChange={setCalOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-start font-normal">
-                  <CalendarDays className="w-4 h-4 mr-2 shrink-0" />
-                  {newDate || "Pick a date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar mode="single"
-                  selected={newDate ? new Date(newDate + "T12:00:00") : undefined}
-                  onSelect={(d) => { if (d) { setNewDate(toIsoDate(d)); setCalOpen(false); } }}
-                  initialFocus />
-              </PopoverContent>
-            </Popover>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="all-day"
+              checked={isAllDay}
+              onCheckedChange={(checked) => setIsAllDay(checked === true)}
+            />
+            <Label htmlFor="all-day">All day</Label>
           </div>
           <div className="space-y-1.5">
-            <Label>New time</Label>
-            <Input type="time" value={newTime} onChange={(e) => setNewTime(e.target.value)} />
+            <Label>Starts</Label>
+            <div className={isAllDay ? "" : "grid grid-cols-[1fr_9rem] gap-2 items-center"}>
+              <Popover open={calOpen} onOpenChange={setCalOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start font-normal">
+                    <CalendarDays className="w-4 h-4 mr-2 shrink-0" />
+                    {newDate || "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="single"
+                    selected={newDate ? new Date(newDate + "T12:00:00") : undefined}
+                    onSelect={(d) => { if (d) { setNewDate(toIsoDate(d)); setCalOpen(false); } }}
+                    initialFocus />
+                </PopoverContent>
+              </Popover>
+              {!isAllDay && (
+                <Input
+                  type="time"
+                  value={newTime}
+                  onChange={(e) => handleTimeChange(e.target.value)}
+                />
+              )}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Ends</Label>
+            <div className={isAllDay ? "" : "grid grid-cols-[1fr_9rem] gap-2 items-center"}>
+              <Input
+                type="date"
+                value={newEndDate}
+                min={newDate}
+                onChange={(e) => setNewEndDate(e.target.value)}
+              />
+              {!isAllDay && (
+                <Input
+                  type="time"
+                  value={newEndTime}
+                  onChange={(e) => handleEndTimeChange(e.target.value)}
+                />
+              )}
+            </div>
           </div>
           <Button className="w-full" disabled={!newDate}
-            onClick={() => { onConfirm(newDate, newTime); onClose(); }}>
+            onClick={() => { onConfirm(newDate, newTime, newEndDate, newEndTime); onClose(); }}>
             Confirm reschedule
           </Button>
         </div>
@@ -254,7 +316,7 @@ export default function ReviewPage() {
     disabled: pickerOpen,
   });
   const [rescheduleItem, setRescheduleItem] = useState<AgendaWindowItem | null>(null);
-  const [pendingReschedule, setPendingReschedule] = useState<{ item: AgendaWindowItem; newDate: string; newTime: string } | null>(null);
+  const [pendingReschedule, setPendingReschedule] = useState<{ item: AgendaWindowItem; newDate: string; newTime: string; newEndDate: string; newEndTime: string } | null>(null);
 
   // Calculate date range based on view
   const dateRange = useMemo(() => {
@@ -316,14 +378,51 @@ export default function ReviewPage() {
   });
 
   const rescheduleMutation = useMutation({
-    mutationFn: async ({ item, newDate, newTime, scope }: {
-      item: AgendaWindowItem; newDate: string; newTime: string; scope: RecurrenceScope;
+    mutationFn: async ({ item, newDate, newTime, newEndDate, newEndTime, scope }: {
+      item: AgendaWindowItem; newDate: string; newTime: string; newEndDate: string; newEndTime: string; scope: RecurrenceScope;
     }) => {
       const isRecurring = !!(item.recurrenceRule || item.seriesId);
       const masterId = (item as any).masterId ?? item.id;
       const occurrenceDate = item.startDate;
       const payload: Record<string, unknown> = { startDate: newDate };
-      if (newTime) payload.time = newTime;
+      
+      // Compute durationMinutes from start and end times (similar to agenda-task-modal)
+      const isAllDay = !newTime;
+      if (isAllDay) {
+        payload.isAllDay = 1;
+        payload.time = null;
+        payload.durationMinutes = null;
+        // For multi-day all-day events, send endDate
+        if (newEndDate && newEndDate !== newDate) {
+          payload.endDate = newEndDate;
+        } else {
+          payload.endDate = null;
+        }
+      } else {
+        payload.isAllDay = 0;
+        payload.time = newTime;
+        if (newEndTime) {
+          const durationMinutes = (() => {
+            const startBase = new Date(newDate + "T00:00:00").getTime();
+            const endBase = new Date(newEndDate + "T00:00:00").getTime();
+            const dayDiff = Math.round((endBase - startBase) / 86400000);
+            const startMin = timeToMinutes(newTime);
+            const endMin = timeToMinutes(newEndTime);
+            return Math.max(0, dayDiff * 1440 + (endMin - startMin));
+          })();
+          payload.durationMinutes = durationMinutes;
+          // For multi-day timed events, send endDate
+          if (newEndDate && newEndDate !== newDate) {
+            payload.endDate = newEndDate;
+          } else {
+            payload.endDate = null;
+          }
+        } else {
+          payload.durationMinutes = 60; // Default 1 hour if no end time
+          payload.endDate = null;
+        }
+      }
+      
       if (isRecurring) {
         if (scope === "this") {
           await apiRequest("POST", "/api/agenda-tasks", {
@@ -1342,13 +1441,13 @@ export default function ReviewPage() {
       <RescheduleSheet
         item={rescheduleItem}
         onClose={() => setRescheduleItem(null)}
-        onConfirm={(newDate, newTime) => {
+        onConfirm={(newDate, newTime, newEndDate, newEndTime) => {
           if (!rescheduleItem) return;
           const isRecurring = !!(rescheduleItem.recurrenceRule || rescheduleItem.seriesId);
           if (isRecurring) {
-            setPendingReschedule({ item: rescheduleItem, newDate, newTime });
+            setPendingReschedule({ item: rescheduleItem, newDate, newTime, newEndDate, newEndTime });
           } else {
-            rescheduleMutation.mutate({ item: rescheduleItem, newDate, newTime, scope: "this" });
+            rescheduleMutation.mutate({ item: rescheduleItem, newDate, newTime, newEndDate, newEndTime, scope: "this" });
           }
           setRescheduleItem(null);
         }}
