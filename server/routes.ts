@@ -2410,7 +2410,7 @@ export function registerRoutes(server: Server, app: Express) {
       
       // Load the template workbook
       const workbook = new ExcelJS.Workbook();
-      const templatePath = new URL('./export-template.xlsx', import.meta.url);
+      const templatePath = './export-template.xlsx';
       await workbook.xlsx.readFile(templatePath);
       workbook.creator = "UnPuzzle Life";
       workbook.created = new Date();
@@ -2437,7 +2437,7 @@ export function registerRoutes(server: Server, app: Express) {
         
         // Add new data starting at row 4
         if (data.length > 0) {
-          sheet.addRows(data, { origin: 4 });
+          sheet.addRows(data);
         }
       };
 
