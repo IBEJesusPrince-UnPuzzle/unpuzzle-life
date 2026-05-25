@@ -211,34 +211,39 @@ export default function DataPage() {
             >
               <Download className="w-4 h-4 mr-1.5" /> Export Data
             </Button>
-            <div className="flex gap-2 items-center">
-              <input
-                type="file"
-                accept=".xlsx"
-                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                className="hidden"
-                id="import-file"
-              />
-              <label htmlFor="import-file">
-                <Button variant="outline" asChild>
-                  <span>
-                    <Upload className="w-4 h-4 mr-1.5" /> Select File
-                  </span>
-                </Button>
-              </label>
+            <input
+              type="file"
+              accept=".xlsx"
+              onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+              className="hidden"
+              id="import-file"
+            />
+            <label htmlFor="import-file">
               <Button 
                 variant="outline" 
-                disabled={!importFile || importMutation.isPending}
-                onClick={() => importFile && importMutation.mutate(importFile)}
+                asChild
+                disabled={importMutation.isPending}
               >
-                {importMutation.isPending ? "Importing..." : "Import Data"}
+                <span>
+                  <Upload className="w-4 h-4 mr-1.5" /> Import Data
+                </span>
               </Button>
-            </div>
+            </label>
           </div>
           {importFile && (
-            <p className="text-xs text-muted-foreground">
-              Selected: {importFile.name}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-muted-foreground">
+                Selected: {importFile.name}
+              </p>
+              <Button 
+                variant="outline" 
+                size="sm"
+                disabled={importMutation.isPending}
+                onClick={() => importFile && importMutation.mutate(importFile)}
+              >
+                {importMutation.isPending ? "Importing..." : "Upload"}
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>
