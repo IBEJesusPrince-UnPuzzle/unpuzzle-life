@@ -61,3 +61,43 @@ export function RescheduleSheet({ item, onClose, onConfirm }: {
     </Sheet>
   );
 }
+export function ScopeDialog({ open, isResponsibility, onConfirm, onClose }: {
+  open: boolean;
+  isResponsibility: boolean;
+  onConfirm: (scope: RecurrenceScope) => void;
+  onClose: () => void;
+}) {
+  const [scope, setScope] = useState<RecurrenceScope>("this");
+  useEffect(() => { if (open) setScope("this"); }, [open]);
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader><DialogTitle>Edit recurring event</DialogTitle></DialogHeader>
+        <div className="py-4">
+          <RadioGroup value={scope} onValueChange={(v) => setScope(v as RecurrenceScope)} className="gap-3">
+            <div className="flex items-center gap-3">
+              <RadioGroupItem value="this" id="rs-this" />
+              <Label htmlFor="rs-this" className="cursor-pointer font-normal">This event</Label>
+            </div>
+            {!isResponsibility && (
+              <>
+                <div className="flex items-center gap-3">
+                  <RadioGroupItem value="following" id="rs-following" />
+                  <Label htmlFor="rs-following" className="cursor-pointer font-normal">This and following events</Label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <RadioGroupItem value="all" id="rs-all" />
+                  <Label htmlFor="rs-all" className="cursor-pointer font-normal">All events</Label>
+                </div>
+              </>
+            )}
+          </RadioGroup>
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => { onConfirm(scope); onClose(); }}>Reschedule</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
