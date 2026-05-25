@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useSwipeNav } from "@/hooks/use-swipe-nav";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 import type { TaskCompletion } from "@shared/schema";
 import { formatTimeLabel, timeToMinutes, toIsoDate, addDays, formatDateContextLabel, formatMonthLabel, formatRangeLabel, threeDayRange, weekRange, fromIsoDate } from "@/lib/agenda-utils";
@@ -263,6 +263,7 @@ function ScopeDialog({ open, isResponsibility, onConfirm, onClose }: {
 
 export default function ReviewPage() {
   const today = todayIso();
+  const [, navigate] = useLocation();
   const initialDate = (() => {
     const d = new URLSearchParams(window.location.search).get("d");
     return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : today;
@@ -274,6 +275,29 @@ export default function ReviewPage() {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["pending", "done"]));
   const [viewingItem, setViewingItem] = useState<AgendaWindowItem | null>(null);
   const [externalEvent, setExternalEvent] = useState<AgendaWindowItem | null>(null);
+
+  // Navigate to edit page based on task origin
+  function openEdit(item: AgendaWindowItem) {
+    const params = new URLSearchParams();
+    if (item.isVirtual) {
+      params.set("master", String(item.masterId ?? item.id));
+      params.set("occurrence", item.startDate);
+    }
+    const qs = params.toString();
+    
+    // Navigate based on origin
+    if (item.origin === "project") {
+      // Project tasks go to project edit page
+      const projectId = (item as any).projectId;
+      if (projectId) {
+        navigate(`/projects/${projectId}/edit`);
+      }
+    } else {
+      // Standalone tasks go to agenda task edit page
+      const path = `/agenda/tasks/${item.id}/edit${qs ? `?${qs}` : ""}`;
+      navigate(path);
+    }
+  }
 
   function shiftDate(days: number) {
     const d = new Date(date + "T12:00:00");
@@ -783,9 +807,9 @@ export default function ReviewPage() {
                 setViewingItem(item);
               }
             }}
-            className="text-sm font-medium truncate text-left hover:text-primary transition-colors"
+            className="text-sm font-medium text-left hover:text-primary transition-colors w-full text-left"
           >
-            {item.title ?? "Untitled"}
+            <span className="block truncate">{item.title ?? "Untitled"}</span>
           </button>
           {timeLabel && (
             <p className="text-xs text-muted-foreground">{timeLabel}</p>
@@ -1466,10 +1490,7 @@ export default function ReviewPage() {
         open={viewingItem !== null}
         onOpenChange={(open) => !open && setViewingItem(null)}
         item={viewingItem}
-        onEdit={(item) => {
-          // Navigate to edit page
-          window.location.href = `/agenda/tasks/${item.id}/edit`;
-        }}
+        onEdit={openEdit}
       />
       <ExternalEventDetailSheet
         item={externalEvent}
