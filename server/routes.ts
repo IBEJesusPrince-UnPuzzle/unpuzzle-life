@@ -2446,7 +2446,22 @@ export function registerRoutes(server: Server, app: Express) {
         // Add new data starting at row 4
         if (data.length > 0) {
           data.forEach((row) => {
-            sheet.addRow(row);
+            // Convert the row object to a simple object with only primitive values
+            const simpleRow: any = {};
+            for (const [key, value] of Object.entries(row)) {
+              // Skip complex nested objects/arrays
+              if (value === null || value === undefined) {
+                simpleRow[key] = null;
+              } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+                simpleRow[key] = value;
+              } else if (value instanceof Date) {
+                simpleRow[key] = value.toISOString();
+              } else {
+                // Convert other types to string
+                simpleRow[key] = String(value);
+              }
+            }
+            sheet.addRow(simpleRow);
           });
         }
       };
