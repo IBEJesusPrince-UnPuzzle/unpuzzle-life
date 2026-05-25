@@ -2538,6 +2538,10 @@ export function registerRoutes(server: Server, app: Express) {
       console.log(`Responsibilities: ${responsibilities.length}`);
       fillSheet("Responsibilities", responsibilities);
 
+      const roles = storage.getRoles(userId);
+      console.log(`Roles: ${roles.length}`);
+      fillSheet("Roles", roles);
+
       const people = storage.getEnvironmentPeople(userId);
       console.log(`People: ${people.length}`);
       fillSheet("People", people);
