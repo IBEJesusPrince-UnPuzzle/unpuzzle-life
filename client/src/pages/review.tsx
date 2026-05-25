@@ -276,6 +276,11 @@ export default function ReviewPage() {
   const [viewingItem, setViewingItem] = useState<AgendaWindowItem | null>(null);
   const [externalEvent, setExternalEvent] = useState<AgendaWindowItem | null>(null);
 
+  // Scroll to top on mount
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   // Navigate to edit page based on task origin
   function openEdit(item: AgendaWindowItem) {
     const params = new URLSearchParams();
@@ -798,7 +803,7 @@ export default function ReviewPage() {
           onCheckedChange={() => toggleSelect(key)}
           className="mt-0.5 shrink-0"
         />
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 overflow-hidden">
           <button
             onClick={() => {
               if (external) {
@@ -807,7 +812,7 @@ export default function ReviewPage() {
                 setViewingItem(item);
               }
             }}
-            className="text-sm font-medium text-left hover:text-primary transition-colors w-full text-left"
+            className="text-sm font-medium text-left hover:text-primary transition-colors"
           >
             <span className="block truncate">{item.title ?? "Untitled"}</span>
           </button>
