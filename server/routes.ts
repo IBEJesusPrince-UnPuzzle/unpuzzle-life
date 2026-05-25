@@ -2463,21 +2463,26 @@ export function registerRoutes(server: Server, app: Express) {
             // Map database fields to Excel headers
             const excelRow: any[] = [];
             for (const header of headerNames) {
-              // Convert header to camelCase with underscores to match database fields
-              // e.g., "Recurrence Rule" -> "recurrence_rule", "Start Date" -> "start_date"
-              const dbField = header.toLowerCase().replace(/ /g, '_');
-              const value = row[dbField];
+              // Convert header to camelCase to match database fields
+              // e.g., "Origin ID" -> "originId", "Start Date" -> "startDate", "Duration Minutes" -> "durationMinutes"
+              // Special case: "ID" at end should become "Id"
+              let dbField = header.replace(/ /g, '');
+              // Handle "ID" -> "Id" conversion
+              dbField = dbField.replace(/ID$/g, 'Id');
+              // Ensure first letter is lowercase
+              const camelCaseField = dbField.charAt(0).toLowerCase() + dbField.slice(1);
+              const value = row[camelCaseField];
               
               // Log first row's values for debugging
               if (rowIndex === 0 && (value !== null && value !== undefined)) {
-                console.log(`  ${header} (${dbField}):`, value);
+                console.log(`  ${header} (${camelCaseField}):`, value);
               }
               
               if (value === null || value === undefined) {
                 excelRow.push(null);
               } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
                 // Format time values according to user preference
-                if (dbField === 'time' && typeof value === 'string' && value.match(/^\d{2}:\d{2}$/)) {
+                if (camelCaseField === 'time' && typeof value === 'string' && value.match(/^\d{2}:\d{2}$/)) {
                   if (prefs.timeFormat === '12h') {
                     const [hours, minutes] = value.split(':');
                     const hour = parseInt(hours, 10);
