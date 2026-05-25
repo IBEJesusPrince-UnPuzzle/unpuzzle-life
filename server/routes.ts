@@ -2519,7 +2519,28 @@ export function registerRoutes(server: Server, app: Express) {
 
       const projectTasks = storage.getProjectTasks(userId);
       console.log(`Project tasks: ${projectTasks.length}`);
-      fillSheet("Project Tasks", projectTasks);
+      
+      // Build a map of project task ID to linked agenda task for color/date fallback
+      const agendaTasksForProject = storage.getAgendaWindow(userId, "2000-01-01", "2100-12-31");
+      const projectTaskToAgenda = new Map<number, any>();
+      for (const at of agendaTasksForProject) {
+        if (at.origin === 'project' && at.originId != null) {
+          projectTaskToAgenda.set(at.originId, at);
+        }
+      }
+      
+      // Enrich project tasks with color/dates from linked agenda task if null
+      const enrichedProjectTasks = projectTasks.map(pt => {
+        const linkedAgenda = projectTaskToAgenda.get(pt.id);
+        return {
+          ...pt,
+          color: pt.color ?? linkedAgenda?.color ?? null,
+          startDate: pt.startDate ?? linkedAgenda?.startDate ?? null,
+          endDate: pt.endDate ?? linkedAgenda?.endDate ?? null,
+        };
+      });
+      
+      fillSheet("Project Tasks", enrichedProjectTasks);
 
       const projects = storage.getProjects(userId);
       console.log(`Projects: ${projects.length}`);
