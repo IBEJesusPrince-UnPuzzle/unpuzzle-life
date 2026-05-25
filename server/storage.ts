@@ -206,6 +206,7 @@ tryMigration("environment_conditions.unavailable_reason", `ALTER TABLE environme
 tryMigration("project_tasks.start_date",               `ALTER TABLE project_tasks ADD COLUMN start_date TEXT`);
 tryMigration("project_tasks.end_date",                 `ALTER TABLE project_tasks ADD COLUMN end_date TEXT`);
 tryMigration("project_tasks.is_all_day",               `ALTER TABLE project_tasks ADD COLUMN is_all_day INTEGER NOT NULL DEFAULT 0`);
+tryMigration("project_tasks.color",                   `ALTER TABLE project_tasks ADD COLUMN color TEXT`);
 
 // PR #30b — Agenda task-type visibility (Google parity, per-user server state).
 // Three booleans on the existing preferences row; all default 1 (on).

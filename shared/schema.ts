@@ -436,6 +436,7 @@ export const projectTasks = sqliteTable("project_tasks", {
   // PR #21 — linear ordering inside a project's task list (spec §10 mock shows 1-2-3-4 order).
   // Nullable for backfill; app sorts NULLs last then by id.
   sortOrder: integer("sort_order"),
+  color: text("color"), // hex color code for project task display
   createdAt: text("created_at").notNull(),
 });
 
