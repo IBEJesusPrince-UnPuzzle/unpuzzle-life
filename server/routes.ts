@@ -2445,6 +2445,11 @@ export function registerRoutes(server: Server, app: Express) {
         
         console.log(`Headers for ${sheetName}:`, headerNames);
         
+        // Log actual data keys for debugging
+        if (data.length > 0) {
+          console.log(`Sample data keys for ${sheetName}:`, Object.keys(data[0]));
+        }
+        
         // Clear rows from 4 onwards
         const rowCount = sheet.rowCount;
         for (let i = rowCount; i >= 4; i--) {
