@@ -2457,8 +2457,9 @@ export function registerRoutes(server: Server, app: Express) {
             // Map database fields to Excel headers
             const excelRow: any[] = [];
             for (const header of headerNames) {
-              // Convert header to camelCase to match database fields
-              const dbField = header.toLowerCase().replace(/ /g, '');
+              // Convert header to camelCase with underscores to match database fields
+              // e.g., "Recurrence Rule" -> "recurrence_rule", "Start Date" -> "start_date"
+              const dbField = header.toLowerCase().replace(/ /g, '_');
               const value = row[dbField];
               
               if (value === null || value === undefined) {
