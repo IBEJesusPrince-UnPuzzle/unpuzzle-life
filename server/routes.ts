@@ -2437,6 +2437,14 @@ export function registerRoutes(server: Server, app: Express) {
         
         console.log(`Filling sheet ${sheetName} with ${data.length} rows`);
         
+        // Get headers from row 1 to map database fields to Excel columns
+        const headerRow = sheet.getRow(1);
+        const headers = headerRow.values as any[];
+        // Skip the first empty column (index 0)
+        const headerNames = headers.slice(1).map((h: any) => String(h));
+        
+        console.log(`Headers for ${sheetName}:`, headerNames);
+        
         // Clear rows from 4 onwards
         const rowCount = sheet.rowCount;
         for (let i = rowCount; i >= 4; i--) {
@@ -2446,22 +2454,25 @@ export function registerRoutes(server: Server, app: Express) {
         // Add new data starting at row 4
         if (data.length > 0) {
           data.forEach((row) => {
-            // Convert the row object to a simple object with only primitive values
-            const simpleRow: any = {};
-            for (const [key, value] of Object.entries(row)) {
-              // Skip complex nested objects/arrays
+            // Map database fields to Excel headers
+            const excelRow: any[] = [];
+            for (const header of headerNames) {
+              // Convert header to camelCase to match database fields
+              const dbField = header.toLowerCase().replace(/ /g, '');
+              const value = row[dbField];
+              
               if (value === null || value === undefined) {
-                simpleRow[key] = null;
+                excelRow.push(null);
               } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-                simpleRow[key] = value;
+                excelRow.push(value);
               } else if (value instanceof Date) {
-                simpleRow[key] = value.toISOString();
+                excelRow.push(value.toISOString());
               } else {
                 // Convert other types to string
-                simpleRow[key] = String(value);
+                excelRow.push(String(value));
               }
             }
-            sheet.addRow(simpleRow);
+            sheet.addRow(excelRow);
           });
         }
       };
