@@ -26,6 +26,30 @@ import { ExternalEventDetailSheet } from "@/components/external-event-detail-she
 import { SidebarMenuButton } from "@/components/sidebar-menu";
 import { AgendaTaskFilterMenu } from "@/components/agenda-task-filter-menu";
 
+// Helper to compute end time from start time and duration
+function minutesToTime(n: number): string {
+  const h = Math.floor(n / 60) % 24;
+  const m = n % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function addMinutesToDateTime(
+  startDate: string,
+  startTime: string,
+  minutesToAdd: number,
+): { date: string; time: string } {
+  const startMin = timeToMinutes(startTime);
+  const totalMin = startMin + minutesToAdd;
+  const daysToAdd = Math.floor(totalMin / 1440);
+  const endMin = totalMin % 1440;
+  const d = new Date(startDate + "T00:00:00");
+  d.setUTCDate(d.getUTCDate() + daysToAdd);
+  return {
+    date: d.toISOString().split("T")[0],
+    time: minutesToTime(endMin),
+  };
+}
+
 // Completion status options for each agenda item
 type CompletionStatus = "done" | "missed" | "skipped" | "rescheduled";
 type RecurrenceScope = "this" | "following" | "all";
@@ -360,6 +384,9 @@ export default function ReviewPage() {
 
   const isExternal = (i: AgendaWindowItem) => i.origin === "external" || (i as any).isExternal;
   const pending = reviewItems.filter(i => !i.completion).sort((a, b) => {
+    // All-day tasks first
+    if (a.isAllDay && !b.isAllDay) return -1;
+    if (!a.isAllDay && b.isAllDay) return 1;
     const aStart = timeToMinutes(a.time) ?? Infinity;
     const bStart = timeToMinutes(b.time) ?? Infinity;
     const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
@@ -369,6 +396,9 @@ export default function ReviewPage() {
   });
   const completed = reviewItems.filter(i => i.completion);
   const done = reviewItems.filter(i => i.completion?.status === "done" || i.completion?.status === "rescheduled").sort((a, b) => {
+    // All-day tasks first
+    if (a.isAllDay && !b.isAllDay) return -1;
+    if (!a.isAllDay && b.isAllDay) return 1;
     const aStart = timeToMinutes(a.time) ?? Infinity;
     const bStart = timeToMinutes(b.time) ?? Infinity;
     const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
@@ -377,6 +407,9 @@ export default function ReviewPage() {
     return aEnd - bEnd;
   });
   const missed = reviewItems.filter(i => i.completion?.status === "missed").sort((a, b) => {
+    // All-day tasks first
+    if (a.isAllDay && !b.isAllDay) return -1;
+    if (!a.isAllDay && b.isAllDay) return 1;
     const aStart = timeToMinutes(a.time) ?? Infinity;
     const bStart = timeToMinutes(b.time) ?? Infinity;
     const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
@@ -385,6 +418,9 @@ export default function ReviewPage() {
     return aEnd - bEnd;
   });
   const skipped = reviewItems.filter(i => i.completion?.status === "skipped").sort((a, b) => {
+    // All-day tasks first
+    if (a.isAllDay && !b.isAllDay) return -1;
+    if (!a.isAllDay && b.isAllDay) return 1;
     const aStart = timeToMinutes(a.time) ?? Infinity;
     const bStart = timeToMinutes(b.time) ?? Infinity;
     const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
@@ -441,6 +477,9 @@ export default function ReviewPage() {
             const dayLabel = formatDateContextLabel(date);
             const isToday = date === today;
             const pending = items.filter(i => !i.completion).sort((a, b) => {
+              // All-day tasks first
+              if (a.isAllDay && !b.isAllDay) return -1;
+              if (!a.isAllDay && b.isAllDay) return 1;
               const aStart = timeToMinutes(a.time) ?? Infinity;
               const bStart = timeToMinutes(b.time) ?? Infinity;
               const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
@@ -449,6 +488,9 @@ export default function ReviewPage() {
               return aEnd - bEnd;
             });
             const done = items.filter(i => i.completion?.status === "done" || i.completion?.status === "rescheduled").sort((a, b) => {
+              // All-day tasks first
+              if (a.isAllDay && !b.isAllDay) return -1;
+              if (!a.isAllDay && b.isAllDay) return 1;
               const aStart = timeToMinutes(a.time) ?? Infinity;
               const bStart = timeToMinutes(b.time) ?? Infinity;
               const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
@@ -457,6 +499,9 @@ export default function ReviewPage() {
               return aEnd - bEnd;
             });
             const missed = items.filter(i => i.completion?.status === "missed").sort((a, b) => {
+              // All-day tasks first
+              if (a.isAllDay && !b.isAllDay) return -1;
+              if (!a.isAllDay && b.isAllDay) return 1;
               const aStart = timeToMinutes(a.time) ?? Infinity;
               const bStart = timeToMinutes(b.time) ?? Infinity;
               const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
@@ -465,6 +510,9 @@ export default function ReviewPage() {
               return aEnd - bEnd;
             });
             const skipped = items.filter(i => i.completion?.status === "skipped").sort((a, b) => {
+              // All-day tasks first
+              if (a.isAllDay && !b.isAllDay) return -1;
+              if (!a.isAllDay && b.isAllDay) return 1;
               const aStart = timeToMinutes(a.time) ?? Infinity;
               const bStart = timeToMinutes(b.time) ?? Infinity;
               const aEnd = timeToMinutes((a as any).endTime) ?? Infinity;
@@ -587,8 +635,12 @@ export default function ReviewPage() {
     const key = itemKey(item);
     const isSelected = selectedIds.has(key);
     const startMin = timeToMinutes(item.time);
-    const endMin = timeToMinutes((item as any).endTime);
     const external = isExternal(item);
+    const endMin = external
+      ? timeToMinutes((item as any).endTime)
+      : item.time && item.durationMinutes
+        ? timeToMinutes(addMinutesToDateTime(item.startDate, item.time, item.durationMinutes).time)
+        : null;
     const timeLabel = item.isAllDay
       ? "All day"
       : startMin != null
@@ -632,7 +684,7 @@ export default function ReviewPage() {
                 setViewingItem(item);
               }
             }}
-            className="text-sm font-medium truncate text-left hover:text-primary transition-colors block"
+            className="text-sm font-medium truncate text-left hover:text-primary transition-colors"
           >
             {item.title ?? "Untitled"}
           </button>
@@ -738,8 +790,12 @@ export default function ReviewPage() {
                   const key = itemKey(item);
                   const isSelected = selectedIds.has(key);
                   const startMin = timeToMinutes(item.time);
-                  const endMin = timeToMinutes((item as any).endTime);
                   const external = isExternal(item);
+                  const endMin = external
+                    ? timeToMinutes((item as any).endTime)
+                    : item.time && item.durationMinutes
+                      ? timeToMinutes(addMinutesToDateTime(item.startDate, item.time, item.durationMinutes).time)
+                      : null;
                   const timeLabel = item.isAllDay
                     ? "All day"
                     : startMin != null
@@ -853,8 +909,12 @@ export default function ReviewPage() {
                   const key = itemKey(item);
                   const isSelected = selectedIds.has(key);
                   const startMin = timeToMinutes(item.time);
-                  const endMin = timeToMinutes((item as any).endTime);
                   const external = isExternal(item);
+                  const endMin = external
+                    ? timeToMinutes((item as any).endTime)
+                    : item.time && item.durationMinutes
+                      ? timeToMinutes(addMinutesToDateTime(item.startDate, item.time, item.durationMinutes).time)
+                      : null;
                   const timeLabel = item.isAllDay
                     ? "All day"
                     : startMin != null
@@ -963,8 +1023,12 @@ export default function ReviewPage() {
                   const key = itemKey(item);
                   const isSelected = selectedIds.has(key);
                   const startMin = timeToMinutes(item.time);
-                  const endMin = timeToMinutes((item as any).endTime);
                   const external = isExternal(item);
+                  const endMin = external
+                    ? timeToMinutes((item as any).endTime)
+                    : item.time && item.durationMinutes
+                      ? timeToMinutes(addMinutesToDateTime(item.startDate, item.time, item.durationMinutes).time)
+                      : null;
                   const timeLabel = item.isAllDay
                     ? "All day"
                     : startMin != null
@@ -1073,8 +1137,12 @@ export default function ReviewPage() {
                   const key = itemKey(item);
                   const isSelected = selectedIds.has(key);
                   const startMin = timeToMinutes(item.time);
-                  const endMin = timeToMinutes((item as any).endTime);
                   const external = isExternal(item);
+                  const endMin = external
+                    ? timeToMinutes((item as any).endTime)
+                    : item.time && item.durationMinutes
+                      ? timeToMinutes(addMinutesToDateTime(item.startDate, item.time, item.durationMinutes).time)
+                      : null;
                   const timeLabel = item.isAllDay
                     ? "All day"
                     : startMin != null
