@@ -2422,19 +2422,25 @@ export function registerRoutes(server: Server, app: Express) {
       const agendaTasksSheet = workbook.addWorksheet("Agenda Tasks");
       agendaTasksSheet.columns = [
         { header: "ID", key: "id" },
-        { header: "Title", key: "title" },
         { header: "Origin", key: "origin" },
+        { header: "Origin ID", key: "originId" },
+        { header: "Title", key: "title" },
         { header: "Start Date", key: "startDate" },
+        { header: "End Date", key: "endDate" },
         { header: "Time", key: "time" },
         { header: "Duration Minutes", key: "durationMinutes" },
-        { header: "End Date", key: "endDate" },
         { header: "Is All Day", key: "isAllDay" },
-        { header: "Recurrence Rule", key: "recurrenceRule" },
-        { header: "Color", key: "color" },
-        { header: "Status", key: "status" },
-        { header: "Notes", key: "notes" },
-        { header: "Project ID", key: "projectId" },
+        { header: "Role ID", key: "roleId" },
         { header: "Responsibility ID", key: "responsibilityId" },
+        { header: "Status", key: "status" },
+        { header: "Color", key: "color" },
+        { header: "Recurrence Rule", key: "recurrenceRule" },
+        { header: "Recurrence End Date", key: "recurrenceEndDate" },
+        { header: "Series ID", key: "seriesId" },
+        { header: "Is Override", key: "isOverride" },
+        { header: "Original Date", key: "originalDate" },
+        { header: "Is Cancelled", key: "isCancelled" },
+        { header: "Notes", key: "notes" },
         { header: "Created At", key: "createdAt" },
         { header: "Updated At", key: "updatedAt" },
       ];
@@ -2450,14 +2456,13 @@ export function registerRoutes(server: Server, app: Express) {
         { header: "Title", key: "title" },
         { header: "Notes", key: "notes" },
         { header: "Status", key: "status" },
+        { header: "Recurrence Rule", key: "recurrenceRule" },
+        { header: "Recurrence End Date", key: "recurrenceEndDate" },
         { header: "Start Date", key: "startDate" },
-        { header: "Time", key: "time" },
-        { header: "Duration Minutes", key: "durationMinutes" },
         { header: "End Date", key: "endDate" },
         { header: "Is All Day", key: "isAllDay" },
-        { header: "Recurrence Rule", key: "recurrenceRule" },
+        { header: "Sort Order", key: "sortOrder" },
         { header: "Created At", key: "createdAt" },
-        { header: "Updated At", key: "updatedAt" },
       ];
       const projectTasks = storage.getProjectTasks(userId);
       projectTasksSheet.addRows(projectTasks);
@@ -2466,20 +2471,24 @@ export function registerRoutes(server: Server, app: Express) {
       const projectsSheet = workbook.addWorksheet("Projects");
       projectsSheet.columns = [
         { header: "ID", key: "id" },
-        { header: "Name", key: "name" },
+        { header: "Title", key: "title" },
         { header: "Description", key: "description" },
-        { header: "Status", key: "status" },
-        { header: "Priority", key: "priority" },
         { header: "Trigger", key: "trigger" },
-        { header: "Outcome", key: "outcome" },
-        { header: "Blockers", key: "blockers" },
-        { header: "Risks", key: "risks" },
-        { header: "Notes", key: "notes" },
         { header: "Start Date", key: "startDate" },
         { header: "End Date", key: "endDate" },
-        { header: "Color", key: "color" },
+        { header: "Outcome Done", key: "outcomeDone" },
+        { header: "Status", key: "status" },
+        { header: "Priority", key: "priority" },
+        { header: "Target Date", key: "targetDate" },
+        { header: "Next Action", key: "nextAction" },
+        { header: "Blockers", key: "blockers" },
+        { header: "Risks Watchouts", key: "risksWatchouts" },
+        { header: "Notes", key: "notes" },
+        { header: "Last Touched At", key: "lastTouchedAt" },
+        { header: "Stalled At", key: "stalledAt" },
+        { header: "Archived", key: "archived" },
+        { header: "Archived At", key: "archivedAt" },
         { header: "Created At", key: "createdAt" },
-        { header: "Updated At", key: "updatedAt" },
       ];
       const projects = storage.getProjects(userId);
       projectsSheet.addRows(projects);
@@ -2488,17 +2497,21 @@ export function registerRoutes(server: Server, app: Express) {
       const responsibilitiesSheet = workbook.addWorksheet("Responsibilities");
       responsibilitiesSheet.columns = [
         { header: "ID", key: "id" },
-        { header: "Title", key: "title" },
-        { header: "Description", key: "description" },
+        { header: "Name", key: "name" },
+        { header: "Cadence", key: "cadence" },
+        { header: "Day of Week", key: "dayOfWeek" },
+        { header: "Custom Cron Expr", key: "customCronExpr" },
+        { header: "Is Preset", key: "isPreset" },
         { header: "Color", key: "color" },
-        { header: "Start Date", key: "startDate" },
-        { header: "Time", key: "time" },
-        { header: "Duration Minutes", key: "durationMinutes" },
-        { header: "End Date", key: "endDate" },
-        { header: "Is All Day", key: "isAllDay" },
         { header: "Recurrence Rule", key: "recurrenceRule" },
+        { header: "Start Date", key: "startDate" },
+        { header: "Recurrence End Date", key: "recurrenceEndDate" },
+        { header: "Project ID", key: "projectId" },
+        { header: "Response", key: "response" },
+        { header: "Cue", key: "cue" },
+        { header: "Craving", key: "craving" },
+        { header: "Reward", key: "reward" },
         { header: "Created At", key: "createdAt" },
-        { header: "Updated At", key: "updatedAt" },
       ];
       const responsibilities = storage.getResponsibilities(userId);
       responsibilitiesSheet.addRows(responsibilities);
@@ -2509,10 +2522,10 @@ export function registerRoutes(server: Server, app: Express) {
       peopleSheet.columns = [
         { header: "ID", key: "id" },
         { header: "Name", key: "name" },
+        { header: "Relationship", key: "relationship" },
         { header: "State", key: "state" },
-        { header: "Notes", key: "notes" },
+        { header: "Unavailable Reason", key: "unavailableReason" },
         { header: "Created At", key: "createdAt" },
-        { header: "Updated At", key: "updatedAt" },
       ];
       peopleSheet.addRows(people);
 
@@ -2521,10 +2534,10 @@ export function registerRoutes(server: Server, app: Express) {
       placesSheet.columns = [
         { header: "ID", key: "id" },
         { header: "Name", key: "name" },
+        { header: "Type", key: "type" },
         { header: "State", key: "state" },
-        { header: "Notes", key: "notes" },
+        { header: "Unavailable Reason", key: "unavailableReason" },
         { header: "Created At", key: "createdAt" },
-        { header: "Updated At", key: "updatedAt" },
       ];
       placesSheet.addRows(places);
 
@@ -2533,10 +2546,10 @@ export function registerRoutes(server: Server, app: Express) {
       thingsSheet.columns = [
         { header: "ID", key: "id" },
         { header: "Name", key: "name" },
+        { header: "Category", key: "category" },
         { header: "State", key: "state" },
-        { header: "Notes", key: "notes" },
+        { header: "Unavailable Reason", key: "unavailableReason" },
         { header: "Created At", key: "createdAt" },
-        { header: "Updated At", key: "updatedAt" },
       ];
       thingsSheet.addRows(things);
 
@@ -2545,10 +2558,10 @@ export function registerRoutes(server: Server, app: Express) {
       providersSheet.columns = [
         { header: "ID", key: "id" },
         { header: "Name", key: "name" },
+        { header: "Type", key: "type" },
         { header: "State", key: "state" },
-        { header: "Notes", key: "notes" },
+        { header: "Unavailable Reason", key: "unavailableReason" },
         { header: "Created At", key: "createdAt" },
-        { header: "Updated At", key: "updatedAt" },
       ];
       providersSheet.addRows(providers);
 
@@ -2557,10 +2570,10 @@ export function registerRoutes(server: Server, app: Express) {
       conditionsSheet.columns = [
         { header: "ID", key: "id" },
         { header: "Name", key: "name" },
+        { header: "Description", key: "description" },
         { header: "State", key: "state" },
-        { header: "Notes", key: "notes" },
+        { header: "Unavailable Reason", key: "unavailableReason" },
         { header: "Created At", key: "createdAt" },
-        { header: "Updated At", key: "updatedAt" },
       ];
       conditionsSheet.addRows(conditions);
 
@@ -2568,11 +2581,11 @@ export function registerRoutes(server: Server, app: Express) {
       const completionsSheet = workbook.addWorksheet("Task Completions");
       completionsSheet.columns = [
         { header: "ID", key: "id" },
-        { header: "Agenda Task ID", key: "agendaTaskId" },
         { header: "Series ID", key: "seriesId" },
         { header: "Original Date", key: "originalDate" },
+        { header: "Agenda Task ID", key: "agendaTaskId" },
         { header: "Status", key: "status" },
-        { header: "Notes", key: "notes" },
+        { header: "Rescheduled To", key: "rescheduledTo" },
         { header: "Completed At", key: "completedAt" },
       ];
       // Get all completions by querying with a wide date range
