@@ -4,11 +4,7 @@ import { storage, sqlite } from "./storage";
 import { requireAuth, requireAdmin, getEffectiveUserId } from "./auth";
 import { format, toZonedTime } from "date-fns-tz";
 import ExcelJS from "exceljs";
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { join } from 'path';
 import {
   insertProjectSchema,
   PROJECT_STATUSES,
@@ -2415,7 +2411,7 @@ export function registerRoutes(server: Server, app: Express) {
       
       // Load the template workbook
       const workbook = new ExcelJS.Workbook();
-      const templatePath = join(__dirname, 'export-template.xlsx');
+      const templatePath = join(process.cwd(), 'server', 'export-template.xlsx');
       await workbook.xlsx.readFile(templatePath);
       workbook.creator = "UnPuzzle Life";
       workbook.created = new Date();
