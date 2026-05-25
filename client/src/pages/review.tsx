@@ -19,7 +19,7 @@ import { useSwipeNav } from "@/hooks/use-swipe-nav";
 import { Link } from "wouter";
 import type { AgendaWindowItem } from "@/components/agenda-task-modal";
 import type { TaskCompletion } from "@shared/schema";
-import { formatTimeLabel, timeToMinutes, toIsoDate, addDays, addDaysIso, formatDateContextLabel, formatMonthLabel, formatRangeLabel, threeDayRange, weekRange, fromIsoDate } from "@/lib/agenda-utils";
+import { formatTimeLabel, timeToMinutes, toIsoDate, addDays, formatDateContextLabel, formatMonthLabel, formatRangeLabel, threeDayRange, weekRange, fromIsoDate } from "@/lib/agenda-utils";
 import { cn } from "@/lib/utils";
 import { AgendaTaskViewModal } from "@/components/agenda-task-view-modal";
 import { ExternalEventDetailSheet } from "@/components/external-event-detail-sheet";
@@ -147,7 +147,7 @@ function RescheduleSheet({ item, onClose, onConfirm }: {
     setNewEndTime(value);
     // Auto-roll end date if end time is before start time on same date
     if (newEndDate === newDate && value && value <= newTime) {
-      setNewEndDate(addDaysIso(newDate, 1));
+      setNewEndDate(addDays(newDate, 1));
     }
   };
 
