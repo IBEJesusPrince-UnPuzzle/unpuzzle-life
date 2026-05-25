@@ -2421,6 +2421,7 @@ export function registerRoutes(server: Server, app: Express) {
       if (overviewSheet) {
         overviewSheet.getCell("B3").value = new Date().toLocaleDateString();
         overviewSheet.getCell("B4").value = new Date().toLocaleTimeString();
+        overviewSheet.getCell("C4").value = Intl.DateTimeFormat().resolvedOptions().timeZone;
         overviewSheet.getCell("B5").value = userId;
         overviewSheet.getCell("B6").value = "2.0";
       }
