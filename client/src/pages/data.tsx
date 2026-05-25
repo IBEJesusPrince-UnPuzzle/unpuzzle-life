@@ -143,8 +143,12 @@ export default function DataPage() {
               variant="outline" 
               onClick={async () => {
                 try {
+                  toast({ title: "Exporting data...", description: "Please wait while we prepare your export." });
                   const response = await fetch("/api/export");
-                  if (!response.ok) throw new Error("Export failed");
+                  if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error || "Export failed");
+                  }
                   const blob = await response.blob();
                   const url = window.URL.createObjectURL(blob);
                   const a = document.createElement("a");
@@ -154,8 +158,14 @@ export default function DataPage() {
                   a.click();
                   window.URL.revokeObjectURL(url);
                   document.body.removeChild(a);
+                  toast({ title: "Export successful", description: "Your data has been downloaded." });
                 } catch (err) {
                   console.error("Export error:", err);
+                  toast({ 
+                    title: "Export failed", 
+                    description: err instanceof Error ? err.message : "An error occurred",
+                    variant: "destructive"
+                  });
                 }
               }}
             >
