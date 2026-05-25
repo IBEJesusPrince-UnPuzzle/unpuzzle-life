@@ -2409,6 +2409,7 @@ export function registerRoutes(server: Server, app: Express) {
   app.get("/api/export", async (req, res) => {
     try {
       const userId = getEffectiveUserId(req);
+      const prefs = storage.getPreferences(userId);
       
       // Load the template workbook
       const workbook = new ExcelJS.Workbook();
@@ -2475,7 +2476,20 @@ export function registerRoutes(server: Server, app: Express) {
               if (value === null || value === undefined) {
                 excelRow.push(null);
               } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-                excelRow.push(value);
+                // Format time values according to user preference
+                if (dbField === 'time' && typeof value === 'string' && value.match(/^\d{2}:\d{2}$/)) {
+                  if (prefs.timeFormat === '12h') {
+                    const [hours, minutes] = value.split(':');
+                    const hour = parseInt(hours, 10);
+                    const ampm = hour >= 12 ? 'PM' : 'AM';
+                    const hour12 = hour % 12 || 12;
+                    excelRow.push(`${hour12}:${minutes} ${ampm}`);
+                  } else {
+                    excelRow.push(value);
+                  }
+                } else {
+                  excelRow.push(value);
+                }
               } else if (value instanceof Date) {
                 excelRow.push(value.toISOString());
               } else {
