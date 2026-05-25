@@ -2458,7 +2458,7 @@ export function registerRoutes(server: Server, app: Express) {
         
         // Add new data starting at row 4
         if (data.length > 0) {
-          data.forEach((row) => {
+          data.forEach((row, rowIndex) => {
             // Map database fields to Excel headers
             const excelRow: any[] = [];
             for (const header of headerNames) {
@@ -2466,6 +2466,11 @@ export function registerRoutes(server: Server, app: Express) {
               // e.g., "Recurrence Rule" -> "recurrence_rule", "Start Date" -> "start_date"
               const dbField = header.toLowerCase().replace(/ /g, '_');
               const value = row[dbField];
+              
+              // Log first row's values for debugging
+              if (rowIndex === 0 && (value !== null && value !== undefined)) {
+                console.log(`  ${header} (${dbField}):`, value);
+              }
               
               if (value === null || value === undefined) {
                 excelRow.push(null);
