@@ -2407,329 +2407,73 @@ export function registerRoutes(server: Server, app: Express) {
   app.get("/api/export", async (req, res) => {
     try {
       const userId = getEffectiveUserId(req);
+      
+      // Load the template workbook
       const workbook = new ExcelJS.Workbook();
+      const templatePath = new URL('./export-template.xlsx', import.meta.url);
+      await workbook.xlsx.readFile(templatePath);
       workbook.creator = "UnPuzzle Life";
       workbook.created = new Date();
 
-      // Overview sheet
-      const overviewSheet = workbook.addWorksheet("Overview");
-      overviewSheet.addRow(["Export Date", new Date().toLocaleDateString()]);
-      overviewSheet.addRow(["Export Time", new Date().toLocaleTimeString()]);
-      overviewSheet.addRow(["User ID", userId]);
-      overviewSheet.addRow(["Version", "2.0"]);
-      
-      // Style the overview sheet - two-column layout
-      overviewSheet.getColumn(1).width = 20;
-      overviewSheet.getColumn(2).width = 25;
-      overviewSheet.eachRow((row, rowNumber) => {
-        row.getCell(1).font = { bold: true };
-      });
+      // Update Overview sheet with current export metadata
+      const overviewSheet = workbook.getWorksheet("Overview");
+      if (overviewSheet) {
+        overviewSheet.getCell("B2").value = new Date().toLocaleDateString();
+        overviewSheet.getCell("B3").value = new Date().toLocaleTimeString();
+        overviewSheet.getCell("B4").value = userId;
+        overviewSheet.getCell("B5").value = "2.0";
+      }
 
-      // Agenda Tasks sheet
-      const agendaTasksSheet = workbook.addWorksheet("Agenda Tasks");
-      const agendaHeaders = ["ID", "Origin", "Origin ID", "Title", "Start Date", "End Date", "Time", "Duration Minutes", "Is All Day", "Role ID", "Responsibility ID", "Status", "Color", "Recurrence Rule", "Recurrence End Date", "Series ID", "Is Override", "Original Date", "Is Cancelled", "Notes", "Created At", "Updated At"];
-      agendaTasksSheet.addRow(agendaHeaders);
-      const agendaRequired = ["*", "*", "", "*", "*", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""];
-      agendaTasksSheet.addRow(agendaRequired);
-      const agendaFormats = ["number", "standalone|responsibility|project", "number", "text", "YYYY-MM-DD", "YYYY-MM-DD", "HH:mm", "number", "0|1", "number", "number", "ready|done|skipped", "hex", "RRULE", "YYYY-MM-DD", "number", "0|1", "YYYY-MM-DD", "0|1", "text", "ISO timestamp", "ISO timestamp"];
-      agendaTasksSheet.addRow(agendaFormats);
-      agendaTasksSheet.columns = [
-        { header: "ID", key: "id" },
-        { header: "Origin", key: "origin" },
-        { header: "Origin ID", key: "originId" },
-        { header: "Title", key: "title" },
-        { header: "Start Date", key: "startDate" },
-        { header: "End Date", key: "endDate" },
-        { header: "Time", key: "time" },
-        { header: "Duration Minutes", key: "durationMinutes" },
-        { header: "Is All Day", key: "isAllDay" },
-        { header: "Role ID", key: "roleId" },
-        { header: "Responsibility ID", key: "responsibilityId" },
-        { header: "Status", key: "status" },
-        { header: "Color", key: "color" },
-        { header: "Recurrence Rule", key: "recurrenceRule" },
-        { header: "Recurrence End Date", key: "recurrenceEndDate" },
-        { header: "Series ID", key: "seriesId" },
-        { header: "Is Override", key: "isOverride" },
-        { header: "Original Date", key: "originalDate" },
-        { header: "Is Cancelled", key: "isCancelled" },
-        { header: "Notes", key: "notes" },
-        { header: "Created At", key: "createdAt" },
-        { header: "Updated At", key: "updatedAt" },
-      ];
+      // Helper function to clear data from row 4+ and add new data
+      const fillSheet = (sheetName: string, data: any[]) => {
+        const sheet = workbook.getWorksheet(sheetName);
+        if (!sheet) return;
+        
+        // Clear rows from 4 onwards
+        const rowCount = sheet.rowCount;
+        for (let i = rowCount; i >= 4; i--) {
+          sheet.spliceRows(i, 1);
+        }
+        
+        // Add new data starting at row 4
+        if (data.length > 0) {
+          sheet.addRows(data, { origin: 4 });
+        }
+      };
+
       // Get all agenda tasks by querying with a wide date range
       const agendaTasks = storage.getAgendaWindow(userId, "2000-01-01", "2100-12-31");
       // Filter out virtual tasks to only export base/master tasks
       const baseAgendaTasks = agendaTasks.filter((task: any) => !task.isVirtual);
-      agendaTasksSheet.addRows(baseAgendaTasks);
-      
-      // Style the agenda tasks sheet
-      agendaTasksSheet.getRow(1).font = { bold: true };
-      agendaTasksSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF90EE90' } };
-      agendaTasksSheet.getRow(2).font = { color: { argb: 'FFFF0000' }, italic: true };
-      agendaTasksSheet.getRow(3).font = { italic: true, color: { argb: 'FF666666' } };
-      agendaTasksSheet.getRow(3).alignment = { wrapText: true };
+      fillSheet("Agenda Tasks", baseAgendaTasks);
 
-      // Project Tasks sheet
-      const projectTasksSheet = workbook.addWorksheet("Project Tasks");
-      const projectTaskHeaders = ["ID", "Project ID", "Title", "Notes", "Status", "Recurrence Rule", "Recurrence End Date", "Start Date", "End Date", "Is All Day", "Sort Order", "Created At"];
-      projectTasksSheet.addRow(projectTaskHeaders);
-      const projectTaskRequired = ["*", "*", "*", "", "", "", "", "", "", "", "", ""];
-      projectTasksSheet.addRow(projectTaskRequired);
-      const projectTaskFormats = ["number", "number", "text", "text", "ready|done|skipped", "RRULE", "YYYY-MM-DD", "YYYY-MM-DD", "YYYY-MM-DD", "0|1", "number", "ISO timestamp"];
-      projectTasksSheet.addRow(projectTaskFormats);
-      projectTasksSheet.columns = [
-        { header: "ID", key: "id" },
-        { header: "Project ID", key: "projectId" },
-        { header: "Title", key: "title" },
-        { header: "Notes", key: "notes" },
-        { header: "Status", key: "status" },
-        { header: "Recurrence Rule", key: "recurrenceRule" },
-        { header: "Recurrence End Date", key: "recurrenceEndDate" },
-        { header: "Start Date", key: "startDate" },
-        { header: "End Date", key: "endDate" },
-        { header: "Is All Day", key: "isAllDay" },
-        { header: "Sort Order", key: "sortOrder" },
-        { header: "Created At", key: "createdAt" },
-      ];
       const projectTasks = storage.getProjectTasks(userId);
-      projectTasksSheet.addRows(projectTasks);
-      
-      // Style the project tasks sheet
-      projectTasksSheet.getRow(1).font = { bold: true };
-      projectTasksSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF90EE90' } };
-      projectTasksSheet.getRow(2).font = { color: { argb: 'FFFF0000' }, italic: true };
-      projectTasksSheet.getRow(3).font = { italic: true, color: { argb: 'FF666666' } };
-      projectTasksSheet.getRow(3).alignment = { wrapText: true };
+      fillSheet("Project Tasks", projectTasks);
 
-      // Projects sheet
-      const projectsSheet = workbook.addWorksheet("Projects");
-      const projectHeaders = ["ID", "Title", "Description", "Trigger", "Start Date", "End Date", "Outcome Done", "Status", "Priority", "Target Date", "Next Action", "Blockers", "Risks Watchouts", "Notes", "Last Touched At", "Stalled At", "Archived", "Archived At", "Created At"];
-      projectsSheet.addRow(projectHeaders);
-      const projectRequired = ["*", "*", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""];
-      projectsSheet.addRow(projectRequired);
-      const projectFormats = ["number", "text", "text", "text", "YYYY-MM-DD", "YYYY-MM-DD", "text", "active|completed|on_hold", "high|medium|low", "YYYY-MM-DD", "text", "text", "text", "text", "ISO timestamp", "ISO timestamp", "0|1", "ISO timestamp", "ISO timestamp"];
-      projectsSheet.addRow(projectFormats);
-      projectsSheet.columns = [
-        { header: "ID", key: "id" },
-        { header: "Title", key: "title" },
-        { header: "Description", key: "description" },
-        { header: "Trigger", key: "trigger" },
-        { header: "Start Date", key: "startDate" },
-        { header: "End Date", key: "endDate" },
-        { header: "Outcome Done", key: "outcomeDone" },
-        { header: "Status", key: "status" },
-        { header: "Priority", key: "priority" },
-        { header: "Target Date", key: "targetDate" },
-        { header: "Next Action", key: "nextAction" },
-        { header: "Blockers", key: "blockers" },
-        { header: "Risks Watchouts", key: "risksWatchouts" },
-        { header: "Notes", key: "notes" },
-        { header: "Last Touched At", key: "lastTouchedAt" },
-        { header: "Stalled At", key: "stalledAt" },
-        { header: "Archived", key: "archived" },
-        { header: "Archived At", key: "archivedAt" },
-        { header: "Created At", key: "createdAt" },
-      ];
       const projects = storage.getProjects(userId);
-      projectsSheet.addRows(projects);
-      
-      // Style the projects sheet
-      projectsSheet.getRow(1).font = { bold: true };
-      projectsSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF90EE90' } };
-      projectsSheet.getRow(2).font = { color: { argb: 'FFFF0000' }, italic: true };
-      projectsSheet.getRow(3).font = { italic: true, color: { argb: 'FF666666' } };
-      projectsSheet.getRow(3).alignment = { wrapText: true };
+      fillSheet("Projects", projects);
 
-      // Responsibilities sheet
-      const responsibilitiesSheet = workbook.addWorksheet("Responsibilities");
-      const respHeaders = ["ID", "Name", "Cadence", "Day of Week", "Custom Cron Expr", "Is Preset", "Color", "Recurrence Rule", "Start Date", "Recurrence End Date", "Project ID", "Response", "Cue", "Craving", "Reward", "Created At"];
-      responsibilitiesSheet.addRow(respHeaders);
-      const respRequired = ["*", "*", "", "", "", "", "", "", "", "", "", "", "", "", "", ""];
-      responsibilitiesSheet.addRow(respRequired);
-      const respFormats = ["number", "text", "daily|weekly|custom", "MO|TU|WE|TH|FR|SA|SU", "cron expression", "0|1", "hex", "RRULE", "YYYY-MM-DD", "YYYY-MM-DD", "number", "text", "text", "text", "text", "ISO timestamp"];
-      responsibilitiesSheet.addRow(respFormats);
-      responsibilitiesSheet.columns = [
-        { header: "ID", key: "id" },
-        { header: "Name", key: "name" },
-        { header: "Cadence", key: "cadence" },
-        { header: "Day of Week", key: "dayOfWeek" },
-        { header: "Custom Cron Expr", key: "customCronExpr" },
-        { header: "Is Preset", key: "isPreset" },
-        { header: "Color", key: "color" },
-        { header: "Recurrence Rule", key: "recurrenceRule" },
-        { header: "Start Date", key: "startDate" },
-        { header: "Recurrence End Date", key: "recurrenceEndDate" },
-        { header: "Project ID", key: "projectId" },
-        { header: "Response", key: "response" },
-        { header: "Cue", key: "cue" },
-        { header: "Craving", key: "craving" },
-        { header: "Reward", key: "reward" },
-        { header: "Created At", key: "createdAt" },
-      ];
       const responsibilities = storage.getResponsibilities(userId);
-      responsibilitiesSheet.addRows(responsibilities);
-      
-      // Style the responsibilities sheet
-      responsibilitiesSheet.getRow(1).font = { bold: true };
-      responsibilitiesSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF90EE90' } };
-      responsibilitiesSheet.getRow(2).font = { color: { argb: 'FFFF0000' }, italic: true };
-      responsibilitiesSheet.getRow(3).font = { italic: true, color: { argb: 'FF666666' } };
-      responsibilitiesSheet.getRow(3).alignment = { wrapText: true };
+      fillSheet("Responsibilities", responsibilities);
 
-      // Support taxonomy sheets
       const people = storage.getEnvironmentPeople(userId);
-      const peopleSheet = workbook.addWorksheet("People");
-      const peopleHeaders = ["ID", "Name", "Relationship", "State", "Unavailable Reason", "Created At"];
-      peopleSheet.addRow(peopleHeaders);
-      const peopleRequired = ["*", "*", "", "", "", ""];
-      peopleSheet.addRow(peopleRequired);
-      const peopleFormats = ["number", "text", "text", "active|inactive", "text", "ISO timestamp"];
-      peopleSheet.addRow(peopleFormats);
-      peopleSheet.columns = [
-        { header: "ID", key: "id" },
-        { header: "Name", key: "name" },
-        { header: "Relationship", key: "relationship" },
-        { header: "State", key: "state" },
-        { header: "Unavailable Reason", key: "unavailableReason" },
-        { header: "Created At", key: "createdAt" },
-      ];
-      peopleSheet.addRows(people);
-      
-      // Style the people sheet
-      peopleSheet.getRow(1).font = { bold: true };
-      peopleSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF90EE90' } };
-      peopleSheet.getRow(2).font = { color: { argb: 'FFFF0000' }, italic: true };
-      peopleSheet.getRow(3).font = { italic: true, color: { argb: 'FF666666' } };
-      peopleSheet.getRow(3).alignment = { wrapText: true };
+      fillSheet("People", people);
 
       const places = storage.getEnvironmentPlaces(userId);
-      const placesSheet = workbook.addWorksheet("Places");
-      const placesHeaders = ["ID", "Name", "Type", "State", "Unavailable Reason", "Created At"];
-      placesSheet.addRow(placesHeaders);
-      const placesRequired = ["*", "*", "", "", "", ""];
-      placesSheet.addRow(placesRequired);
-      const placesFormats = ["number", "text", "text", "active|inactive", "text", "ISO timestamp"];
-      placesSheet.addRow(placesFormats);
-      placesSheet.columns = [
-        { header: "ID", key: "id" },
-        { header: "Name", key: "name" },
-        { header: "Type", key: "type" },
-        { header: "State", key: "state" },
-        { header: "Unavailable Reason", key: "unavailableReason" },
-        { header: "Created At", key: "createdAt" },
-      ];
-      placesSheet.addRows(places);
-      
-      // Style the places sheet
-      placesSheet.getRow(1).font = { bold: true };
-      placesSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF90EE90' } };
-      placesSheet.getRow(2).font = { color: { argb: 'FFFF0000' }, italic: true };
-      placesSheet.getRow(3).font = { italic: true, color: { argb: 'FF666666' } };
-      placesSheet.getRow(3).alignment = { wrapText: true };
+      fillSheet("Places", places);
 
       const things = storage.getEnvironmentThings(userId);
-      const thingsSheet = workbook.addWorksheet("Things");
-      const thingsHeaders = ["ID", "Name", "Category", "State", "Unavailable Reason", "Created At"];
-      thingsSheet.addRow(thingsHeaders);
-      const thingsRequired = ["*", "*", "", "", "", ""];
-      thingsSheet.addRow(thingsRequired);
-      const thingsFormats = ["number", "text", "text", "active|inactive", "text", "ISO timestamp"];
-      thingsSheet.addRow(thingsFormats);
-      thingsSheet.columns = [
-        { header: "ID", key: "id" },
-        { header: "Name", key: "name" },
-        { header: "Category", key: "category" },
-        { header: "State", key: "state" },
-        { header: "Unavailable Reason", key: "unavailableReason" },
-        { header: "Created At", key: "createdAt" },
-      ];
-      thingsSheet.addRows(things);
-      
-      // Style the things sheet
-      thingsSheet.getRow(1).font = { bold: true };
-      thingsSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF90EE90' } };
-      thingsSheet.getRow(2).font = { color: { argb: 'FFFF0000' }, italic: true };
-      thingsSheet.getRow(3).font = { italic: true, color: { argb: 'FF666666' } };
-      thingsSheet.getRow(3).alignment = { wrapText: true };
+      fillSheet("Things", things);
 
       const providers = storage.getEnvironmentProviders(userId);
-      const providersSheet = workbook.addWorksheet("Providers");
-      const providersHeaders = ["ID", "Name", "Type", "State", "Unavailable Reason", "Created At"];
-      providersSheet.addRow(providersHeaders);
-      const providersRequired = ["*", "*", "", "", "", ""];
-      providersSheet.addRow(providersRequired);
-      const providersFormats = ["number", "text", "text", "active|inactive", "text", "ISO timestamp"];
-      providersSheet.addRow(providersFormats);
-      providersSheet.columns = [
-        { header: "ID", key: "id" },
-        { header: "Name", key: "name" },
-        { header: "Type", key: "type" },
-        { header: "State", key: "state" },
-        { header: "Unavailable Reason", key: "unavailableReason" },
-        { header: "Created At", key: "createdAt" },
-      ];
-      providersSheet.addRows(providers);
-      
-      // Style the providers sheet
-      providersSheet.getRow(1).font = { bold: true };
-      providersSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF90EE90' } };
-      providersSheet.getRow(2).font = { color: { argb: 'FFFF0000' }, italic: true };
-      providersSheet.getRow(3).font = { italic: true, color: { argb: 'FF666666' } };
-      providersSheet.getRow(3).alignment = { wrapText: true };
+      fillSheet("Providers", providers);
 
       const conditions = storage.getEnvironmentConditions(userId);
-      const conditionsSheet = workbook.addWorksheet("Conditions");
-      const conditionsHeaders = ["ID", "Name", "Description", "State", "Unavailable Reason", "Created At"];
-      conditionsSheet.addRow(conditionsHeaders);
-      const conditionsRequired = ["*", "*", "", "", "", ""];
-      conditionsSheet.addRow(conditionsRequired);
-      const conditionsFormats = ["number", "text", "text", "active|inactive", "text", "ISO timestamp"];
-      conditionsSheet.addRow(conditionsFormats);
-      conditionsSheet.columns = [
-        { header: "ID", key: "id" },
-        { header: "Name", key: "name" },
-        { header: "Description", key: "description" },
-        { header: "State", key: "state" },
-        { header: "Unavailable Reason", key: "unavailableReason" },
-        { header: "Created At", key: "createdAt" },
-      ];
-      conditionsSheet.addRows(conditions);
-      
-      // Style the conditions sheet
-      conditionsSheet.getRow(1).font = { bold: true };
-      conditionsSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF90EE90' } };
-      conditionsSheet.getRow(2).font = { color: { argb: 'FFFF0000' }, italic: true };
-      conditionsSheet.getRow(3).font = { italic: true, color: { argb: 'FF666666' } };
-      conditionsSheet.getRow(3).alignment = { wrapText: true };
+      fillSheet("Conditions", conditions);
 
-      // Task Completions sheet
-      const completionsSheet = workbook.addWorksheet("Task Completions");
-      const completionsHeaders = ["ID", "Series ID", "Original Date", "Agenda Task ID", "Status", "Rescheduled To", "Completed At"];
-      completionsSheet.addRow(completionsHeaders);
-      const completionsRequired = ["*", "", "", "", "", "", ""];
-      completionsSheet.addRow(completionsRequired);
-      const completionsFormats = ["number", "number", "YYYY-MM-DD", "number", "done|skipped|rescheduled", "YYYY-MM-DD", "ISO timestamp"];
-      completionsSheet.addRow(completionsFormats);
-      completionsSheet.columns = [
-        { header: "ID", key: "id" },
-        { header: "Series ID", key: "seriesId" },
-        { header: "Original Date", key: "originalDate" },
-        { header: "Agenda Task ID", key: "agendaTaskId" },
-        { header: "Status", key: "status" },
-        { header: "Rescheduled To", key: "rescheduledTo" },
-        { header: "Completed At", key: "completedAt" },
-      ];
       // Get all completions by querying with a wide date range
       const completions = storage.getCompletionsForRange(userId, "2000-01-01", "2100-12-31");
-      completionsSheet.addRows(completions);
-      
-      // Style the completions sheet
-      completionsSheet.getRow(1).font = { bold: true };
-      completionsSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF90EE90' } };
-      completionsSheet.getRow(2).font = { color: { argb: 'FFFF0000' }, italic: true };
-      completionsSheet.getRow(3).font = { italic: true, color: { argb: 'FF666666' } };
-      completionsSheet.getRow(3).alignment = { wrapText: true };
+      fillSheet("Task Completions", completions);
 
       // Generate buffer
       const buffer = await workbook.xlsx.writeBuffer();
