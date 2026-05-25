@@ -426,8 +426,6 @@ export const projectTasks = sqliteTable("project_tasks", {
   title: text("title").notNull(),
   notes: text("notes"),
   status: text("status").notNull().default("open"), // 'open' | 'done' | 'cancelled'
-  recurrenceRule: text("recurrence_rule"), // legacy; see comment above
-  recurrenceEndDate: text("recurrence_end_date"), // legacy; see comment above
   startDate: text("start_date"),
   endDate: text("end_date"),
   isAllDay: integer("is_all_day").notNull().default(0),

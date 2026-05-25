@@ -621,8 +621,6 @@ export function registerRoutes(server: Server, app: Express) {
               startDate: null,
               endDate: null,
               isAllDay: 0,
-              recurrenceRule: null,
-              recurrenceEndDate: null,
               createdAt: new Date().toISOString(),
             });
           }
@@ -694,8 +692,6 @@ export function registerRoutes(server: Server, app: Express) {
             startDate: null,
             endDate: null,
             isAllDay: 0,
-            recurrenceRule: null,
-            recurrenceEndDate: null,
             createdAt: new Date().toISOString(),
           });
           // Dual-write: create agenda_task so it shows in agenda/review
