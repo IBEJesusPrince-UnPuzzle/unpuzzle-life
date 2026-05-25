@@ -5,6 +5,7 @@ import { requireAuth, requireAdmin, getEffectiveUserId } from "./auth";
 import { format, toZonedTime } from "date-fns-tz";
 import ExcelJS from "exceljs";
 import { join } from 'path';
+import { upload } from "./index";
 import {
   insertProjectSchema,
   PROJECT_STATUSES,
@@ -2484,6 +2485,275 @@ export function registerRoutes(server: Server, app: Express) {
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.send(buffer);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/import", requireAuth, upload.single('file'), async (req, res) => {
+    try {
+      const userId = getEffectiveUserId(req);
+      
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.read(req.file.buffer);
+
+      // Helper function to read data from row 4+ of a sheet
+      const readSheetData = (sheetName: string): any[] => {
+        const sheet = workbook.getWorksheet(sheetName);
+        if (!sheet) return [];
+        
+        const data: any[] = [];
+        sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+          if (rowNumber >= 4) {
+            const values = row.values as any[];
+            // Skip the first empty column (ExcelJS adds it)
+            data.push(values.slice(1));
+          }
+        });
+        return data;
+      };
+
+      // Helper to get column headers from row 1
+      const getHeaders = (sheetName: string): string[] => {
+        const sheet = workbook.getWorksheet(sheetName);
+        if (!sheet) return [];
+        const row = sheet.getRow(1);
+        const values = row.values as any[];
+        return values.slice(1).map(v => String(v));
+      };
+
+      const results: { sheet: string; imported: number; errors: string[] }[] = [];
+
+      // Import Agenda Tasks
+      const agendaHeaders = getHeaders("Agenda Tasks");
+      const agendaData = readSheetData("Agenda Tasks");
+      let agendaImported = 0;
+      const agendaErrors: string[] = [];
+      for (const row of agendaData) {
+        try {
+          const task: any = {};
+          agendaHeaders.forEach((header, i) => {
+            if (row[i] !== undefined && row[i] !== null) {
+              task[header.toLowerCase().replace(/ /g, '')] = row[i];
+            }
+          });
+          if (task.id) {
+            storage.updateAgendaTask(userId, task.id, task);
+          } else {
+            storage.createAgendaTask(userId, task);
+          }
+          agendaImported++;
+        } catch (e: any) {
+          agendaErrors.push(e.message);
+        }
+      }
+      results.push({ sheet: "Agenda Tasks", imported: agendaImported, errors: agendaErrors });
+
+      // Import Project Tasks
+      const projectTaskHeaders = getHeaders("Project Tasks");
+      const projectTaskData = readSheetData("Project Tasks");
+      let projectTaskImported = 0;
+      const projectTaskErrors: string[] = [];
+      for (const row of projectTaskData) {
+        try {
+          const task: any = {};
+          projectTaskHeaders.forEach((header, i) => {
+            if (row[i] !== undefined && row[i] !== null) {
+              task[header.toLowerCase().replace(/ /g, '')] = row[i];
+            }
+          });
+          if (task.id) {
+            storage.updateProjectTask(userId, task.id, task);
+          } else {
+            storage.createProjectTask(userId, task);
+          }
+          projectTaskImported++;
+        } catch (e: any) {
+          projectTaskErrors.push(e.message);
+        }
+      }
+      results.push({ sheet: "Project Tasks", imported: projectTaskImported, errors: projectTaskErrors });
+
+      // Import Projects
+      const projectHeaders = getHeaders("Projects");
+      const projectData = readSheetData("Projects");
+      let projectImported = 0;
+      const projectErrors: string[] = [];
+      for (const row of projectData) {
+        try {
+          const project: any = {};
+          projectHeaders.forEach((header, i) => {
+            if (row[i] !== undefined && row[i] !== null) {
+              project[header.toLowerCase().replace(/ /g, '')] = row[i];
+            }
+          });
+          if (project.id) {
+            storage.updateProject(userId, project.id, project);
+          } else {
+            storage.createProject(userId, project);
+          }
+          projectImported++;
+        } catch (e: any) {
+          projectErrors.push(e.message);
+        }
+      }
+      results.push({ sheet: "Projects", imported: projectImported, errors: projectErrors });
+
+      // Import Responsibilities
+      const respHeaders = getHeaders("Responsibilities");
+      const respData = readSheetData("Responsibilities");
+      let respImported = 0;
+      const respErrors: string[] = [];
+      for (const row of respData) {
+        try {
+          const resp: any = {};
+          respHeaders.forEach((header, i) => {
+            if (row[i] !== undefined && row[i] !== null) {
+              resp[header.toLowerCase().replace(/ /g, '')] = row[i];
+            }
+          });
+          if (resp.id) {
+            storage.updateResponsibility(userId, resp.id, resp);
+          } else {
+            storage.createResponsibility(userId, resp);
+          }
+          respImported++;
+        } catch (e: any) {
+          respErrors.push(e.message);
+        }
+      }
+      results.push({ sheet: "Responsibilities", imported: respImported, errors: respErrors });
+
+      // Import People
+      const peopleHeaders = getHeaders("People");
+      const peopleData = readSheetData("People");
+      let peopleImported = 0;
+      const peopleErrors: string[] = [];
+      for (const row of peopleData) {
+        try {
+          const person: any = {};
+          peopleHeaders.forEach((header, i) => {
+            if (row[i] !== undefined && row[i] !== null) {
+              person[header.toLowerCase().replace(/ /g, '')] = row[i];
+            }
+          });
+          if (person.id) {
+            storage.updateEnvironmentPerson(userId, person.id, person);
+          } else {
+            storage.createEnvironmentPerson(userId, person);
+          }
+          peopleImported++;
+        } catch (e: any) {
+          peopleErrors.push(e.message);
+        }
+      }
+      results.push({ sheet: "People", imported: peopleImported, errors: peopleErrors });
+
+      // Import Places
+      const placesHeaders = getHeaders("Places");
+      const placesData = readSheetData("Places");
+      let placesImported = 0;
+      const placesErrors: string[] = [];
+      for (const row of placesData) {
+        try {
+          const place: any = {};
+          placesHeaders.forEach((header, i) => {
+            if (row[i] !== undefined && row[i] !== null) {
+              place[header.toLowerCase().replace(/ /g, '')] = row[i];
+            }
+          });
+          if (place.id) {
+            storage.updateEnvironmentPlace(userId, place.id, place);
+          } else {
+            storage.createEnvironmentPlace(userId, place);
+          }
+          placesImported++;
+        } catch (e: any) {
+          placesErrors.push(e.message);
+        }
+      }
+      results.push({ sheet: "Places", imported: placesImported, errors: placesErrors });
+
+      // Import Things
+      const thingsHeaders = getHeaders("Things");
+      const thingsData = readSheetData("Things");
+      let thingsImported = 0;
+      const thingsErrors: string[] = [];
+      for (const row of thingsData) {
+        try {
+          const thing: any = {};
+          thingsHeaders.forEach((header, i) => {
+            if (row[i] !== undefined && row[i] !== null) {
+              thing[header.toLowerCase().replace(/ /g, '')] = row[i];
+            }
+          });
+          if (thing.id) {
+            storage.updateEnvironmentThing(userId, thing.id, thing);
+          } else {
+            storage.createEnvironmentThing(userId, thing);
+          }
+          thingsImported++;
+        } catch (e: any) {
+          thingsErrors.push(e.message);
+        }
+      }
+      results.push({ sheet: "Things", imported: thingsImported, errors: thingsErrors });
+
+      // Import Providers
+      const providersHeaders = getHeaders("Providers");
+      const providersData = readSheetData("Providers");
+      let providersImported = 0;
+      const providersErrors: string[] = [];
+      for (const row of providersData) {
+        try {
+          const provider: any = {};
+          providersHeaders.forEach((header, i) => {
+            if (row[i] !== undefined && row[i] !== null) {
+              provider[header.toLowerCase().replace(/ /g, '')] = row[i];
+            }
+          });
+          if (provider.id) {
+            storage.updateEnvironmentProvider(userId, provider.id, provider);
+          } else {
+            storage.createEnvironmentProvider(userId, provider);
+          }
+          providersImported++;
+        } catch (e: any) {
+          providersErrors.push(e.message);
+        }
+      }
+      results.push({ sheet: "Providers", imported: providersImported, errors: providersErrors });
+
+      // Import Conditions
+      const conditionsHeaders = getHeaders("Conditions");
+      const conditionsData = readSheetData("Conditions");
+      let conditionsImported = 0;
+      const conditionsErrors: string[] = [];
+      for (const row of conditionsData) {
+        try {
+          const condition: any = {};
+          conditionsHeaders.forEach((header, i) => {
+            if (row[i] !== undefined && row[i] !== null) {
+              condition[header.toLowerCase().replace(/ /g, '')] = row[i];
+            }
+          });
+          if (condition.id) {
+            storage.updateEnvironmentCondition(userId, condition.id, condition);
+          } else {
+            storage.createEnvironmentCondition(userId, condition);
+          }
+          conditionsImported++;
+        } catch (e: any) {
+          conditionsErrors.push(e.message);
+        }
+      }
+      results.push({ sheet: "Conditions", imported: conditionsImported, errors: conditionsErrors });
+
+      res.json({ success: true, results });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

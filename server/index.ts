@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { setupAuth } from "./auth";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import multer from "multer";
 
 const app = express();
 const httpServer = createServer(app);
@@ -22,6 +23,14 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+
+// Configure multer for file uploads (stored in memory)
+export const upload = multer({ storage: multer.memoryStorage() });
+declare module "express-serve-static-core" {
+  interface Request {
+    file?: Express.Multer.File;
+  }
+}
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
