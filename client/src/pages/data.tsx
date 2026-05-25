@@ -53,6 +53,42 @@ export default function DataPage() {
     },
   });
 
+  // Import state
+  const [importFile, setImportFile] = useState<File | null>(null);
+
+  const importMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch('/api/import', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error || "Import failed");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      const totalImported = data.results.reduce((sum: number, r: any) => sum + r.imported, 0);
+      const totalErrors = data.results.reduce((sum: number, r: any) => sum + r.errors.length, 0);
+      toast({ 
+        title: "Import successful", 
+        description: `Imported ${totalImported} records${totalErrors > 0 ? ` with ${totalErrors} errors` : ''}.`
+      });
+      setImportFile(null);
+      queryClient.invalidateQueries();
+    },
+    onError: (err) => {
+      toast({ 
+        title: "Import failed", 
+        description: err instanceof Error ? err.message : "An error occurred",
+        variant: "destructive"
+      });
+    },
+  });
+
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
       <div className="flex items-center gap-2">
@@ -175,10 +211,35 @@ export default function DataPage() {
             >
               <Download className="w-4 h-4 mr-1.5" /> Export Data
             </Button>
-            <Button variant="outline" disabled>
-              <Upload className="w-4 h-4 mr-1.5" /> Import Data
-            </Button>
+            <div className="flex gap-2 items-center">
+              <input
+                type="file"
+                accept=".xlsx"
+                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                className="hidden"
+                id="import-file"
+              />
+              <label htmlFor="import-file">
+                <Button variant="outline" asChild>
+                  <span>
+                    <Upload className="w-4 h-4 mr-1.5" /> Select File
+                  </span>
+                </Button>
+              </label>
+              <Button 
+                variant="outline" 
+                disabled={!importFile || importMutation.isPending}
+                onClick={() => importFile && importMutation.mutate(importFile)}
+              >
+                {importMutation.isPending ? "Importing..." : "Import Data"}
+              </Button>
+            </div>
           </div>
+          {importFile && (
+            <p className="text-xs text-muted-foreground">
+              Selected: {importFile.name}
+            </p>
+          )}
         </CardContent>
       </Card>
 
