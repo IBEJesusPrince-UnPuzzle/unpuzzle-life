@@ -2430,7 +2430,12 @@ export function registerRoutes(server: Server, app: Express) {
       // Helper function to clear data from row 4+ and add new data
       const fillSheet = (sheetName: string, data: any[]) => {
         const sheet = workbook.getWorksheet(sheetName);
-        if (!sheet) return;
+        if (!sheet) {
+          console.log(`Sheet not found: ${sheetName}`);
+          return;
+        }
+        
+        console.log(`Filling sheet ${sheetName} with ${data.length} rows`);
         
         // Clear rows from 4 onwards
         const rowCount = sheet.rowCount;
@@ -2448,36 +2453,47 @@ export function registerRoutes(server: Server, app: Express) {
 
       // Get all agenda tasks by querying with a wide date range
       const agendaTasks = storage.getAgendaWindow(userId, "2000-01-01", "2100-12-31");
+      console.log(`Agenda tasks total: ${agendaTasks.length}`);
       // Filter out virtual tasks to only export base/master tasks
       const baseAgendaTasks = agendaTasks.filter((task: any) => !task.isVirtual);
+      console.log(`Agenda tasks (non-virtual): ${baseAgendaTasks.length}`);
       fillSheet("Agenda Tasks", baseAgendaTasks);
 
       const projectTasks = storage.getProjectTasks(userId);
+      console.log(`Project tasks: ${projectTasks.length}`);
       fillSheet("Project Tasks", projectTasks);
 
       const projects = storage.getProjects(userId);
+      console.log(`Projects: ${projects.length}`);
       fillSheet("Projects", projects);
 
       const responsibilities = storage.getResponsibilities(userId);
+      console.log(`Responsibilities: ${responsibilities.length}`);
       fillSheet("Responsibilities", responsibilities);
 
       const people = storage.getEnvironmentPeople(userId);
+      console.log(`People: ${people.length}`);
       fillSheet("People", people);
 
       const places = storage.getEnvironmentPlaces(userId);
+      console.log(`Places: ${places.length}`);
       fillSheet("Places", places);
 
       const things = storage.getEnvironmentThings(userId);
+      console.log(`Things: ${things.length}`);
       fillSheet("Things", things);
 
       const providers = storage.getEnvironmentProviders(userId);
+      console.log(`Providers: ${providers.length}`);
       fillSheet("Providers", providers);
 
       const conditions = storage.getEnvironmentConditions(userId);
+      console.log(`Conditions: ${conditions.length}`);
       fillSheet("Conditions", conditions);
 
       // Get all completions by querying with a wide date range
       const completions = storage.getCompletionsForRange(userId, "2000-01-01", "2100-12-31");
+      console.log(`Task completions: ${completions.length}`);
       fillSheet("Task Completions", completions);
 
       // Generate buffer
