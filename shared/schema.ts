@@ -220,8 +220,6 @@ export const roles = sqliteTable("roles", {
   userId: integer("user_id").notNull().default(1),
   name: text("name").notNull(),
   description: text("description"),
-  cadence: text("cadence").notNull().default("weekly"), // daily | weekdays | weekly | biweekly | monthly | custom
-  dayOfWeek: text("day_of_week"),
   createdAt: text("created_at").notNull(),
 });
 

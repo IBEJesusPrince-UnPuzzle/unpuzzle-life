@@ -1235,10 +1235,7 @@ export function registerRoutes(server: Server, app: Express) {
   });
   app.post("/api/roles", (req, res) => {
     const userId = getEffectiveUserId(req);
-    // Hide cadence/dayOfWeek from UI per addendum A7.1; default on create.
     const data = {
-      cadence: "weekly",
-      dayOfWeek: null,
       ...req.body,
       createdAt: req.body.createdAt || new Date().toISOString(),
     };

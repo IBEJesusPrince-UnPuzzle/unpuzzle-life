@@ -208,6 +208,10 @@ tryMigration("project_tasks.end_date",                 `ALTER TABLE project_task
 tryMigration("project_tasks.is_all_day",               `ALTER TABLE project_tasks ADD COLUMN is_all_day INTEGER NOT NULL DEFAULT 0`);
 tryMigration("project_tasks.color",                   `ALTER TABLE project_tasks ADD COLUMN color TEXT`);
 
+// Remove unused cadence and day_of_week columns from roles
+tryMigration("roles.drop_cadence",                   `ALTER TABLE roles DROP COLUMN cadence`);
+tryMigration("roles.drop_day_of_week",               `ALTER TABLE roles DROP COLUMN day_of_week`);
+
 // PR #30b — Agenda task-type visibility (Google parity, per-user server state).
 // Three booleans on the existing preferences row; all default 1 (on).
 tryMigration("preferences.show_responsibility", `ALTER TABLE preferences ADD COLUMN show_responsibility INTEGER NOT NULL DEFAULT 1`);
