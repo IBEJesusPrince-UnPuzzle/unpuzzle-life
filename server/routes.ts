@@ -2419,10 +2419,10 @@ export function registerRoutes(server: Server, app: Express) {
       // Update Overview sheet with current export metadata
       const overviewSheet = workbook.getWorksheet("Overview");
       if (overviewSheet) {
-        overviewSheet.getCell("B2").value = new Date().toLocaleDateString();
-        overviewSheet.getCell("B3").value = new Date().toLocaleTimeString();
-        overviewSheet.getCell("B4").value = userId;
-        overviewSheet.getCell("B5").value = "2.0";
+        overviewSheet.getCell("B3").value = new Date().toLocaleDateString();
+        overviewSheet.getCell("B4").value = new Date().toLocaleTimeString();
+        overviewSheet.getCell("B5").value = userId;
+        overviewSheet.getCell("B6").value = "2.0";
       }
 
       // Helper function to clear data from row 4+ and add new data
