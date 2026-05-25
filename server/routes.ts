@@ -2446,7 +2446,9 @@ export function registerRoutes(server: Server, app: Express) {
       ];
       // Get all agenda tasks by querying with a wide date range
       const agendaTasks = storage.getAgendaWindow(userId, "2000-01-01", "2100-12-31");
-      agendaTasksSheet.addRows(agendaTasks);
+      // Filter out virtual tasks to only export base/master tasks
+      const baseAgendaTasks = agendaTasks.filter((task: any) => !task.isVirtual);
+      agendaTasksSheet.addRows(baseAgendaTasks);
 
       // Project Tasks sheet
       const projectTasksSheet = workbook.addWorksheet("Project Tasks");
