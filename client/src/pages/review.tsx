@@ -412,14 +412,96 @@ export default function ReviewPage() {
             const items = itemsByDate[date];
             const dayLabel = formatDateContextLabel(date);
             const isToday = date === today;
+            const pending = items.filter(i => !i.completion);
+            const done = items.filter(i => i.completion?.status === "done" || i.completion?.status === "rescheduled");
+            const missed = items.filter(i => i.completion?.status === "missed");
+            const skipped = items.filter(i => i.completion?.status === "skipped");
+
             return (
               <div key={date} className="space-y-2">
                 <div className={cn("text-sm font-medium", isToday ? "text-primary" : "text-muted-foreground")}>
                   {dayLabel}
                 </div>
-                <div className="space-y-1">
-                  {items.map(renderTaskBlock)}
-                </div>
+
+                {/* PENDING section */}
+                {pending.length > 0 && (
+                  <div>
+                    <button
+                      className="flex items-center gap-1.5 w-full text-left mb-1"
+                      onClick={() => toggleSection(`${date}-pending`)}
+                    >
+                      {expandedSections.has(`${date}-pending`) ? <ChevronDown className="w-3 h-3 text-muted-foreground" /> : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
+                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Pending · {pending.length}
+                      </span>
+                    </button>
+                    {expandedSections.has(`${date}-pending`) && (
+                      <div className="space-y-1">
+                        {pending.map(renderTaskBlock)}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* DONE section */}
+                {done.length > 0 && (
+                  <div>
+                    <button
+                      className="flex items-center gap-1.5 w-full text-left mb-1"
+                      onClick={() => toggleSection(`${date}-done`)}
+                    >
+                      {expandedSections.has(`${date}-done`) ? <ChevronDown className="w-3 h-3 text-muted-foreground" /> : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
+                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Done · {done.length}
+                      </span>
+                    </button>
+                    {expandedSections.has(`${date}-done`) && (
+                      <div className="space-y-1">
+                        {done.map(renderTaskBlock)}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* MISSED section */}
+                {missed.length > 0 && (
+                  <div>
+                    <button
+                      className="flex items-center gap-1.5 w-full text-left mb-1"
+                      onClick={() => toggleSection(`${date}-missed`)}
+                    >
+                      {expandedSections.has(`${date}-missed`) ? <ChevronDown className="w-3 h-3 text-muted-foreground" /> : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
+                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Missed · {missed.length}
+                      </span>
+                    </button>
+                    {expandedSections.has(`${date}-missed`) && (
+                      <div className="space-y-1">
+                        {missed.map(renderTaskBlock)}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* SKIPPED section */}
+                {skipped.length > 0 && (
+                  <div>
+                    <button
+                      className="flex items-center gap-1.5 w-full text-left mb-1"
+                      onClick={() => toggleSection(`${date}-skipped`)}
+                    >
+                      {expandedSections.has(`${date}-skipped`) ? <ChevronDown className="w-3 h-3 text-muted-foreground" /> : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
+                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Skipped · {skipped.length}
+                      </span>
+                    </button>
+                    {expandedSections.has(`${date}-skipped`) && (
+                      <div className="space-y-1">
+                        {skipped.map(renderTaskBlock)}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })
