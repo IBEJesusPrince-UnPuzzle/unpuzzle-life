@@ -2521,9 +2521,9 @@ export function registerRoutes(server: Server, app: Express) {
       console.log(`Project tasks: ${projectTasks.length}`);
       
       // Build a map of project task ID to linked agenda task for color/date fallback
-      const agendaTasksForProject = storage.getAgendaWindow(userId, "2000-01-01", "2100-12-31");
+      // Reuse the already-fetched agendaTasks to avoid memory issues
       const projectTaskToAgenda = new Map<number, any>();
-      for (const at of agendaTasksForProject) {
+      for (const at of agendaTasks) {
         if (at.origin === 'project' && at.originId != null) {
           projectTaskToAgenda.set(at.originId, at);
         }
