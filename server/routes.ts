@@ -1096,6 +1096,11 @@ export function registerRoutes(server: Server, app: Express) {
       if (parsed.data.recurrenceRule == null) {
         parsed.data.recurrenceRule = sched.data.recurrenceRule;
       }
+      // Mirror startDate from the schedule onto the responsibility row so the
+      // export can read it directly without joining agenda_tasks.
+      if (parsed.data.startDate == null && sched.data.startDate) {
+        parsed.data.startDate = sched.data.startDate;
+      }
     }
 
     res.json(storage.createResponsibility(
@@ -1161,6 +1166,10 @@ export function registerRoutes(server: Server, app: Express) {
         // also set it directly (cascade source-of-truth).
         if (patch.recurrenceRule === undefined) {
           patch.recurrenceRule = sched.data.recurrenceRule;
+        }
+        // Mirror startDate onto the responsibility row.
+        if (patch.startDate === undefined && sched.data.startDate) {
+          patch.startDate = sched.data.startDate;
         }
       }
       schedulePatch = sched.data;
@@ -2555,7 +2564,9 @@ export function registerRoutes(server: Server, app: Express) {
 
       const responsibilities = storage.getResponsibilities(userId);
       console.log(`Responsibilities: ${responsibilities.length}`);
-      fillSheet("Responsibilities", responsibilities);
+      // Strip internal/system fields that are not user-facing
+      const exportResponsibilities = responsibilities.map(({ customCronExpr: _cce, isPreset: _ip, ...r }) => r);
+      fillSheet("Responsibilities", exportResponsibilities);
 
       const roles = storage.getRoles(userId);
       console.log(`Roles: ${roles.length}`);
@@ -2824,6 +2835,9 @@ export function registerRoutes(server: Server, app: Express) {
               resp[header.toLowerCase().replace(/ /g, '')] = row[i];
             }
           });
+          // Drop system fields that shouldn't be imported directly
+          delete resp.customcronexpr;
+          delete resp.ispreset;
           if (resp.id) {
             storage.updateResponsibility(userId, resp.id, resp);
           } else {
