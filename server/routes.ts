@@ -2544,7 +2544,14 @@ export function registerRoutes(server: Server, app: Express) {
 
       const projects = storage.getProjects(userId);
       console.log(`Projects: ${projects.length}`);
-      fillSheet("Projects", projects);
+      // Enrich nextAction from first open project task if not stored
+      const enrichedProjects = projects.map(p => {
+        if (p.nextAction) return p;
+        const tasks = storage.getProjectTasks(userId, p.id);
+        const firstOpen = tasks.find(t => t.status === 'open');
+        return { ...p, nextAction: firstOpen?.title ?? null };
+      });
+      fillSheet("Projects", enrichedProjects);
 
       const responsibilities = storage.getResponsibilities(userId);
       console.log(`Responsibilities: ${responsibilities.length}`);

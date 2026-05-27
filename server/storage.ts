@@ -1235,7 +1235,17 @@ export class DatabaseStorage implements IStorage {
     return db.insert(projects).values({ ...data, userId }).returning().get();
   }
   updateProject(userId: number, id: number, data: Partial<InsertProject>): Project | undefined {
-    return db.update(projects).set(data).where(and(eq(projects.id, id), eq(projects.userId, userId))).returning().get();
+    const now = new Date().toISOString();
+    const patch: Partial<InsertProject> = { ...data, lastTouchedAt: now };
+    if (typeof data.status === 'string') {
+      const current = db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, userId))).get();
+      if (data.status === 'stalled' && current?.status !== 'stalled') {
+        patch.stalledAt = now;
+      } else if (data.status !== 'stalled' && current?.status === 'stalled') {
+        patch.stalledAt = null;
+      }
+    }
+    return db.update(projects).set(patch).where(and(eq(projects.id, id), eq(projects.userId, userId))).returning().get();
   }
   // PR #29h — cascade delete across all project children + linked agenda
   // chips + null inbox refs. All in a single SQLite transaction so a partial
