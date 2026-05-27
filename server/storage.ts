@@ -26,6 +26,8 @@ import {
   externalCalendars, externalEvents,
   // PR #54 — Daily Review completions
   taskCompletions,
+  // Push notifications
+  fcmTokens,
   type User, type InsertUser,
   type Invitation, type InsertInvitation,
   type Project, type InsertProject,
@@ -47,6 +49,7 @@ import {
   type ResponsibilityThing, type InsertResponsibilityThing,
   type ResponsibilityProvider, type InsertResponsibilityProvider,
   type ResponsibilityCondition, type InsertResponsibilityCondition,
+  type FcmToken, type InsertFcmToken,
   // PR #23 project↔support types
   type ProjectPeople, type InsertProjectPeople,
   type ProjectPlace, type InsertProjectPlace,
@@ -245,6 +248,27 @@ tryMigration("agenda_task_places.covers_id", `ALTER TABLE agenda_task_places ADD
 tryMigration("agenda_task_things.covers_id", `ALTER TABLE agenda_task_things ADD COLUMN covers_id INTEGER`);
 tryMigration("agenda_task_providers.covers_id", `ALTER TABLE agenda_task_providers ADD COLUMN covers_id INTEGER`);
 tryMigration("agenda_task_conditions.covers_id", `ALTER TABLE agenda_task_conditions ADD COLUMN covers_id INTEGER`);
+
+// Push notification support
+tryMigration("users.notifications_enabled", `ALTER TABLE users ADD COLUMN notifications_enabled INTEGER NOT NULL DEFAULT 0`);
+tryMigration("users.task_reminder_minutes", `ALTER TABLE users ADD COLUMN task_reminder_minutes INTEGER NOT NULL DEFAULT 15`);
+tryMigration("users.daily_review_enabled", `ALTER TABLE users ADD COLUMN daily_review_enabled INTEGER NOT NULL DEFAULT 0`);
+tryMigration("users.daily_review_time", `ALTER TABLE users ADD COLUMN daily_review_time TEXT NOT NULL DEFAULT '09:00'`);
+tryMigration("users.project_deadline_alerts_enabled", `ALTER TABLE users ADD COLUMN project_deadline_alerts_enabled INTEGER NOT NULL DEFAULT 0`);
+tryMigration("users.project_deadline_days_before", `ALTER TABLE users ADD COLUMN project_deadline_days_before INTEGER NOT NULL DEFAULT 1`);
+tryMigration("users.stalled_project_alerts_enabled", `ALTER TABLE users ADD COLUMN stalled_project_alerts_enabled INTEGER NOT NULL DEFAULT 0`);
+tryMigration("users.stalled_project_days_threshold", `ALTER TABLE users ADD COLUMN stalled_project_days_threshold INTEGER NOT NULL DEFAULT 7`);
+
+// FCM tokens table
+tryMigration("fcm_tokens.create", `CREATE TABLE IF NOT EXISTS fcm_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  token TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  user_agent TEXT,
+  created_at TEXT NOT NULL,
+  last_used_at TEXT
+)`);
 
 // PR #24 — Rename agenda_tasks.date → start_date.
 // Migration strategy: dual-column transitional. Add the new column, backfill
@@ -903,6 +927,12 @@ export interface IStorage {
   updateInvitation(id: number, data: Partial<InsertInvitation>): Invitation | undefined;
   deleteInvitation(id: number): void;
 
+  // FCM Tokens
+  getFcmTokens(userId: number): FcmToken[];
+  createFcmToken(data: InsertFcmToken): FcmToken;
+  deleteFcmToken(userId: number, token: string): void;
+  updateFcmTokenLastUsed(userId: number, token: string): void;
+
   // Projects
   getProjects(userId: number): Project[];
   createProject(userId: number, data: InsertProject): Project;
@@ -1225,6 +1255,23 @@ export class DatabaseStorage implements IStorage {
   }
   deleteInvitation(id: number): void {
     db.delete(invitations).where(eq(invitations.id, id)).run();
+  }
+
+  // FCM Tokens
+  getFcmTokens(userId: number): FcmToken[] {
+    return db.select().from(fcmTokens).where(eq(fcmTokens.userId, userId)).all();
+  }
+  createFcmToken(data: InsertFcmToken): FcmToken {
+    const now = new Date().toISOString();
+    return db.insert(fcmTokens).values({ ...data, createdAt: now, lastUsedAt: now }).returning().get();
+  }
+  deleteFcmToken(userId: number, token: string): void {
+    db.delete(fcmTokens).where(and(eq(fcmTokens.userId, userId), eq(fcmTokens.token, token))).run();
+  }
+  updateFcmTokenLastUsed(userId: number, token: string): void {
+    db.update(fcmTokens).set({ lastUsedAt: new Date().toISOString() })
+      .where(and(eq(fcmTokens.userId, userId), eq(fcmTokens.token, token)))
+      .run();
   }
 
   // Projects

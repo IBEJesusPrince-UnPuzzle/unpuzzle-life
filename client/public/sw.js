@@ -49,3 +49,45 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// Push notification handler
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  const data = event.data.json();
+  const options = {
+    body: data.notification?.body || '',
+    icon: './icon-192x192.png',
+    badge: './icon-192x192.png',
+    tag: data.notification?.tag || 'default',
+    requireInteraction: data.notification?.requireInteraction || false,
+    data: data.data || {},
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.notification?.title || 'UnPuzzle Life', options)
+  );
+});
+
+// Notification click handler
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const data = event.notification.data;
+  const url = data.url || '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // If a client is already open, focus it and navigate
+      for (const client of clientList) {
+        if (client.url === new URL(url, self.location.origin).href && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // Otherwise, open a new window
+      if (clients.openWindow) {
+        return clients.openWindow(url);
+      }
+    })
+  );
+});

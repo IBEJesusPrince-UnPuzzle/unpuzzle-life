@@ -30,6 +30,7 @@ import {
   insertProjectResponsibilitySchema,
   insertProjectTaskSchema,
   insertAgendaTaskSchema,
+  insertFcmTokenSchema,
   SUPPORT_STATES,
   RELATIONSHIP_TYPES,
   IMPORTANCE_LEVELS,
@@ -46,6 +47,7 @@ import {
 import { validateRecurrenceRule } from "./recurrence";
 import { z } from "zod";
 import ical from "node-ical";
+import { initializeFirebaseAdmin } from "./firebase-admin";
 
 // Phase 1 helper: support type whitelist for /api/environment/{type} dispatch.
 const SUPPORT_TYPES = ["people", "places", "things", "providers", "conditions"] as const;
@@ -944,6 +946,38 @@ export function registerRoutes(server: Server, app: Express) {
     if (showProjectTask !== undefined) data.showProjectTask = !!showProjectTask;
     if (showStandalone !== undefined) data.showStandalone = !!showStandalone;
     res.json(storage.updatePreferences(userId, data));
+  });
+
+  // ============================================================
+  // FCM PUSH NOTIFICATIONS
+  // ============================================================
+  // Initialize Firebase Admin SDK on startup
+  initializeFirebaseAdmin();
+
+  app.post("/api/fcm/register", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const { token, platform, userAgent } = req.body;
+    if (!token || !platform) {
+      return res.status(400).json({ error: "token and platform are required" });
+    }
+    const parsed = insertFcmTokenSchema.safeParse({ userId, token, platform, userAgent });
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    // Check if token already exists for this user
+    const existing = storage.getFcmTokens(userId).find(t => t.token === token);
+    if (existing) {
+      storage.updateFcmTokenLastUsed(userId, token);
+      return res.json(existing);
+    }
+    const fcmToken = storage.createFcmToken(parsed.data);
+    res.json(fcmToken);
+  });
+
+  app.delete("/api/fcm/unregister", (req, res) => {
+    const userId = getEffectiveUserId(req);
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: "token is required" });
+    storage.deleteFcmToken(userId, token);
+    res.json({ ok: true });
   });
 
   // ============================================================

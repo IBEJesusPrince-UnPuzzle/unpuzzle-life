@@ -24,6 +24,15 @@ export const users = sqliteTable("users", {
   agendaHourHeightPx: integer("agenda_hour_height_px").notNull().default(56),
   createdAt: text("created_at").notNull(),
   lastLoginAt: text("last_login_at"),
+  // Push notification preferences
+  notificationsEnabled: integer("notifications_enabled").notNull().default(0),
+  taskReminderMinutes: integer("task_reminder_minutes").notNull().default(15),
+  dailyReviewEnabled: integer("daily_review_enabled").notNull().default(0),
+  dailyReviewTime: text("daily_review_time").notNull().default("09:00"),
+  projectDeadlineAlertsEnabled: integer("project_deadline_alerts_enabled").notNull().default(0),
+  projectDeadlineDaysBefore: integer("project_deadline_days_before").notNull().default(1),
+  stalledProjectAlertsEnabled: integer("stalled_project_alerts_enabled").notNull().default(0),
+  stalledProjectDaysThreshold: integer("stalled_project_days_threshold").notNull().default(7),
 });
 
 export const invitations = sqliteTable("invitations", {
@@ -34,6 +43,17 @@ export const invitations = sqliteTable("invitations", {
   status: text("status").notNull().default("pending"), // 'pending' | 'accepted' | 'expired'
   createdAt: text("created_at").notNull(),
   expiresAt: text("expires_at").notNull(),
+});
+
+// FCM push notification tokens — one per device per user
+export const fcmTokens = sqliteTable("fcm_tokens", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  token: text("token").notNull(),
+  platform: text("platform").notNull(), // 'web' | 'mobile'
+  userAgent: text("user_agent"),
+  createdAt: text("created_at").notNull(),
+  lastUsedAt: text("last_used_at"),
 });
 
 // ============================================================
@@ -640,6 +660,7 @@ export const preferences = sqliteTable("preferences", {
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertInvitationSchema = createInsertSchema(invitations).omit({ id: true });
+export const insertFcmTokenSchema = createInsertSchema(fcmTokens).omit({ id: true });
 
 export const insertProjectSchema = createInsertSchema(projects).omit({ id: true });
 export const insertInboxItemSchema = createInsertSchema(inboxItems).omit({ id: true });
@@ -755,6 +776,8 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Invitation = typeof invitations.$inferSelect;
 export type InsertInvitation = z.infer<typeof insertInvitationSchema>;
+export type FcmToken = typeof fcmTokens.$inferSelect;
+export type InsertFcmToken = z.infer<typeof insertFcmTokenSchema>;
 
 export type Project = typeof projects.$inferSelect;
 export type InsertProject = z.infer<typeof insertProjectSchema>;

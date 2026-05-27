@@ -60,6 +60,8 @@
     "exceljs": "^4.4.0",
     "express": "^5.0.1",
     "express-session": "^1.18.1",
+    "firebase": "^12.13.0",
+    "firebase-admin": "^13.10.0",
     "framer-motion": "^11.13.1",
     "html2canvas": "^1.4.1",
     "input-otp": "^1.4.2",
