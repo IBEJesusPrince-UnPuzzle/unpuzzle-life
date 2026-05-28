@@ -7,18 +7,64 @@ export function useFcm() {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const registerToken = async () => {
+    console.log('useFcm: Attempting to retrieve Firebase token...');
+    try {
+      const fcmToken = await getFcmToken();
+      if (fcmToken) {
+        console.log('useFcm: Token retrieved. Sending to backend...');
+        setToken(fcmToken);
+        // Register token with server
+        const response = await fetch('/api/fcm/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: fcmToken,
+            platform: 'web',
+            userAgent: navigator.userAgent,
+          }),
+        });
+        if (response.ok) {
+          console.log('useFcm: Token successfully registered with backend');
+        } else {
+          console.error('useFcm: Failed to register token with backend:', response.status, response.statusText);
+        }
+      } else {
+        console.warn('useFcm: No FCM token retrieved');
+      }
+    } catch (e) {
+      console.error('useFcm: Error retrieving or registering FCM token:', e);
+    }
+  };
+
   useEffect(() => {
+    console.log('useFcm mounted. Permission status:', Notification.permission);
+
     // Check current permission
     setPermission(Notification.permission);
 
+    // If permission is already granted, automatically register token
+    if (Notification.permission === 'granted') {
+      console.log('useFcm: Permission already granted, registering token...');
+      registerToken();
+    }
+
     // Listen for permission changes (using interval as fallback since addEventListener isn't universally supported)
     const interval = setInterval(() => {
-      setPermission(Notification.permission);
+      const currentPermission = Notification.permission;
+      if (currentPermission !== permission) {
+        console.log('useFcm: Permission changed from', permission, 'to', currentPermission);
+        setPermission(currentPermission);
+        if (currentPermission === 'granted') {
+          console.log('useFcm: Permission granted, registering token...');
+          registerToken();
+        }
+      }
     }, 5000);
 
     // Listen for incoming push messages when app is in foreground
     const unsubscribe = onPushMessage((payload) => {
-      console.log('Push message received in foreground:', payload);
+      console.log('useFcm: Push message received in foreground:', payload);
       // You can show an in-app notification here if desired
     });
 
@@ -26,32 +72,21 @@ export function useFcm() {
       clearInterval(interval);
       unsubscribe();
     };
-  }, []);
+  }, [permission]);
 
   const requestPermission = async () => {
+    console.log('useFcm: Requesting notification permission...');
     setLoading(true);
     try {
       const granted = await requestNotificationPermission();
       setPermission(granted ? 'granted' : 'denied');
-      
+      console.log('useFcm: Permission request result:', granted ? 'granted' : 'denied');
+
       if (granted) {
-        const fcmToken = await getFcmToken();
-        if (fcmToken) {
-          setToken(fcmToken);
-          // Register token with server
-          await fetch('/api/fcm/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              token: fcmToken,
-              platform: 'web',
-              userAgent: navigator.userAgent,
-            }),
-          });
-        }
+        await registerToken();
       }
     } catch (e) {
-      console.error('Error requesting notification permission:', e);
+      console.error('useFcm: Error requesting notification permission:', e);
     } finally {
       setLoading(false);
     }
@@ -59,6 +94,7 @@ export function useFcm() {
 
   const unregisterToken = async () => {
     if (!token) return;
+    console.log('useFcm: Unregistering token...');
     try {
       await fetch('/api/fcm/unregister', {
         method: 'DELETE',
@@ -66,8 +102,9 @@ export function useFcm() {
         body: JSON.stringify({ token }),
       });
       setToken(null);
+      console.log('useFcm: Token unregistered');
     } catch (e) {
-      console.error('Error unregistering FCM token:', e);
+      console.error('useFcm: Error unregistering FCM token:', e);
     }
   };
 
