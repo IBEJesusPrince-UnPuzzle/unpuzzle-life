@@ -937,14 +937,38 @@ export function registerRoutes(server: Server, app: Express) {
   });
   app.put("/api/preferences", (req, res) => {
     const userId = getEffectiveUserId(req);
-    const { displayName, timeFormat, claritySkipRitual, showResponsibility, showProjectTask, showStandalone } = req.body;
-    const data: { displayName?: string; timeFormat?: string; claritySkipRitual?: boolean; showResponsibility?: boolean; showProjectTask?: boolean; showStandalone?: boolean } = {};
+    const {
+      displayName, timeFormat, claritySkipRitual,
+      showResponsibility, showProjectTask, showStandalone,
+      // Notification preferences
+      notificationsEnabled, taskReminderMinutes,
+      dailyReviewEnabled, dailyReviewTime,
+      projectDeadlineAlertsEnabled, projectDeadlineDaysBefore,
+      stalledProjectAlertsEnabled, stalledProjectDaysThreshold,
+    } = req.body;
+    const data: {
+      displayName?: string; timeFormat?: string; claritySkipRitual?: boolean;
+      showResponsibility?: boolean; showProjectTask?: boolean; showStandalone?: boolean;
+      notificationsEnabled?: boolean; taskReminderMinutes?: number;
+      dailyReviewEnabled?: boolean; dailyReviewTime?: string;
+      projectDeadlineAlertsEnabled?: boolean; projectDeadlineDaysBefore?: number;
+      stalledProjectAlertsEnabled?: boolean; stalledProjectDaysThreshold?: number;
+    } = {};
     if (displayName !== undefined) data.displayName = String(displayName).slice(0, 50);
     if (timeFormat !== undefined && (timeFormat === "12h" || timeFormat === "24h")) data.timeFormat = timeFormat;
     if (claritySkipRitual !== undefined) data.claritySkipRitual = !!claritySkipRitual;
     if (showResponsibility !== undefined) data.showResponsibility = !!showResponsibility;
     if (showProjectTask !== undefined) data.showProjectTask = !!showProjectTask;
     if (showStandalone !== undefined) data.showStandalone = !!showStandalone;
+    // Notification preferences
+    if (notificationsEnabled !== undefined) data.notificationsEnabled = !!notificationsEnabled;
+    if (taskReminderMinutes !== undefined) data.taskReminderMinutes = Number(taskReminderMinutes);
+    if (dailyReviewEnabled !== undefined) data.dailyReviewEnabled = !!dailyReviewEnabled;
+    if (dailyReviewTime !== undefined) data.dailyReviewTime = String(dailyReviewTime);
+    if (projectDeadlineAlertsEnabled !== undefined) data.projectDeadlineAlertsEnabled = !!projectDeadlineAlertsEnabled;
+    if (projectDeadlineDaysBefore !== undefined) data.projectDeadlineDaysBefore = Number(projectDeadlineDaysBefore);
+    if (stalledProjectAlertsEnabled !== undefined) data.stalledProjectAlertsEnabled = !!stalledProjectAlertsEnabled;
+    if (stalledProjectDaysThreshold !== undefined) data.stalledProjectDaysThreshold = Number(stalledProjectDaysThreshold);
     res.json(storage.updatePreferences(userId, data));
   });
 
@@ -2471,27 +2495,27 @@ export function registerRoutes(server: Server, app: Express) {
         }
         
         console.log(`Filling sheet ${sheetName} with ${data.length} rows`);
-        
+
         // Get headers from row 1 to map database fields to Excel columns
         const headerRow = sheet.getRow(1);
         const headers = headerRow.values as any[];
         // Skip the first empty column (index 0)
         const headerNames = headers.slice(1).map((h: any) => String(h));
-        
+
         console.log(`Headers for ${sheetName}:`, headerNames);
-        
+
         // Log actual data keys for debugging
         if (data.length > 0) {
           console.log(`Sample data keys for ${sheetName}:`, Object.keys(data[0]));
         }
-        
-        // Clear rows from 4 onwards
+
+        // Clear rows from 5 onwards (data now starts on row 5 due to extra header row)
         const rowCount = sheet.rowCount;
-        for (let i = rowCount; i >= 4; i--) {
+        for (let i = rowCount; i >= 5; i--) {
           sheet.spliceRows(i, 1);
         }
-        
-        // Add new data starting at row 4
+
+        // Add new data starting at row 5
         if (data.length > 0) {
           data.forEach((row, rowIndex) => {
             // Map database fields to Excel headers
@@ -2654,14 +2678,14 @@ export function registerRoutes(server: Server, app: Express) {
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.read(req.file.buffer);
 
-      // Helper function to read data from row 4+ of a sheet
+      // Helper function to read data from row 5+ of a sheet (data starts on row 5 due to extra header row)
       const readSheetData = (sheetName: string): any[] => {
         const sheet = workbook.getWorksheet(sheetName);
         if (!sheet) return [];
-        
+
         const data: any[] = [];
         sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-          if (rowNumber >= 4) {
+          if (rowNumber >= 5) {
             const values = row.values as any[];
             // Skip the first empty column (ExcelJS adds it)
             data.push(values.slice(1));

@@ -6,16 +6,20 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Trash2, Save, Download, Upload } from "lucide-react";
-import { usePreferences } from "@/hooks/use-preferences";
+import { Trash2, Save, Download, Upload, Bell } from "lucide-react";
+import { usePreferences, useUpdatePreferences } from "@/hooks/use-preferences";
 import { SidebarMenuButton } from "@/components/sidebar-menu";
+import { useFcm } from "@/hooks/use-fcm";
 
 export default function DataPage() {
   const { toast } = useToast();
   const { data: prefs } = usePreferences();
+  const updatePrefs = useUpdatePreferences();
+  const { permission, requestPermission, token } = useFcm();
 
   // Preferences state
   const [displayName, setDisplayName] = useState("");
@@ -23,10 +27,29 @@ export default function DataPage() {
   const [claritySkipRitual, setClaritySkipRitual] = useState(false);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
 
+  // Notification preferences state
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [taskReminderMinutes, setTaskReminderMinutes] = useState(15);
+  const [dailyReviewEnabled, setDailyReviewEnabled] = useState(false);
+  const [dailyReviewTime, setDailyReviewTime] = useState("09:00");
+  const [projectDeadlineAlertsEnabled, setProjectDeadlineAlertsEnabled] = useState(false);
+  const [projectDeadlineDaysBefore, setProjectDeadlineDaysBefore] = useState(1);
+  const [stalledProjectAlertsEnabled, setStalledProjectAlertsEnabled] = useState(false);
+  const [stalledProjectDaysThreshold, setStalledProjectDaysThreshold] = useState(7);
+
   if (prefs && !prefsLoaded) {
     setDisplayName(prefs.displayName);
     setTimeFormat(prefs.timeFormat as "12h" | "24h");
     setClaritySkipRitual(!!prefs.claritySkipRitual);
+    // Notification preferences
+    setNotificationsEnabled(!!prefs.notificationsEnabled);
+    setTaskReminderMinutes(prefs.taskReminderMinutes || 15);
+    setDailyReviewEnabled(!!prefs.dailyReviewEnabled);
+    setDailyReviewTime(prefs.dailyReviewTime || "09:00");
+    setProjectDeadlineAlertsEnabled(!!prefs.projectDeadlineAlertsEnabled);
+    setProjectDeadlineDaysBefore(prefs.projectDeadlineDaysBefore || 1);
+    setStalledProjectAlertsEnabled(!!prefs.stalledProjectAlertsEnabled);
+    setStalledProjectDaysThreshold(prefs.stalledProjectDaysThreshold || 7);
     setPrefsLoaded(true);
   }
 
@@ -35,7 +58,13 @@ export default function DataPage() {
   const [resetConfirm, setResetConfirm] = useState("");
 
   const savePrefsMutation = useMutation({
-    mutationFn: () => apiRequest("PUT", "/api/preferences", { displayName, timeFormat, claritySkipRitual }),
+    mutationFn: () => apiRequest("PUT", "/api/preferences", {
+      displayName, timeFormat, claritySkipRitual,
+      notificationsEnabled, taskReminderMinutes,
+      dailyReviewEnabled, dailyReviewTime,
+      projectDeadlineAlertsEnabled, projectDeadlineDaysBefore,
+      stalledProjectAlertsEnabled, stalledProjectDaysThreshold,
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/preferences"] });
       toast({ title: "Preferences saved" });
@@ -164,6 +193,154 @@ export default function DataPage() {
             <Save className="w-4 h-4 mr-1.5" />
             Save Preferences
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Notifications */}
+      <Card>
+        <CardContent className="p-5 space-y-4">
+          <h2 className="text-base font-semibold flex items-center gap-2">
+            <Bell className="w-4 h-4" />
+            Push Notifications
+          </h2>
+
+          {/* Global toggle */}
+          <div className="space-y-2 pt-2 border-t">
+            <Label htmlFor="notificationsEnabled" className="flex items-center gap-2 cursor-pointer">
+              <Checkbox
+                id="notificationsEnabled"
+                checked={notificationsEnabled}
+                onCheckedChange={(v) => setNotificationsEnabled(v === true)}
+                className="accent-primary"
+              />
+              <span className="text-sm">Enable push notifications</span>
+            </Label>
+            {permission === 'default' && notificationsEnabled && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={requestPermission}
+                className="ml-6"
+              >
+                Grant Permission
+              </Button>
+            )}
+            {permission === 'granted' && token && (
+              <p className="text-xs text-muted-foreground pl-6">
+                Notifications enabled (token registered)
+              </p>
+            )}
+            {permission === 'denied' && (
+              <p className="text-xs text-destructive pl-6">
+                Notifications blocked by browser settings
+              </p>
+            )}
+          </div>
+
+          {/* Task reminders */}
+          <div className="space-y-2 pt-2 border-t">
+            <Label htmlFor="taskReminderMinutes" className="flex items-center gap-2 cursor-pointer">
+              <Checkbox
+                id="taskReminderEnabled"
+                checked={notificationsEnabled}
+                disabled={!notificationsEnabled}
+                onCheckedChange={(v) => setNotificationsEnabled(v === true)}
+                className="accent-primary"
+              />
+              <span className="text-sm">Task reminders</span>
+            </Label>
+            <div className="flex items-center gap-2 ml-6">
+              <span className="text-xs text-muted-foreground">Remind me</span>
+              <Input
+                type="number"
+                min={1}
+                max={60}
+                value={taskReminderMinutes}
+                onChange={(e) => setTaskReminderMinutes(Number(e.target.value))}
+                disabled={!notificationsEnabled}
+                className="w-16 h-8 text-sm"
+              />
+              <span className="text-xs text-muted-foreground">minutes before</span>
+            </div>
+          </div>
+
+          {/* Daily review */}
+          <div className="space-y-2 pt-2 border-t">
+            <Label htmlFor="dailyReviewEnabled" className="flex items-center gap-2 cursor-pointer">
+              <Checkbox
+                id="dailyReviewEnabled"
+                checked={dailyReviewEnabled}
+                disabled={!notificationsEnabled}
+                onCheckedChange={(v) => setDailyReviewEnabled(v === true)}
+                className="accent-primary"
+              />
+              <span className="text-sm">Daily review reminder</span>
+            </Label>
+            <div className="flex items-center gap-2 ml-6">
+              <span className="text-xs text-muted-foreground">At</span>
+              <Input
+                type="time"
+                value={dailyReviewTime}
+                onChange={(e) => setDailyReviewTime(e.target.value)}
+                disabled={!notificationsEnabled || !dailyReviewEnabled}
+                className="w-24 h-8 text-sm"
+              />
+            </div>
+          </div>
+
+          {/* Project deadline alerts */}
+          <div className="space-y-2 pt-2 border-t">
+            <Label htmlFor="projectDeadlineAlertsEnabled" className="flex items-center gap-2 cursor-pointer">
+              <Checkbox
+                id="projectDeadlineAlertsEnabled"
+                checked={projectDeadlineAlertsEnabled}
+                disabled={!notificationsEnabled}
+                onCheckedChange={(v) => setProjectDeadlineAlertsEnabled(v === true)}
+                className="accent-primary"
+              />
+              <span className="text-sm">Project deadline alerts</span>
+            </Label>
+            <div className="flex items-center gap-2 ml-6">
+              <span className="text-xs text-muted-foreground">Alert</span>
+              <Input
+                type="number"
+                min={1}
+                max={30}
+                value={projectDeadlineDaysBefore}
+                onChange={(e) => setProjectDeadlineDaysBefore(Number(e.target.value))}
+                disabled={!notificationsEnabled || !projectDeadlineAlertsEnabled}
+                className="w-16 h-8 text-sm"
+              />
+              <span className="text-xs text-muted-foreground">day(s) before deadline</span>
+            </div>
+          </div>
+
+          {/* Stalled project alerts */}
+          <div className="space-y-2 pt-2 border-t">
+            <Label htmlFor="stalledProjectAlertsEnabled" className="flex items-center gap-2 cursor-pointer">
+              <Checkbox
+                id="stalledProjectAlertsEnabled"
+                checked={stalledProjectAlertsEnabled}
+                disabled={!notificationsEnabled}
+                onCheckedChange={(v) => setStalledProjectAlertsEnabled(v === true)}
+                className="accent-primary"
+              />
+              <span className="text-sm">Stalled project alerts</span>
+            </Label>
+            <div className="flex items-center gap-2 ml-6">
+              <span className="text-xs text-muted-foreground">Alert after</span>
+              <Input
+                type="number"
+                min={1}
+                max={90}
+                value={stalledProjectDaysThreshold}
+                onChange={(e) => setStalledProjectDaysThreshold(Number(e.target.value))}
+                disabled={!notificationsEnabled || !stalledProjectAlertsEnabled}
+                className="w-16 h-8 text-sm"
+              />
+              <span className="text-xs text-muted-foreground">day(s) stalled</span>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

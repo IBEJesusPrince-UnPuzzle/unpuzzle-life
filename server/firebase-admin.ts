@@ -38,6 +38,12 @@ export function getFirebaseAdmin() {
   return firebaseApp;
 }
 
+interface PushNotificationResult {
+  success: number;
+  failed: number;
+  invalidTokens: string[];
+}
+
 export async function sendPushNotification(
   tokens: string[],
   notification: {
@@ -47,11 +53,11 @@ export async function sendPushNotification(
     requireInteraction?: boolean;
   },
   data?: Record<string, string>
-) {
+): Promise<PushNotificationResult> {
   const app = getFirebaseAdmin();
   if (!app) {
     console.warn('Firebase Admin not initialized, cannot send push notification');
-    return { success: false, failed: tokens.length };
+    return { success: 0, failed: tokens.length, invalidTokens: [] };
   }
 
   const message = {

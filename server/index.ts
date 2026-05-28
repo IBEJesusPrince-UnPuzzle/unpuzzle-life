@@ -4,6 +4,7 @@ import { setupAuth } from "./auth";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import multer from "multer";
+import { scheduleNotifications } from "./notification-scheduler";
 
 const app = express();
 const httpServer = createServer(app);
@@ -110,4 +111,16 @@ app.use((req, res, next) => {
       log(`serving on port ${port}`);
     },
   );
+
+  // Start notification scheduler - runs every minute
+  setInterval(async () => {
+    try {
+      const result = await scheduleNotifications();
+      if (result.total > 0) {
+        log(`Notifications sent: ${result.total} (tasks: ${result.taskReminders}, reviews: ${result.dailyReviews}, deadlines: ${result.deadlineAlerts}, stalled: ${result.stalledAlerts})`, 'scheduler');
+      }
+    } catch (e) {
+      console.error('Notification scheduler error:', e);
+    }
+  }, 60000); // Run every minute
 })();
