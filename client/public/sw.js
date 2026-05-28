@@ -38,13 +38,21 @@ self.addEventListener('fetch', (event) => {
   // Static assets: cache-first, fallback to network
   event.respondWith(
     caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).then((response) => {
+      if (cached) {
+        return cached;
+      }
+      // Try network fetch with error handling
+      return fetch(event.request).then((response) => {
         // Cache successful responses
         if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
         return response;
+      }).catch((error) => {
+        // Network fetch failed - return a basic error response
+        console.error('Fetch failed:', error);
+        return new Response('Network error', { status: 503, statusText: 'Service Unavailable' });
       });
     })
   );
