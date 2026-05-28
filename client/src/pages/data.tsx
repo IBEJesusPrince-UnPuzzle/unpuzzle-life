@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -21,13 +21,12 @@ export default function DataPage() {
   const updatePrefs = useUpdatePreferences();
   const { permission, requestPermission, token } = useFcm();
 
-  // Preferences state
+  // Preferences state - initialize with defaults
   const [displayName, setDisplayName] = useState("");
   const [timeFormat, setTimeFormat] = useState<"12h" | "24h">("12h");
   const [claritySkipRitual, setClaritySkipRitual] = useState(false);
-  const [prefsLoaded, setPrefsLoaded] = useState(false);
 
-  // Notification preferences state
+  // Notification preferences state - initialize with defaults
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [taskReminderMinutes, setTaskReminderMinutes] = useState(15);
   const [dailyReviewEnabled, setDailyReviewEnabled] = useState(false);
@@ -37,21 +36,23 @@ export default function DataPage() {
   const [stalledProjectAlertsEnabled, setStalledProjectAlertsEnabled] = useState(false);
   const [stalledProjectDaysThreshold, setStalledProjectDaysThreshold] = useState(7);
 
-  if (prefs && !prefsLoaded) {
-    setDisplayName(prefs.displayName);
-    setTimeFormat(prefs.timeFormat as "12h" | "24h");
-    setClaritySkipRitual(!!prefs.claritySkipRitual);
-    // Notification preferences
-    setNotificationsEnabled(!!prefs.notificationsEnabled);
-    setTaskReminderMinutes(prefs.taskReminderMinutes || 15);
-    setDailyReviewEnabled(!!prefs.dailyReviewEnabled);
-    setDailyReviewTime(prefs.dailyReviewTime || "09:00");
-    setProjectDeadlineAlertsEnabled(!!prefs.projectDeadlineAlertsEnabled);
-    setProjectDeadlineDaysBefore(prefs.projectDeadlineDaysBefore || 1);
-    setStalledProjectAlertsEnabled(!!prefs.stalledProjectAlertsEnabled);
-    setStalledProjectDaysThreshold(prefs.stalledProjectDaysThreshold || 7);
-    setPrefsLoaded(true);
-  }
+  // Sync state with prefs whenever prefs changes
+  useEffect(() => {
+    if (prefs) {
+      setDisplayName(prefs.displayName);
+      setTimeFormat(prefs.timeFormat as "12h" | "24h");
+      setClaritySkipRitual(!!prefs.claritySkipRitual);
+      // Notification preferences
+      setNotificationsEnabled(!!prefs.notificationsEnabled);
+      setTaskReminderMinutes(prefs.taskReminderMinutes || 15);
+      setDailyReviewEnabled(!!prefs.dailyReviewEnabled);
+      setDailyReviewTime(prefs.dailyReviewTime || "09:00");
+      setProjectDeadlineAlertsEnabled(!!prefs.projectDeadlineAlertsEnabled);
+      setProjectDeadlineDaysBefore(prefs.projectDeadlineDaysBefore || 1);
+      setStalledProjectAlertsEnabled(!!prefs.stalledProjectAlertsEnabled);
+      setStalledProjectDaysThreshold(prefs.stalledProjectDaysThreshold || 7);
+    }
+  }, [prefs]);
 
   // Reset state
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
