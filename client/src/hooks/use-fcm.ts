@@ -19,6 +19,7 @@ export function useFcm() {
           token: fcmToken,
           platform: 'web',
           userAgent: navigator.userAgent,
+          createdAt: new Date().toISOString(),
         };
         console.log('useFcm: Payload being sent:', payload);
         const response = await fetch('/api/fcm/register', {
