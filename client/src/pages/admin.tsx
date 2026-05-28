@@ -10,10 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, EyeOff, KeyRound, ArrowLeft } from "lucide-react";
+import { Eye, EyeOff, KeyRound, ArrowLeft, Send } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { SidebarMenuButton } from "@/components/sidebar-menu";
+import { Textarea } from "@/components/ui/textarea";
 
 interface SupportRequestRow {
   id: number;
@@ -70,6 +71,7 @@ export default function AdminPage() {
         <TabsList>
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="invitations">Invitations</TabsTrigger>
+          <TabsTrigger value="push-tester">Push Tester</TabsTrigger>
           <SupportTabTrigger />
         </TabsList>
         <TabsContent value="users">
@@ -77,6 +79,9 @@ export default function AdminPage() {
         </TabsContent>
         <TabsContent value="invitations">
           <InvitationsTab />
+        </TabsContent>
+        <TabsContent value="push-tester">
+          <PushTesterTab />
         </TabsContent>
         <TabsContent value="support">
           <SupportTab />
@@ -563,5 +568,156 @@ function InvitationsTab() {
         </div>
       )}
     </div>
+  );
+}
+
+function PushTesterTab() {
+  const { toast } = useToast();
+  const [targetUser, setTargetUser] = useState("");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [iconUrl, setIconUrl] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [action1Text, setAction1Text] = useState("");
+  const [action2Text, setAction2Text] = useState("");
+
+  const sendTestPush = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await apiRequest("POST", "/api/admin/test-fcm", payload);
+      return await res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Test notification sent",
+        description: `Sent to ${data.tokensSent} device(s)`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to send test notification",
+        description: error.message,
+      });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetUser || !title) {
+      toast({
+        variant: "destructive",
+        title: "Missing required fields",
+        description: "Target user and title are required",
+      });
+      return;
+    }
+
+    const payload = {
+      targetUser,
+      title,
+      body,
+      iconUrl,
+      imageUrl,
+      actions: [
+        action1Text ? { action: "action1", title: action1Text } : null,
+        action2Text ? { action: "action2", title: action2Text } : null,
+      ].filter(Boolean),
+    };
+
+    sendTestPush.mutate(payload);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Push Notification Tester</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="target-user">Target User (ID or Email)</Label>
+            <Input
+              id="target-user"
+              placeholder="user@example.com or 1"
+              value={targetUser}
+              onChange={(e) => setTargetUser(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="title">Title *</Label>
+            <Input
+              id="title"
+              placeholder="Notification title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="body">Body</Label>
+            <Textarea
+              id="body"
+              placeholder="Notification body text"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={3}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="icon-url">Icon URL</Label>
+            <Input
+              id="icon-url"
+              placeholder="https://example.com/icon.png"
+              value={iconUrl}
+              onChange={(e) => setIconUrl(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="image-url">Image URL</Label>
+            <Input
+              id="image-url"
+              placeholder="https://example.com/image.png"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="action1">Action 1 Text</Label>
+              <Input
+                id="action1"
+                placeholder="e.g., View Details"
+                value={action1Text}
+                onChange={(e) => setAction1Text(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="action2">Action 2 Text</Label>
+              <Input
+                id="action2"
+                placeholder="e.g., Dismiss"
+                value={action2Text}
+                onChange={(e) => setAction2Text(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <Button
+            type="submit"
+            disabled={sendTestPush.isPending}
+            className="w-full"
+          >
+            <Send className="h-4 w-4 mr-2" />
+            {sendTestPush.isPending ? "Sending..." : "Send Test Push"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

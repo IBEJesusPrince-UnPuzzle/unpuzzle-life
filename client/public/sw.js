@@ -55,13 +55,34 @@ self.addEventListener('push', (event) => {
   if (!event.data) return;
 
   const data = event.data.json();
+  const customData = data.data || {};
+
+  // Parse custom fields from data payload
+  const iconUrl = customData.iconUrl || './icon-192x192.png';
+  const imageUrl = customData.imageUrl || '';
+  let actions = [];
+
+  // Parse actions if provided
+  if (customData.actions) {
+    try {
+      actions = JSON.parse(customData.actions);
+    } catch (e) {
+      console.error('Failed to parse notification actions:', e);
+    }
+  }
+
   const options = {
     body: data.notification?.body || '',
-    icon: './icon-192x192.png',
+    icon: iconUrl,
     badge: './icon-192x192.png',
+    image: imageUrl || undefined,
     tag: data.notification?.tag || 'default',
     requireInteraction: data.notification?.requireInteraction || false,
-    data: data.data || {},
+    data: {
+      ...customData,
+      url: customData.url || '/',
+    },
+    actions: actions.length > 0 ? actions : undefined,
   };
 
   event.waitUntil(

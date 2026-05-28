@@ -1788,6 +1788,70 @@ export function registerRoutes(server: Server, app: Express) {
   });
 
   // ============================================================
+  // Push Notification Tester (Super Admin only)
+  // ============================================================
+  app.post("/api/admin/test-fcm", requireAdmin, async (req, res) => {
+    try {
+      const { targetUser, title, body, iconUrl, imageUrl, actions } = req.body;
+
+      if (!targetUser || !title) {
+        return res.status(400).json({ error: "targetUser and title are required" });
+      }
+
+      // Resolve target user ID (accepts email or numeric ID)
+      let targetUserId: number;
+      if (typeof targetUser === 'number') {
+        targetUserId = targetUser;
+      } else if (typeof targetUser === 'string' && !isNaN(Number(targetUser))) {
+        targetUserId = Number(targetUser);
+      } else {
+        // Assume it's an email
+        const user = storage.getUserByEmail(targetUser.toLowerCase().trim());
+        if (!user) {
+          return res.status(404).json({ error: "User not found" });
+        }
+        targetUserId = user.id;
+      }
+
+      // Get FCM tokens for the target user
+      const tokens = storage.getFcmTokens(targetUserId);
+      if (tokens.length === 0) {
+        return res.status(404).json({ error: "No FCM tokens found for this user" });
+      }
+
+      // Import Firebase Admin SDK
+      const { sendPushNotification } = await import('./firebase-admin.js');
+
+      // Build notification payload
+      const message = {
+        notification: {
+          title,
+          body: body || '',
+        },
+        data: {
+          iconUrl: iconUrl || '',
+          imageUrl: imageUrl || '',
+          actions: JSON.stringify(actions || []),
+        },
+      };
+
+      // Send to all tokens
+      const tokenList = tokens.map(t => t.token);
+      const result = await sendPushNotification(tokenList, message);
+
+      res.json({
+        success: true,
+        tokensSent: result.success,
+        tokensFailed: result.failure,
+        invalidTokens: result.invalidTokens || [],
+      });
+    } catch (err: any) {
+      console.error('Error sending test FCM:', err);
+      res.status(500).json({ error: err?.message || "Failed to send test notification" });
+    }
+  });
+
+  // ============================================================
   // PHASE 2 §22 — PROJECT TASKS
   // ============================================================
   app.get("/api/project-tasks", (req, res) => {

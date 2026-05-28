@@ -210,6 +210,7 @@ export default function DataPage() {
             <Label htmlFor="notificationsEnabled" className="flex items-center gap-2 cursor-pointer">
               <Checkbox
                 id="notificationsEnabled"
+                data-testid="notifications-enabled"
                 checked={notificationsEnabled}
                 onCheckedChange={(v) => setNotificationsEnabled(v === true)}
                 className="accent-primary"
@@ -256,6 +257,7 @@ export default function DataPage() {
                 type="number"
                 min={1}
                 max={60}
+                data-testid="task-reminder-minutes"
                 value={taskReminderMinutes}
                 onChange={(e) => setTaskReminderMinutes(Number(e.target.value))}
                 disabled={!notificationsEnabled}
@@ -270,6 +272,7 @@ export default function DataPage() {
             <Label htmlFor="dailyReviewEnabled" className="flex items-center gap-2 cursor-pointer">
               <Checkbox
                 id="dailyReviewEnabled"
+                data-testid="daily-review-enabled"
                 checked={dailyReviewEnabled}
                 disabled={!notificationsEnabled}
                 onCheckedChange={(v) => setDailyReviewEnabled(v === true)}
@@ -281,6 +284,7 @@ export default function DataPage() {
               <span className="text-xs text-muted-foreground">At</span>
               <Input
                 type="time"
+                data-testid="daily-review-time"
                 value={dailyReviewTime}
                 onChange={(e) => setDailyReviewTime(e.target.value)}
                 disabled={!notificationsEnabled || !dailyReviewEnabled}
@@ -294,6 +298,7 @@ export default function DataPage() {
             <Label htmlFor="projectDeadlineAlertsEnabled" className="flex items-center gap-2 cursor-pointer">
               <Checkbox
                 id="projectDeadlineAlertsEnabled"
+                data-testid="project-deadline-alerts-enabled"
                 checked={projectDeadlineAlertsEnabled}
                 disabled={!notificationsEnabled}
                 onCheckedChange={(v) => setProjectDeadlineAlertsEnabled(v === true)}
@@ -307,6 +312,7 @@ export default function DataPage() {
                 type="number"
                 min={1}
                 max={30}
+                data-testid="project-deadline-days-before"
                 value={projectDeadlineDaysBefore}
                 onChange={(e) => setProjectDeadlineDaysBefore(Number(e.target.value))}
                 disabled={!notificationsEnabled || !projectDeadlineAlertsEnabled}
@@ -321,6 +327,7 @@ export default function DataPage() {
             <Label htmlFor="stalledProjectAlertsEnabled" className="flex items-center gap-2 cursor-pointer">
               <Checkbox
                 id="stalledProjectAlertsEnabled"
+                data-testid="stalled-project-alerts-enabled"
                 checked={stalledProjectAlertsEnabled}
                 disabled={!notificationsEnabled}
                 onCheckedChange={(v) => setStalledProjectAlertsEnabled(v === true)}
@@ -334,6 +341,7 @@ export default function DataPage() {
                 type="number"
                 min={1}
                 max={90}
+                data-testid="stalled-project-days-threshold"
                 value={stalledProjectDaysThreshold}
                 onChange={(e) => setStalledProjectDaysThreshold(Number(e.target.value))}
                 disabled={!notificationsEnabled || !stalledProjectAlertsEnabled}
