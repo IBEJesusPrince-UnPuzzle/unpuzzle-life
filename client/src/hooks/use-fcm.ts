@@ -15,19 +15,23 @@ export function useFcm() {
         console.log('useFcm: Token retrieved. Sending to backend...');
         setToken(fcmToken);
         // Register token with server
+        const payload = {
+          token: fcmToken,
+          platform: 'web',
+          userAgent: navigator.userAgent,
+        };
+        console.log('useFcm: Payload being sent:', payload);
         const response = await fetch('/api/fcm/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            token: fcmToken,
-            platform: 'web',
-            userAgent: navigator.userAgent,
-          }),
+          body: JSON.stringify(payload),
         });
         if (response.ok) {
           console.log('useFcm: Token successfully registered with backend');
         } else {
+          const errorText = await response.text();
           console.error('useFcm: Failed to register token with backend:', response.status, response.statusText);
+          console.error('useFcm: Error response body:', errorText);
         }
       } else {
         console.warn('useFcm: No FCM token retrieved');
