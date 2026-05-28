@@ -24,7 +24,9 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   }
 }
 
-const VAPID_KEY = 'BoQpGC8ceuwRESc3waqxIetE-ZocYUtUcckCucX8Jxk';
+// VAPID key from Firebase Console > Project Settings > Cloud Messaging > Web Push certificates
+// This is a placeholder - you need to replace it with your actual VAPID key
+const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || 'BoQpGC8ceuwRESc3waqxIetE-ZocYUtUcckCucX8Jxk';
 
 export async function requestNotificationPermission(): Promise<boolean> {
   if (!messaging) return false;
@@ -42,6 +44,13 @@ export async function getFcmToken(): Promise<string | null> {
   if (!messaging) return null;
 
   try {
+    // Validate VAPID key before attempting token generation
+    if (!VAPID_KEY || VAPID_KEY.length < 40) {
+      console.error('Firebase: Invalid or missing VAPID key. Please set VITE_FIREBASE_VAPID_KEY in your .env file or update the hardcoded value in firebase.ts');
+      console.error('Current VAPID key length:', VAPID_KEY.length);
+      return null;
+    }
+
     // Get the existing service worker registration
     const registration = await navigator.serviceWorker.ready;
     console.log('Firebase: Using existing service worker registration:', registration.scope);
@@ -54,6 +63,13 @@ export async function getFcmToken(): Promise<string | null> {
     return token;
   } catch (e) {
     console.error('Error getting FCM token:', e);
+    if (e instanceof Error && e.message.includes('applicationServerKey')) {
+      console.error('Firebase: The VAPID key is invalid. Please get the correct key from Firebase Console:');
+      console.error('1. Go to Firebase Console > Project Settings > Cloud Messaging');
+      console.error('2. Find "Web Push certificates" section');
+      console.error('3. Copy the "VAPID Key" value');
+      console.error('4. Set it as VITE_FIREBASE_VAPID_KEY in your .env file');
+    }
     return null;
   }
 }
