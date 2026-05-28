@@ -12,6 +12,9 @@ import { AuthContext, useAuthProvider } from "@/hooks/use-auth";
 import { useAuth } from "@/hooks/use-auth";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { ReportIssueButton } from "@/components/report-issue-button";
+import { useFcm } from "@/hooks/use-fcm";
+import { Button } from "@/components/ui/button";
+import { Bell } from "lucide-react";
 import InboxPage from "@/pages/inbox";
 import InboxFileItPage from "@/pages/inbox-file-it";
 import InboxDoItLaterPage from "@/pages/inbox-do-it-later";
@@ -128,6 +131,31 @@ function ReportButtonGate() {
   return <ReportIssueButton />;
 }
 
+function NotificationPermissionButton() {
+  const { user } = useAuth();
+  const { permission, requestPermission, loading } = useFcm();
+  const [location] = useLocation();
+
+  // Don't show on auth pages or if already granted
+  if (!user) return null;
+  if (location === "/login" || location === "/register") return null;
+  if (permission === 'granted') return null;
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 md:bottom-6 md:right-6">
+      <Button
+        onClick={requestPermission}
+        disabled={loading || permission === 'denied'}
+        size="lg"
+        className="shadow-lg gap-2"
+      >
+        <Bell className="h-5 w-5" />
+        {loading ? "Enabling..." : permission === 'denied' ? "Notifications Blocked" : "Enable Notifications"}
+      </Button>
+    </div>
+  );
+}
+
 function AuthGuard() {
   const { user, isLoading } = useAuth();
 
@@ -169,6 +197,7 @@ function AuthGuard() {
           </div>
           <MobileMenuButton />
           <ReportButtonGate />
+          <NotificationPermissionButton />
         </div>
       </SidebarProvider>
     </>
