@@ -573,6 +573,7 @@ function InvitationsTab() {
 
 function PushTesterTab() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [targetUser, setTargetUser] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -634,6 +635,10 @@ function PushTesterTab() {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="bg-muted/50 p-3 rounded-md text-sm">
+            <p className="font-medium">Your current User ID is: <span className="font-bold">{user?.id}</span></p>
+            <p className="font-medium">Your Email is: <span className="font-bold">{user?.email}</span></p>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="target-user">Target User (ID or Email)</Label>
             <Input
