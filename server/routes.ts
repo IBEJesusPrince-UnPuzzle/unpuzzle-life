@@ -979,6 +979,10 @@ export function registerRoutes(server: Server, app: Express) {
   initializeFirebaseAdmin();
 
   app.post("/api/fcm/register", (req, res) => {
+    // Check if user is authenticated
+    if (!req.user) {
+      return res.status(401).json({ error: "Unauthorized: User not authenticated" });
+    }
     const userId = getEffectiveUserId(req);
     const { token, platform, userAgent } = req.body;
     if (!token || !platform) {
