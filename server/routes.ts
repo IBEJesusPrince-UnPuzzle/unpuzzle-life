@@ -984,7 +984,16 @@ export function registerRoutes(server: Server, app: Express) {
     if (!token || !platform) {
       return res.status(400).json({ error: "token and platform are required" });
     }
-    const parsed = insertFcmTokenSchema.safeParse({ userId, token, platform, userAgent });
+    // Parse with only the fields we expect from the frontend
+    // createdAt and lastUsedAt are set automatically by storage.createFcmToken
+    const parsed = insertFcmTokenSchema.safeParse({
+      userId,
+      token,
+      platform,
+      userAgent,
+      createdAt: new Date().toISOString(), // Temporary value for validation, will be overridden by storage
+      lastUsedAt: new Date().toISOString(), // Temporary value for validation, will be overridden by storage
+    });
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
     // Check if token already exists for this user
     const existing = storage.getFcmTokens(userId).find(t => t.token === token);

@@ -15,11 +15,11 @@ export function useFcm() {
         console.log('useFcm: Token retrieved. Sending to backend...');
         setToken(fcmToken);
         // Register token with server
+        // createdAt and lastUsedAt are set automatically by the backend
         const payload = {
           token: fcmToken,
           platform: 'web',
           userAgent: navigator.userAgent,
-          createdAt: new Date().toISOString(),
         };
         console.log('useFcm: Payload being sent:', payload);
         const response = await fetch('/api/fcm/register', {
