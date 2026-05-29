@@ -976,7 +976,10 @@ export function registerRoutes(server: Server, app: Express) {
   // FCM PUSH NOTIFICATIONS
   // ============================================================
   // Initialize Firebase Admin SDK on startup
-  initializeFirebaseAdmin();
+  const firebaseApp = initializeFirebaseAdmin();
+  if (!firebaseApp) {
+    console.error('Firebase Admin SDK failed to initialize. Check FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, and FIREBASE_CLIENT_EMAIL environment variables.');
+  }
 
   app.post("/api/fcm/register", (req, res) => {
     // Check if user is authenticated
@@ -1845,7 +1848,8 @@ export function registerRoutes(server: Server, app: Express) {
       const app = admin.getFirebaseAdmin();
       
       if (!app) {
-        return res.status(500).json({ error: "Firebase Admin not initialized" });
+        console.error('FCM Tester: Firebase Admin not initialized. Check environment variables: FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL');
+        return res.status(500).json({ error: "Firebase Admin not initialized. Check server logs for details." });
       }
 
       let successCount = 0;
