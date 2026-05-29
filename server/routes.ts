@@ -1860,6 +1860,19 @@ export function registerRoutes(server: Server, app: Express) {
       const tokenList = tokens.map(t => t.token);
       const result = await sendPushNotification(tokenList, message);
 
+      // Clean up invalid tokens from database
+      if (result.invalidTokens && result.invalidTokens.length > 0) {
+        console.log('FCM Tester: Cleaning up invalid tokens:', result.invalidTokens);
+        for (const invalidToken of result.invalidTokens) {
+          try {
+            storage.deleteFcmToken(targetUserId, invalidToken);
+            console.log(`FCM Tester: Deleted invalid token for user ${targetUserId}`);
+          } catch (e) {
+            console.error(`FCM Tester: Failed to delete invalid token:`, e);
+          }
+        }
+      }
+
       res.json({
         success: true,
         tokensSent: result.success,
