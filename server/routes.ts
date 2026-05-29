@@ -1844,21 +1844,20 @@ export function registerRoutes(server: Server, app: Express) {
       const { sendPushNotification } = await import('./firebase-admin.js');
 
       // Build notification payload
-      const message = {
-        notification: {
-          title,
-          body: body || '',
-        },
-        data: {
-          iconUrl: iconUrl || '',
-          imageUrl: imageUrl || '',
-          actions: JSON.stringify(actions || []),
-        },
+      const notification = {
+        title,
+        body: body || '',
+      };
+
+      const options = {
+        iconUrl: iconUrl || '',
+        imageUrl: imageUrl || '',
+        actions: actions || [],
       };
 
       // Send to all tokens
       const tokenList = tokens.map(t => t.token);
-      const result = await sendPushNotification(tokenList, message);
+      const result = await sendPushNotification(tokenList, notification, undefined, options);
 
       // Clean up invalid tokens from database
       if (result.invalidTokens && result.invalidTokens.length > 0) {

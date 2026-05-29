@@ -52,7 +52,12 @@ export async function sendPushNotification(
     tag?: string;
     requireInteraction?: boolean;
   },
-  data?: Record<string, string>
+  data?: Record<string, string>,
+  options?: {
+    iconUrl?: string;
+    imageUrl?: string;
+    actions?: Array<{ action: string; title: string }>;
+  }
 ): Promise<PushNotificationResult> {
   const app = getFirebaseAdmin();
   if (!app) {
@@ -60,10 +65,23 @@ export async function sendPushNotification(
     return { success: 0, failed: tokens.length, invalidTokens: [] };
   }
 
-  const message = {
+  const message: any = {
     notification,
     data,
     tokens,
+    webpush: {
+      headers: {
+        Urgency: 'high',
+      },
+      notification: {
+        title: notification.title,
+        body: notification.body,
+        icon: options?.iconUrl || '/assets/logo.png',
+        image: options?.imageUrl,
+        requireInteraction: notification.requireInteraction || true,
+        actions: options?.actions || [],
+      },
+    },
   };
 
   try {
@@ -72,7 +90,13 @@ export async function sendPushNotification(
       success: response.successCount,
       failed: response.failureCount,
       invalidTokens: response.responses
-        .map((r: any, i: number) => (r.success ? null : tokens[i]))
+        .map((r: any, i: number) => {
+          if (!r.success) {
+            console.error(`Failed to send to token ${tokens[i]}:`, r.error);
+            return tokens[i];
+          }
+          return null;
+        })
         .filter(Boolean) as string[],
     };
   } catch (e) {
