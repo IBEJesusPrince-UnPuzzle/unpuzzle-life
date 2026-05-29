@@ -983,7 +983,7 @@ export function registerRoutes(server: Server, app: Express) {
     if (!req.user) {
       return res.status(401).json({ error: "Unauthorized: User not authenticated" });
     }
-    const userId = getEffectiveUserId(req);
+    const userId = Number(getEffectiveUserId(req)); // Ensure userId is a number
     const { token, platform, userAgent } = req.body;
     if (!token || !platform) {
       return res.status(400).json({ error: "token and platform are required" });
@@ -1823,7 +1823,7 @@ export function registerRoutes(server: Server, app: Express) {
         if (!user) {
           return res.status(404).json({ error: "User not found" });
         }
-        targetUserId = user.id;
+        targetUserId = Number(user.id); // Ensure it's a number
       }
 
       // Get FCM tokens for the target user
