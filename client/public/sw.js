@@ -103,17 +103,17 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const data = event.notification.data;
-  const url = data.url || '/';
+  const url = data.url || '/dashboard';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // If a client is already open, focus it and navigate
+      // If a client is already open, focus it and navigate to the target URL
       for (const client of clientList) {
-        if (client.url === new URL(url, self.location.origin).href && 'focus' in client) {
-          return client.focus();
+        if ('focus' in client) {
+          return client.focus().then(() => client.navigate(url));
         }
       }
-      // Otherwise, open a new window
+      // Otherwise, open a new window to the target URL
       if (clients.openWindow) {
         return clients.openWindow(url);
       }

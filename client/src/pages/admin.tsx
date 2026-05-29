@@ -581,6 +581,7 @@ function PushTesterTab() {
   const [imageUrl, setImageUrl] = useState("");
   const [action1Text, setAction1Text] = useState("");
   const [action2Text, setAction2Text] = useState("");
+  const [url, setUrl] = useState("");
 
   const sendTestPush = useMutation({
     mutationFn: async (payload: any) => {
@@ -619,6 +620,7 @@ function PushTesterTab() {
       body,
       iconUrl,
       imageUrl,
+      url,
       actions: [
         action1Text ? { action: "action1", title: action1Text } : null,
         action2Text ? { action: "action2", title: action2Text } : null,
@@ -689,6 +691,16 @@ function PushTesterTab() {
               placeholder="https://example.com/image.png"
               value={imageUrl}
               onChange={(e) => setImageUrl(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="click-url">Click Destination URL</Label>
+            <Input
+              id="click-url"
+              placeholder="/dashboard or /projects/123"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
             />
           </div>
 

@@ -1808,9 +1808,7 @@ export function registerRoutes(server: Server, app: Express) {
   // ============================================================
   app.post("/api/admin/test-fcm", requireAdmin, async (req, res) => {
     try {
-      const { targetUser, title, body, iconUrl, imageUrl, actions } = req.body;
-
-      console.log("FCM Tester: Incoming target user search query:", targetUser);
+      const { targetUser, title, body, iconUrl, imageUrl, actions, url } = req.body;
 
       if (!targetUser || !title) {
         return res.status(400).json({ error: "targetUser and title are required" });
@@ -1828,16 +1826,11 @@ export function registerRoutes(server: Server, app: Express) {
         if (!user) {
           return res.status(404).json({ error: "User not found" });
         }
-        targetUserId = Number(user.id); // Ensure it's a number
+        targetUserId = Number(user.id);
       }
-
-      // Log all tokens in database for debugging
-      const allTokens = storage.getAllFcmTokens();
-      console.log("FCM Tester: Current complete database dump of fcm_tokens table:", JSON.stringify(allTokens, null, 2));
 
       // Get FCM tokens for the target user
       const tokens = storage.getFcmTokens(targetUserId);
-      console.log("FCM Tester: Filtered tokens found for target user ID:", targetUserId, tokens);
 
       if (tokens.length === 0) {
         return res.status(404).json({ error: "No FCM tokens found for this user" });
@@ -1848,8 +1841,8 @@ export function registerRoutes(server: Server, app: Express) {
       const app = admin.getFirebaseAdmin();
       
       if (!app) {
-        console.error('FCM Tester: Firebase Admin not initialized. Check environment variables: FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL');
-        return res.status(500).json({ error: "Firebase Admin not initialized. Check server logs for details." });
+        console.error('FCM Tester: Firebase Admin not initialized');
+        return res.status(500).json({ error: "Firebase Admin not initialized" });
       }
 
       let successCount = 0;
@@ -1865,6 +1858,9 @@ export function registerRoutes(server: Server, app: Express) {
           notification: {
             title,
             body: body || '',
+          },
+          data: {
+            url: url || '/dashboard',
           },
           webpush: {
             headers: {
@@ -1882,11 +1878,9 @@ export function registerRoutes(server: Server, app: Express) {
         };
 
         try {
-          const response = await app.messaging().send(message);
-          console.log(`FCM Tester: Successfully sent to token ${token.substring(0, 20)}...`);
+          await app.messaging().send(message);
           successCount++;
         } catch (error: any) {
-          console.error(`FCM Tester: Failed to send to token ${token.substring(0, 20)}...:`, error);
           failureCount++;
           
           // If token is invalid, mark for cleanup
@@ -1895,9 +1889,8 @@ export function registerRoutes(server: Server, app: Express) {
             invalidTokens.push(token);
             try {
               storage.deleteFcmToken(targetUserId, token);
-              console.log(`FCM Tester: Deleted invalid token for user ${targetUserId}`);
             } catch (e) {
-              console.error(`FCM Tester: Failed to delete invalid token:`, e);
+              console.error('Failed to delete invalid token:', e);
             }
           }
         }
