@@ -1807,6 +1807,8 @@ export function registerRoutes(server: Server, app: Express) {
     try {
       const { targetUser, title, body, iconUrl, imageUrl, actions } = req.body;
 
+      console.log("FCM Tester: Incoming target user search query:", targetUser);
+
       if (!targetUser || !title) {
         return res.status(400).json({ error: "targetUser and title are required" });
       }
@@ -1826,8 +1828,14 @@ export function registerRoutes(server: Server, app: Express) {
         targetUserId = Number(user.id); // Ensure it's a number
       }
 
+      // Log all tokens in database for debugging
+      const allTokens = storage.getAllFcmTokens();
+      console.log("FCM Tester: Current complete database dump of fcm_tokens table:", JSON.stringify(allTokens, null, 2));
+
       // Get FCM tokens for the target user
       const tokens = storage.getFcmTokens(targetUserId);
+      console.log("FCM Tester: Filtered tokens found for target user ID:", targetUserId, tokens);
+
       if (tokens.length === 0) {
         return res.status(404).json({ error: "No FCM tokens found for this user" });
       }

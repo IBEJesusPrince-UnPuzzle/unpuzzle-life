@@ -929,6 +929,7 @@ export interface IStorage {
 
   // FCM Tokens
   getFcmTokens(userId: number): FcmToken[];
+  getAllFcmTokens(): FcmToken[];
   createFcmToken(data: InsertFcmToken): FcmToken;
   deleteFcmToken(userId: number, token: string): void;
   updateFcmTokenLastUsed(userId: number, token: string): void;
@@ -1260,6 +1261,9 @@ export class DatabaseStorage implements IStorage {
   // FCM Tokens
   getFcmTokens(userId: number): FcmToken[] {
     return db.select().from(fcmTokens).where(eq(fcmTokens.userId, userId)).all();
+  }
+  getAllFcmTokens(): FcmToken[] {
+    return db.select().from(fcmTokens).all();
   }
   createFcmToken(data: InsertFcmToken): FcmToken {
     const now = new Date().toISOString();
