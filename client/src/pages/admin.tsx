@@ -590,7 +590,7 @@ function PushTesterTab() {
     onSuccess: (data) => {
       toast({
         title: "Test notification sent",
-        description: `Sent to ${data.tokensSent} device(s)`,
+        description: `Sent to ${data.successCount} device(s)`,
       });
     },
     onError: (error: Error) => {

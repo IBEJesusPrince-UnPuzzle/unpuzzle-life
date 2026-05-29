@@ -1841,42 +1841,69 @@ export function registerRoutes(server: Server, app: Express) {
       }
 
       // Import Firebase Admin SDK
-      const { sendPushNotification } = await import('./firebase-admin.js');
+      const admin = await import('./firebase-admin.js');
+      const app = admin.getFirebaseAdmin();
+      
+      if (!app) {
+        return res.status(500).json({ error: "Firebase Admin not initialized" });
+      }
 
-      // Build notification payload
-      const notification = {
-        title,
-        body: body || '',
-      };
+      let successCount = 0;
+      let failureCount = 0;
+      const invalidTokens: string[] = [];
 
-      const options = {
-        iconUrl: iconUrl || '',
-        imageUrl: imageUrl || '',
-        actions: actions || [],
-      };
+      // Send to each token individually with proper tracking
+      for (const tokenObj of tokens) {
+        const token = tokenObj.token;
+        
+        const message = {
+          token,
+          notification: {
+            title,
+            body: body || '',
+          },
+          webpush: {
+            headers: {
+              Urgency: 'high',
+            },
+            notification: {
+              title,
+              body: body || '',
+              icon: iconUrl || '/assets/logo.png',
+              image: imageUrl || '',
+              requireInteraction: true,
+              actions: actions || [],
+            },
+          },
+        };
 
-      // Send to all tokens
-      const tokenList = tokens.map(t => t.token);
-      const result = await sendPushNotification(tokenList, notification, undefined, options);
-
-      // Clean up invalid tokens from database
-      if (result.invalidTokens && result.invalidTokens.length > 0) {
-        console.log('FCM Tester: Cleaning up invalid tokens:', result.invalidTokens);
-        for (const invalidToken of result.invalidTokens) {
-          try {
-            storage.deleteFcmToken(targetUserId, invalidToken);
-            console.log(`FCM Tester: Deleted invalid token for user ${targetUserId}`);
-          } catch (e) {
-            console.error(`FCM Tester: Failed to delete invalid token:`, e);
+        try {
+          const response = await app.messaging().send(message);
+          console.log(`FCM Tester: Successfully sent to token ${token.substring(0, 20)}...`);
+          successCount++;
+        } catch (error: any) {
+          console.error(`FCM Tester: Failed to send to token ${token.substring(0, 20)}...:`, error);
+          failureCount++;
+          
+          // If token is invalid, mark for cleanup
+          if (error.code === 'messaging/registration-token-not-registered' ||
+              error.code === 'messaging/invalid-argument') {
+            invalidTokens.push(token);
+            try {
+              storage.deleteFcmToken(targetUserId, token);
+              console.log(`FCM Tester: Deleted invalid token for user ${targetUserId}`);
+            } catch (e) {
+              console.error(`FCM Tester: Failed to delete invalid token:`, e);
+            }
           }
         }
       }
 
       res.json({
-        success: true,
-        tokensSent: result.success,
-        tokensFailed: result.failure,
-        invalidTokens: result.invalidTokens || [],
+        successCount,
+        failureCount,
+        invalidTokens,
+        message: "Processing complete",
       });
     } catch (err: any) {
       console.error('Error sending test FCM:', err);
