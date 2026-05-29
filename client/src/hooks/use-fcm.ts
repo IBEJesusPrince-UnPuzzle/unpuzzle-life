@@ -25,6 +25,7 @@ export function useFcm() {
         const response = await fetch('/api/fcm/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify(payload),
         });
         if (response.ok) {
@@ -104,6 +105,7 @@ export function useFcm() {
       await fetch('/api/fcm/unregister', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ token }),
       });
       setToken(null);
