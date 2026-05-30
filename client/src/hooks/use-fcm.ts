@@ -93,12 +93,16 @@ export function useFcm() {
       return;
     }
 
-    // Skip if timezone hasn't changed
-    if (lastSyncedTimezone === currentLocalTimezone) {
+    // Force sync if server has never recorded a timezone (lastSyncedTimezone is null)
+    // This ensures we transmit the native browser timezone on first load
+    const forceSync = lastSyncedTimezone === null;
+
+    // Skip if timezone hasn't changed (unless forcing sync)
+    if (!forceSync && lastSyncedTimezone === currentLocalTimezone) {
       return;
     }
 
-    console.log('useFcm: Timezone changed from', lastSyncedTimezone, 'to', currentLocalTimezone, '- syncing with server');
+    console.log('useFcm: Timezone', forceSync ? 'initial sync' : 'changed from ' + lastSyncedTimezone, 'to', currentLocalTimezone, '- syncing with server');
 
     try {
       const response = await fetch('/api/fcm/register', {

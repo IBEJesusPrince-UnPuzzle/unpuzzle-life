@@ -100,9 +100,9 @@ async function queueTaskReminders(userId: number, minutesBefore: number, now: Da
     format(addDays(now, 1), 'yyyy-MM-dd')
   );
 
-  // Get user's timezone from FCM tokens (fallback to UTC if not set)
+  // Get user's timezone from FCM tokens (fallback to America/New_York for safety)
   const fcmTokens = storage.getFcmTokens(userId);
-  const userTimezone = fcmTokens[0]?.timezone || 'UTC';
+  const userTimezone = fcmTokens[0]?.timezone || 'America/New_York';
 
   for (const task of agendaWindow) {
     if (task.status !== 'ready') continue;
@@ -141,9 +141,9 @@ async function queueTaskReminders(userId: number, minutesBefore: number, now: Da
 async function queueDailyReview(userId: number, timeStr: string, now: Date) {
   const [hours, minutes] = timeStr.split(':').map(Number);
 
-  // Get user's timezone preference (default to UTC if not set)
-  const user = storage.getUserById(userId);
-  const userTimezone = (user as any)?.timezone || 'UTC';
+  // Get user's timezone from FCM tokens (fallback to America/New_York for safety)
+  const fcmTokens = storage.getFcmTokens(userId);
+  const userTimezone = fcmTokens[0]?.timezone || 'America/New_York';
 
   // Calculate next occurrence in user's timezone
   const scheduledTime = getNextDailyReviewTime(hours, minutes, userTimezone, now);

@@ -993,12 +993,14 @@ export function registerRoutes(server: Server, app: Express) {
     }
     // Parse with only the fields we expect from the frontend
     // createdAt and lastUsedAt are set automatically by storage.createFcmToken
+    // Default timezone to America/New_York if missing, empty, or null to prevent null values in database
+    const normalizedTimezone = (timezone && timezone !== '' && timezone !== 'null') ? timezone : 'America/New_York';
     const parsed = insertFcmTokenSchema.safeParse({
       userId,
       token,
       platform,
       userAgent,
-      timezone: timezone || null,
+      timezone: normalizedTimezone,
       createdAt: new Date().toISOString(), // Temporary value for validation, will be overridden by storage
       lastUsedAt: new Date().toISOString(), // Temporary value for validation, will be overridden by storage
     });
@@ -1007,9 +1009,9 @@ export function registerRoutes(server: Server, app: Express) {
     const existing = storage.getFcmTokens(userId).find(t => t.token === token);
     if (existing) {
       storage.updateFcmTokenLastUsed(userId, token);
-      // Update timezone if it changed (user traveled)
-      if (timezone && existing.timezone !== timezone) {
-        storage.updateFcmTokenTimezone(userId, token, timezone);
+      // Update timezone if it changed (user traveled) or if existing is null
+      if (existing.timezone !== normalizedTimezone) {
+        storage.updateFcmTokenTimezone(userId, token, normalizedTimezone);
       }
       return res.json(existing);
     }
