@@ -272,6 +272,9 @@ tryMigration("fcm_tokens.create", `CREATE TABLE IF NOT EXISTS fcm_tokens (
   last_used_at TEXT
 )`);
 
+// Timezone-aware notification scheduling
+tryMigration("fcm_tokens.timezone", `ALTER TABLE fcm_tokens ADD COLUMN timezone TEXT`);
+
 // Notification queue table for deduplication and state tracking
 tryMigration("notification_queue.create", `CREATE TABLE IF NOT EXISTS notification_queue (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
