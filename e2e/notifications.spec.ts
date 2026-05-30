@@ -141,9 +141,19 @@ test.describe('FCM Token Registration', () => {
     if (await loginButton.isVisible()) {
       await loginButton.click();
       await page.fill('input[type="email"]', 'tab@theesweetesttaboo.com');
-      await page.fill('input[type="password"]', process.env.ADMIN_PASSWORD || 'your-password');
+      const password = process.env.ADMIN_PASSWORD;
+      if (!password) {
+        throw new Error('ADMIN_PASSWORD environment variable is required for E2E tests');
+      }
+      await page.fill('input[type="password"]', password);
       await page.click('button[type="submit"]');
       await page.waitForLoadState('networkidle');
+
+      // Check for login error
+      const loginError = page.locator('text=Login failed');
+      if (await loginError.isVisible()) {
+        throw new Error('Login failed: Invalid credentials. Check ADMIN_PASSWORD environment variable.');
+      }
     }
   });
 
