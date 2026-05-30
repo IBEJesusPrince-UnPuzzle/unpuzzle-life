@@ -52,6 +52,7 @@ export const fcmTokens = sqliteTable("fcm_tokens", {
   token: text("token").notNull(),
   platform: text("platform").notNull(), // 'web' | 'mobile'
   userAgent: text("user_agent"),
+  timezone: text("timezone"), // IANA timezone string (e.g., 'America/New_York')
   createdAt: text("created_at").notNull(),
   lastUsedAt: text("last_used_at"),
 });

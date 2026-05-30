@@ -987,7 +987,7 @@ export function registerRoutes(server: Server, app: Express) {
       return res.status(401).json({ error: "Unauthorized: User not authenticated" });
     }
     const userId = Number(getEffectiveUserId(req)); // Ensure userId is a number
-    const { token, platform, userAgent } = req.body;
+    const { token, platform, userAgent, timezone } = req.body;
     if (!token || !platform) {
       return res.status(400).json({ error: "token and platform are required" });
     }
@@ -998,6 +998,7 @@ export function registerRoutes(server: Server, app: Express) {
       token,
       platform,
       userAgent,
+      timezone: timezone || null,
       createdAt: new Date().toISOString(), // Temporary value for validation, will be overridden by storage
       lastUsedAt: new Date().toISOString(), // Temporary value for validation, will be overridden by storage
     });
@@ -1006,6 +1007,10 @@ export function registerRoutes(server: Server, app: Express) {
     const existing = storage.getFcmTokens(userId).find(t => t.token === token);
     if (existing) {
       storage.updateFcmTokenLastUsed(userId, token);
+      // Update timezone if it changed (user traveled)
+      if (timezone && existing.timezone !== timezone) {
+        storage.updateFcmTokenTimezone(userId, token, timezone);
+      }
       return res.json(existing);
     }
     const fcmToken = storage.createFcmToken(parsed.data);

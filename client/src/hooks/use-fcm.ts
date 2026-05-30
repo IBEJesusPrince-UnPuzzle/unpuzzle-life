@@ -8,6 +8,7 @@ export function useFcm() {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const [lastSyncedTimezone, setLastSyncedTimezone] = useState<string | null>(null);
 
   const registerToken = async () => {
     // Skip if we already have a token
@@ -23,13 +24,15 @@ export function useFcm() {
         console.log('useFcm: FCM Token Successfully Generated:', fcmToken);
         setToken(fcmToken);
 
+        const currentLocalTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         const payload = {
           token: fcmToken,
           platform: 'web',
           userAgent: navigator.userAgent,
+          timezone: currentLocalTimezone,
         };
 
-        console.log('useFcm: Registering token with server...');
+        console.log('useFcm: Registering token with server (timezone:', currentLocalTimezone, ')...');
         const response = await fetch('/api/fcm/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -39,6 +42,7 @@ export function useFcm() {
 
         if (response.ok) {
           console.log('useFcm: Token successfully registered with server');
+          setLastSyncedTimezone(currentLocalTimezone);
           toast({
             title: 'Notifications Enabled',
             description: 'FCM token successfully registered',
@@ -70,6 +74,42 @@ export function useFcm() {
     }
   };
 
+  const syncTimezone = async () => {
+    if (!token) return;
+
+    const currentLocalTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    // Skip if timezone hasn't changed
+    if (lastSyncedTimezone === currentLocalTimezone) {
+      return;
+    }
+
+    console.log('useFcm: Timezone changed from', lastSyncedTimezone, 'to', currentLocalTimezone, '- syncing with server');
+
+    try {
+      const response = await fetch('/api/fcm/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          token,
+          platform: 'web',
+          userAgent: navigator.userAgent,
+          timezone: currentLocalTimezone,
+        }),
+      });
+
+      if (response.ok) {
+        console.log('useFcm: Timezone successfully synced with server');
+        setLastSyncedTimezone(currentLocalTimezone);
+      } else {
+        console.error('useFcm: Failed to sync timezone:', response.status, response.statusText);
+      }
+    } catch (e) {
+      console.error('useFcm: Error syncing timezone:', e);
+    }
+  };
+
   useEffect(() => {
     // Initialize once on mount
     if (initialized) return;
@@ -92,6 +132,25 @@ export function useFcm() {
       unsubscribe();
     };
   }, [initialized, token]);
+
+  // Sync timezone on mount and window focus (user may have traveled)
+  useEffect(() => {
+    if (!token) return;
+
+    // Sync on mount
+    syncTimezone();
+
+    // Sync on window focus
+    const handleFocus = () => {
+      syncTimezone();
+    };
+
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [token]);
 
   const requestPermission = async () => {
     setLoading(true);

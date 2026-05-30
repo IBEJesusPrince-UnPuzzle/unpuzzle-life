@@ -949,6 +949,7 @@ export interface IStorage {
   deleteFcmToken(userId: number, token: string): void;
   deleteFcmTokenByToken(token: string): void;
   updateFcmTokenLastUsed(userId: number, token: string): void;
+  updateFcmTokenTimezone(userId: number, token: string, timezone: string): void;
 
   // Notification Queue
   queueNotification(data: InsertNotificationQueue): NotificationQueue;
@@ -1303,6 +1304,11 @@ export class DatabaseStorage implements IStorage {
   }
   updateFcmTokenLastUsed(userId: number, token: string): void {
     db.update(fcmTokens).set({ lastUsedAt: new Date().toISOString() })
+      .where(and(eq(fcmTokens.userId, userId), eq(fcmTokens.token, token)))
+      .run();
+  }
+  updateFcmTokenTimezone(userId: number, token: string, timezone: string): void {
+    db.update(fcmTokens).set({ timezone, lastUsedAt: new Date().toISOString() })
       .where(and(eq(fcmTokens.userId, userId), eq(fcmTokens.token, token)))
       .run();
   }

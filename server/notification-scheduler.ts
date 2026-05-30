@@ -1,6 +1,7 @@
 import { storage } from './storage';
 import { sendPushNotificationIndividual } from './firebase-admin';
 import { addMinutes, addDays, parseISO, isBefore, isAfter, format } from 'date-fns';
+import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 
 interface NotificationScheduleResult {
   taskReminders: number;
@@ -99,12 +100,24 @@ async function queueTaskReminders(userId: number, minutesBefore: number, now: Da
     format(addDays(now, 1), 'yyyy-MM-dd')
   );
 
+  // Get user's timezone from FCM tokens (fallback to UTC if not set)
+  const fcmTokens = storage.getFcmTokens(userId);
+  const userTimezone = fcmTokens[0]?.timezone || 'UTC';
+
   for (const task of agendaWindow) {
     if (task.status !== 'ready') continue;
 
-    const taskDateTime = task.time
-      ? parseISO(`${task.startDate}T${task.time}`)
-      : parseISO(task.startDate);
+    // Parse task time in user's timezone, then convert to UTC
+    let taskDateTime;
+    if (task.time) {
+      // Parse the local time string in user's timezone
+      const localDateTime = parseISO(`${task.startDate}T${task.time}`);
+      taskDateTime = fromZonedTime(localDateTime, userTimezone);
+    } else {
+      // All-day event: use start of day in user's timezone
+      const localDateTime = parseISO(task.startDate);
+      taskDateTime = fromZonedTime(localDateTime, userTimezone);
+    }
 
     // Check if task is within reminder window
     const reminderWindowEnd = addMinutes(now, minutesBefore);
