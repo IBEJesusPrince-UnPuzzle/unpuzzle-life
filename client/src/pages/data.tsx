@@ -17,9 +17,18 @@ import { useFcm } from "@/hooks/use-fcm";
 
 export default function DataPage() {
   const { toast } = useToast();
-  const { data: prefs } = usePreferences();
+  const { data: prefs, isLoading: prefsLoading } = usePreferences();
   const updatePrefs = useUpdatePreferences();
   const { permission, requestPermission, token } = useFcm();
+
+  // Don't render until preferences are loaded to prevent checkbox flicker
+  if (prefsLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-foreground"></div>
+      </div>
+    );
+  }
 
   // Preferences state - initialize with fetched data or defaults
   const [displayName, setDisplayName] = useState(prefs?.displayName || "");
@@ -78,7 +87,10 @@ export default function DataPage() {
       toast({ title: "Database reset" });
       setResetDialogOpen(false);
       setResetConfirm("");
-      queryClient.invalidateQueries();
+      queryClient.invalidateQueries({ queryKey: ["/api/preferences"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agenda"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       window.location.hash = "#/inbox";
     },
   });
@@ -103,16 +115,19 @@ export default function DataPage() {
     onSuccess: (data) => {
       const totalImported = data.results.reduce((sum: number, r: any) => sum + r.imported, 0);
       const totalErrors = data.results.reduce((sum: number, r: any) => sum + r.errors.length, 0);
-      toast({ 
-        title: "Import successful", 
+      toast({
+        title: "Import successful",
         description: `Imported ${totalImported} records${totalErrors > 0 ? ` with ${totalErrors} errors` : ''}.`
       });
       setImportFile(null);
-      queryClient.invalidateQueries();
+      queryClient.invalidateQueries({ queryKey: ["/api/preferences"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agenda"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
     },
     onError: (err) => {
-      toast({ 
-        title: "Import failed", 
+      toast({
+        title: "Import failed",
         description: err instanceof Error ? err.message : "An error occurred",
         variant: "destructive"
       });
