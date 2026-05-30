@@ -236,6 +236,9 @@ function buildNotificationPayload(notification: any): any {
           taskId: entityId.toString(),
           url: '/',
         },
+        options: {
+          iconUrl: '/assets/logo.png',
+        },
       };
 
     case 'daily_review':
@@ -249,6 +252,9 @@ function buildNotificationPayload(notification: any): any {
         data: {
           type: 'daily-review',
           url: '/weekly-review',
+        },
+        options: {
+          iconUrl: '/assets/logo.png',
         },
       };
 
@@ -265,6 +271,9 @@ function buildNotificationPayload(notification: any): any {
           projectId: entityId.toString(),
           url: `/projects/${entityId}`,
         },
+        options: {
+          iconUrl: '/assets/logo.png',
+        },
       };
 
     case 'stalled':
@@ -279,6 +288,9 @@ function buildNotificationPayload(notification: any): any {
           type: 'stalled-project',
           projectId: entityId.toString(),
           url: `/projects/${entityId}`,
+        },
+        options: {
+          iconUrl: '/assets/logo.png',
         },
       };
 
