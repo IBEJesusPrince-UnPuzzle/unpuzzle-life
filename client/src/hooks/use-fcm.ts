@@ -25,14 +25,20 @@ export function useFcm() {
         setToken(fcmToken);
 
         const currentLocalTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const payload = {
+
+        // Guard clause: only include timezone if it's valid
+        const payload: any = {
           token: fcmToken,
           platform: 'web',
           userAgent: navigator.userAgent,
-          timezone: currentLocalTimezone,
         };
+        if (currentLocalTimezone && currentLocalTimezone !== '' && currentLocalTimezone !== 'null') {
+          payload.timezone = currentLocalTimezone;
+          console.log('useFcm: Registering token with server (timezone:', currentLocalTimezone, ')...');
+        } else {
+          console.log('useFcm: Invalid timezone detected, registering without timezone');
+        }
 
-        console.log('useFcm: Registering token with server (timezone:', currentLocalTimezone, ')...');
         const response = await fetch('/api/fcm/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -42,7 +48,9 @@ export function useFcm() {
 
         if (response.ok) {
           console.log('useFcm: Token successfully registered with server');
-          setLastSyncedTimezone(currentLocalTimezone);
+          if (currentLocalTimezone && currentLocalTimezone !== '' && currentLocalTimezone !== 'null') {
+            setLastSyncedTimezone(currentLocalTimezone);
+          }
           toast({
             title: 'Notifications Enabled',
             description: 'FCM token successfully registered',
@@ -78,6 +86,12 @@ export function useFcm() {
     if (!token) return;
 
     const currentLocalTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    // Guard clause: abort if timezone is empty, missing, or invalid
+    if (!currentLocalTimezone || currentLocalTimezone === '' || currentLocalTimezone === 'null') {
+      console.log('useFcm: Invalid timezone detected, aborting sync:', currentLocalTimezone);
+      return;
+    }
 
     // Skip if timezone hasn't changed
     if (lastSyncedTimezone === currentLocalTimezone) {

@@ -147,19 +147,33 @@ async function queueDailyReview(userId: number, timeStr: string, now: Date) {
 
   // Calculate next occurrence in user's timezone
   const scheduledTime = getNextDailyReviewTime(hours, minutes, userTimezone, now);
+  const scheduledTimeIso = scheduledTime.toISOString();
 
   // Deduplication: check if already queued for today
   const todayStr = format(scheduledTime, 'yyyy-MM-dd');
   const existing = storage.getPendingNotificationForDate(userId, 'daily_review', todayStr);
-  if (!existing) {
-    storage.queueNotification({
-      userId,
-      notificationType: 'daily_review',
-      entityId: 0, // No entity ID for daily review
-      scheduledFor: scheduledTime.toISOString(),
-      status: 'pending',
-    });
+
+  if (existing) {
+    // Check if the existing pending row has the correct scheduled time
+    // If not, delete it so we can queue the correct time
+    if (existing.scheduledFor !== scheduledTimeIso) {
+      console.log(`[scheduler] Daily review time changed for user ${userId}: ${existing.scheduledFor} -> ${scheduledTimeIso}, re-queuing`);
+      // Delete the stale pending row (we'll queue a new one below)
+      storage.deleteNotification(existing.id);
+    } else {
+      // Existing row is correct, skip
+      return;
+    }
   }
+
+  // Queue the daily review (either no existing row, or we just deleted a stale one)
+  storage.queueNotification({
+    userId,
+    notificationType: 'daily_review',
+    entityId: 0, // No entity ID for daily review
+    scheduledFor: scheduledTimeIso,
+    status: 'pending',
+  });
 }
 
 // Queue deadline alerts

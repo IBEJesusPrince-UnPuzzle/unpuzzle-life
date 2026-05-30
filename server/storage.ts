@@ -961,6 +961,7 @@ export interface IStorage {
   getPendingNotificationForDate(userId: number, type: string, dateStr: string): NotificationQueue | undefined;
   markNotificationSent(id: number, sentAt: string): void;
   markNotificationFailed(id: number, reason: string): void;
+  deleteNotification(id: number): void;
   cleanupOldNotifications(daysToKeep: number): void;
 
   // Projects
@@ -1366,6 +1367,10 @@ export class DatabaseStorage implements IStorage {
       .set({ status: 'failed', failureReason: reason, sentAt: new Date().toISOString() })
       .where(eq(notificationQueue.id, id))
       .run();
+  }
+
+  deleteNotification(id: number): void {
+    db.delete(notificationQueue).where(eq(notificationQueue.id, id)).run();
   }
 
   cleanupOldNotifications(daysToKeep: number): void {
