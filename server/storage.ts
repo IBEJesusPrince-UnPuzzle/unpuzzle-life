@@ -987,8 +987,8 @@ export interface IStorage {
   updateWeeklyReview(userId: number, id: number, data: Partial<InsertWeeklyReview>): WeeklyReview | undefined;
 
   // Preferences
-  getPreferences(userId: number): { displayName: string; timeFormat: string; claritySkipRitual: boolean; showResponsibility: boolean; showProjectTask: boolean; showStandalone: boolean };
-  updatePreferences(userId: number, data: { displayName?: string; timeFormat?: string; claritySkipRitual?: boolean; showResponsibility?: boolean; showProjectTask?: boolean; showStandalone?: boolean }): { displayName: string; timeFormat: string; claritySkipRitual: boolean; showResponsibility: boolean; showProjectTask: boolean; showStandalone: boolean };
+  getPreferences(userId: number): { displayName: string; timeFormat: string; claritySkipRitual: boolean; showResponsibility: boolean; showProjectTask: boolean; showStandalone: boolean; notificationsEnabled: boolean; taskReminderMinutes: number; dailyReviewEnabled: boolean; dailyReviewTime: string; projectDeadlineAlertsEnabled: boolean; projectDeadlineDaysBefore: number; stalledProjectAlertsEnabled: boolean; stalledProjectDaysThreshold: number };
+  updatePreferences(userId: number, data: { displayName?: string; timeFormat?: string; claritySkipRitual?: boolean; showResponsibility?: boolean; showProjectTask?: boolean; showStandalone?: boolean; notificationsEnabled?: boolean; taskReminderMinutes?: number; dailyReviewEnabled?: boolean; dailyReviewTime?: string; projectDeadlineAlertsEnabled?: boolean; projectDeadlineDaysBefore?: number; stalledProjectAlertsEnabled?: boolean; stalledProjectDaysThreshold?: number }): { displayName: string; timeFormat: string; claritySkipRitual: boolean; showResponsibility: boolean; showProjectTask: boolean; showStandalone: boolean; notificationsEnabled: boolean; taskReminderMinutes: number; dailyReviewEnabled: boolean; dailyReviewTime: string; projectDeadlineAlertsEnabled: boolean; projectDeadlineDaysBefore: number; stalledProjectAlertsEnabled: boolean; stalledProjectDaysThreshold: number };
 
   // V2: Environment People
   getEnvironmentPeople(userId: number): EnvironmentPerson[];
@@ -1582,8 +1582,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Preferences
-  getPreferences(userId: number): { displayName: string; timeFormat: string; claritySkipRitual: boolean; showResponsibility: boolean; showProjectTask: boolean; showStandalone: boolean } {
+  getPreferences(userId: number): { displayName: string; timeFormat: string; claritySkipRitual: boolean; showResponsibility: boolean; showProjectTask: boolean; showStandalone: boolean; notificationsEnabled: boolean; taskReminderMinutes: number; dailyReviewEnabled: boolean; dailyReviewTime: string; projectDeadlineAlertsEnabled: boolean; projectDeadlineDaysBefore: number; stalledProjectAlertsEnabled: boolean; stalledProjectDaysThreshold: number } {
     const row = db.select().from(preferences).where(eq(preferences.userId, userId)).get();
+    const user = db.select().from(users).where(eq(users.id, userId)).get();
     if (!row) return {
       displayName: "",
       timeFormat: "12h",
@@ -1591,6 +1592,14 @@ export class DatabaseStorage implements IStorage {
       showResponsibility: true,
       showProjectTask: true,
       showStandalone: true,
+      notificationsEnabled: false,
+      taskReminderMinutes: 15,
+      dailyReviewEnabled: false,
+      dailyReviewTime: "09:00",
+      projectDeadlineAlertsEnabled: false,
+      projectDeadlineDaysBefore: 1,
+      stalledProjectAlertsEnabled: false,
+      stalledProjectDaysThreshold: 7,
     };
     return {
       displayName: row.displayName,
@@ -1599,12 +1608,21 @@ export class DatabaseStorage implements IStorage {
       showResponsibility: !!row.showResponsibility,
       showProjectTask: !!row.showProjectTask,
       showStandalone: !!row.showStandalone,
+      // Notification preferences from users table
+      notificationsEnabled: !!user?.notificationsEnabled,
+      taskReminderMinutes: user?.taskReminderMinutes ?? 15,
+      dailyReviewEnabled: !!user?.dailyReviewEnabled,
+      dailyReviewTime: user?.dailyReviewTime ?? "09:00",
+      projectDeadlineAlertsEnabled: !!user?.projectDeadlineAlertsEnabled,
+      projectDeadlineDaysBefore: user?.projectDeadlineDaysBefore ?? 1,
+      stalledProjectAlertsEnabled: !!user?.stalledProjectAlertsEnabled,
+      stalledProjectDaysThreshold: user?.stalledProjectDaysThreshold ?? 7,
     };
   }
   updatePreferences(
     userId: number,
-    data: { displayName?: string; timeFormat?: string; claritySkipRitual?: boolean; showResponsibility?: boolean; showProjectTask?: boolean; showStandalone?: boolean },
-  ): { displayName: string; timeFormat: string; claritySkipRitual: boolean; showResponsibility: boolean; showProjectTask: boolean; showStandalone: boolean } {
+    data: { displayName?: string; timeFormat?: string; claritySkipRitual?: boolean; showResponsibility?: boolean; showProjectTask?: boolean; showStandalone?: boolean; notificationsEnabled?: boolean; taskReminderMinutes?: number; dailyReviewEnabled?: boolean; dailyReviewTime?: string; projectDeadlineAlertsEnabled?: boolean; projectDeadlineDaysBefore?: number; stalledProjectAlertsEnabled?: boolean; stalledProjectDaysThreshold?: number },
+  ): { displayName: string; timeFormat: string; claritySkipRitual: boolean; showResponsibility: boolean; showProjectTask: boolean; showStandalone: boolean; notificationsEnabled: boolean; taskReminderMinutes: number; dailyReviewEnabled: boolean; dailyReviewTime: string; projectDeadlineAlertsEnabled: boolean; projectDeadlineDaysBefore: number; stalledProjectAlertsEnabled: boolean; stalledProjectDaysThreshold: number } {
     const existing = db.select().from(preferences).where(eq(preferences.userId, userId)).get();
     if (existing) {
       const updated: any = {};
@@ -1626,6 +1644,22 @@ export class DatabaseStorage implements IStorage {
         showStandalone: data.showStandalone === false ? 0 : 1,
       }).run();
     }
+
+    // Update notification preferences in users table
+    const userUpdated: any = {};
+    if (data.notificationsEnabled !== undefined) userUpdated.notificationsEnabled = data.notificationsEnabled ? 1 : 0;
+    if (data.taskReminderMinutes !== undefined) userUpdated.taskReminderMinutes = data.taskReminderMinutes;
+    if (data.dailyReviewEnabled !== undefined) userUpdated.dailyReviewEnabled = data.dailyReviewEnabled ? 1 : 0;
+    if (data.dailyReviewTime !== undefined) userUpdated.dailyReviewTime = data.dailyReviewTime;
+    if (data.projectDeadlineAlertsEnabled !== undefined) userUpdated.projectDeadlineAlertsEnabled = data.projectDeadlineAlertsEnabled ? 1 : 0;
+    if (data.projectDeadlineDaysBefore !== undefined) userUpdated.projectDeadlineDaysBefore = data.projectDeadlineDaysBefore;
+    if (data.stalledProjectAlertsEnabled !== undefined) userUpdated.stalledProjectAlertsEnabled = data.stalledProjectAlertsEnabled ? 1 : 0;
+    if (data.stalledProjectDaysThreshold !== undefined) userUpdated.stalledProjectDaysThreshold = data.stalledProjectDaysThreshold;
+
+    if (Object.keys(userUpdated).length > 0) {
+      db.update(users).set(userUpdated).where(eq(users.id, userId)).run();
+    }
+
     return this.getPreferences(userId);
   }
 
