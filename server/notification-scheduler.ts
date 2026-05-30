@@ -1,6 +1,6 @@
 import { storage } from './storage';
 import { sendPushNotificationIndividual } from './firebase-admin';
-import { addMinutes, addDays, parseISO, isBefore, isAfter, format } from 'date-fns';
+import { addMinutes, addDays, parseISO, isBefore, isAfter, format, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 
 interface NotificationScheduleResult {
@@ -236,17 +236,19 @@ async function queueStalledAlerts(userId: number, daysThreshold: number, now: Da
 
 // Helper: Calculate next daily review time in user's timezone
 function getNextDailyReviewTime(hours: number, minutes: number, timezone: string, now: Date): Date {
-  // Create date in user's timezone
-  const userDate = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
-  userDate.setHours(hours, minutes, 0, 0);
+  // Step 1: Convert the server's current UTC 'now' time into the user's local timezone context
+  const userNow = toZonedTime(now, timezone);
 
-  // If time has passed today, schedule for tomorrow
-  if (userDate < now) {
-    userDate.setDate(userDate.getDate() + 1);
+  // Step 2: Set the exact target hour and minute on that local user date object
+  let targetLocal = setMilliseconds(setSeconds(setMinutes(setHours(userNow, hours), minutes), 0), 0);
+
+  // Step 3: If the target local time has already passed for the user today, advance it to tomorrow
+  if (targetLocal < userNow) {
+    targetLocal = new Date(targetLocal.getTime() + 24 * 60 * 60 * 1000);
   }
 
-  // Convert back to UTC for storage
-  return new Date(userDate.toLocaleString('en-US', { timeZone: 'UTC' }));
+  // Step 4: Convert the local target time back into a true absolute UTC Date object for database storage
+  return fromZonedTime(targetLocal, timezone);
 }
 
 // Helper: Build notification payload from queue record
