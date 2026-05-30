@@ -1804,6 +1804,50 @@ export function registerRoutes(server: Server, app: Express) {
   });
 
   // ============================================================
+  // Notification Queue Viewer (Super Admin only)
+  // ============================================================
+  app.get("/api/admin/notification-queue", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.query;
+      const limit = Number(req.query.limit) || 20;
+
+      let queue;
+      if (userId) {
+        // Get queue for specific user
+        queue = storage.getPendingNotifications(new Date().toISOString()).filter(n => n.userId === Number(userId));
+      } else {
+        // Get all pending notifications
+        queue = storage.getPendingNotifications(new Date().toISOString());
+      }
+
+      // Also get recent sent/failed notifications for context
+      const allQueue = db.select().from(notificationQueue)
+        .orderBy(desc(notificationQueue.createdAt))
+        .limit(userId ? 50 : 100)
+        .all();
+
+      const filteredQueue = userId
+        ? allQueue.filter(n => n.userId === Number(userId))
+        : allQueue;
+
+      res.json({
+        pending: queue.slice(0, limit),
+        recent: filteredQueue.slice(0, limit),
+        summary: {
+          pendingCount: queue.length,
+          recentCount: filteredQueue.length,
+          byStatus: filteredQueue.reduce((acc, n) => {
+            acc[n.status] = (acc[n.status] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>)
+        }
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "Internal server error" });
+    }
+  });
+
+  // ============================================================
   // Push Notification Tester (Super Admin only)
   // ============================================================
   app.post("/api/admin/test-fcm", requireAdmin, async (req, res) => {
