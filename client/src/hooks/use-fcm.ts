@@ -6,8 +6,12 @@ export function useFcm() {
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initialized, setInitialized] = useState(false);
 
   const registerToken = async () => {
+    // Skip if we already have a token
+    if (token) return;
+
     try {
       const fcmToken = await getFcmToken();
       if (fcmToken) {
@@ -33,31 +37,27 @@ export function useFcm() {
   };
 
   useEffect(() => {
+    // Initialize once on mount
+    if (initialized) return;
+
     setPermission(Notification.permission);
 
+    // Only register if permission is already granted
     if (Notification.permission === 'granted') {
       registerToken();
     }
 
-    const interval = setInterval(() => {
-      const currentPermission = Notification.permission;
-      if (currentPermission !== permission) {
-        setPermission(currentPermission);
-        if (currentPermission === 'granted') {
-          registerToken();
-        }
-      }
-    }, 5000);
-
+    // Set up push message listener
     const unsubscribe = onPushMessage((payload) => {
       // In-app notification handling if needed
     });
 
+    setInitialized(true);
+
     return () => {
-      clearInterval(interval);
       unsubscribe();
     };
-  }, [permission]);
+  }, [initialized, token]);
 
   const requestPermission = async () => {
     setLoading(true);
