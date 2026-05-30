@@ -1846,6 +1846,40 @@ export function registerRoutes(server: Server, app: Express) {
   });
 
   // ============================================================
+  // FCM Tokens Viewer (Super Admin only)
+  // ============================================================
+  app.get("/api/admin/fcm-tokens", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.query;
+
+      const query = userId
+        ? `SELECT * FROM fcm_tokens WHERE user_id = ? ORDER BY created_at DESC`
+        : `SELECT * FROM fcm_tokens ORDER BY created_at DESC`;
+
+      const params = userId ? [Number(userId)] : [];
+      const tokens = sqlite.prepare(query).all(...params);
+
+      res.json({
+        tokens,
+        count: tokens.length,
+        summary: userId
+          ? { userId, tokenCount: tokens.length }
+          : {
+              totalUsers: new Set(tokens.map((t: any) => t.user_id)).size,
+              totalTokens: tokens.length,
+              byPlatform: tokens.reduce((acc: Record<string, number>, t: any) => {
+                acc[t.platform] = (acc[t.platform] || 0) + 1;
+                return acc;
+              }, {})
+            }
+      });
+    } catch (err: any) {
+      console.error('FCM tokens endpoint error:', err);
+      res.status(500).json({ error: err?.message || "Internal server error" });
+    }
+  });
+
+  // ============================================================
   // Push Notification Tester (Super Admin only)
   // ============================================================
   app.post("/api/admin/test-fcm", requireAdmin, async (req, res) => {
