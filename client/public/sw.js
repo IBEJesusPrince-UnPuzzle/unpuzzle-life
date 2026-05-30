@@ -60,9 +60,16 @@ self.addEventListener('fetch', (event) => {
 
 // Push notification handler
 self.addEventListener('push', (event) => {
-  if (!event.data) return;
+  console.log('[SW] Push event received');
+
+  if (!event.data) {
+    console.error('[SW] Push event has no data');
+    return;
+  }
 
   const data = event.data.json();
+  console.log('[SW] Push data:', data);
+
   const customData = data.data || {};
 
   // Parse custom fields from data payload
@@ -75,12 +82,15 @@ self.addEventListener('push', (event) => {
     try {
       actions = JSON.parse(customData.actions);
     } catch (e) {
-      console.error('Failed to parse notification actions:', e);
+      console.error('[SW] Failed to parse notification actions:', e);
     }
   }
 
+  const title = data.notification?.title || 'UnPuzzle Life';
+  const body = data.notification?.body || 'You have a new notification';
+
   const options = {
-    body: data.notification?.body || '',
+    body: body,
     icon: iconUrl,
     badge: './icon-192x192.png',
     image: imageUrl || undefined,
@@ -93,8 +103,16 @@ self.addEventListener('push', (event) => {
     actions: actions.length > 0 ? actions : undefined,
   };
 
+  console.log('[SW] Showing notification:', { title, body, options });
+
   event.waitUntil(
-    self.registration.showNotification(data.notification?.title || 'UnPuzzle Life', options)
+    self.registration.showNotification(title, options)
+      .then(() => {
+        console.log('[SW] Notification shown successfully');
+      })
+      .catch((error) => {
+        console.error('[SW] Failed to show notification:', error);
+      })
   );
 });
 
