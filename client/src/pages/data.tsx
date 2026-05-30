@@ -19,7 +19,7 @@ export default function DataPage() {
   const { toast } = useToast();
   const { data: prefs, isLoading: prefsLoading } = usePreferences();
   const updatePrefs = useUpdatePreferences();
-  const { permission, requestPermission, token } = useFcm();
+  const { permission, requestPermission, token, registerToken, loading: fcmLoading } = useFcm();
 
   // Don't render until preferences are loaded to prevent checkbox flicker
   if (prefsLoading) {
@@ -237,15 +237,29 @@ export default function DataPage() {
                 size="sm"
                 variant="outline"
                 onClick={requestPermission}
+                disabled={fcmLoading}
                 className="ml-6"
               >
-                Grant Permission
+                {fcmLoading ? 'Requesting...' : 'Grant Permission'}
               </Button>
             )}
-            {permission === 'granted' && token && (
-              <p className="text-xs text-muted-foreground pl-6">
-                Notifications enabled (token registered)
-              </p>
+            {permission === 'granted' && (
+              <div className="ml-6 space-y-2">
+                {token ? (
+                  <p className="text-xs text-muted-foreground">
+                    ✓ Notifications enabled (token registered)
+                  </p>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={registerToken}
+                    disabled={fcmLoading}
+                  >
+                    {fcmLoading ? 'Generating Token...' : 'Generate FCM Token'}
+                  </Button>
+                )}
+              </div>
             )}
             {permission === 'denied' && (
               <p className="text-xs text-destructive pl-6">

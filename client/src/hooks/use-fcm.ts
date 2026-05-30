@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { requestNotificationPermission, getFcmToken, onPushMessage } from '@/lib/firebase';
 import { apiRequest } from '@/lib/queryClient';
+import { toast } from '@/hooks/use-toast';
 
 export function useFcm() {
   const [permission, setPermission] = useState<NotificationPermission>('default');
@@ -10,29 +11,62 @@ export function useFcm() {
 
   const registerToken = async () => {
     // Skip if we already have a token
-    if (token) return;
+    if (token) {
+      console.log('useFcm: Token already registered, skipping');
+      return;
+    }
 
+    console.log('useFcm: Starting FCM token generation...');
     try {
       const fcmToken = await getFcmToken();
       if (fcmToken) {
+        console.log('useFcm: FCM Token Successfully Generated:', fcmToken);
         setToken(fcmToken);
+
         const payload = {
           token: fcmToken,
           platform: 'web',
           userAgent: navigator.userAgent,
         };
+
+        console.log('useFcm: Registering token with server...');
         const response = await fetch('/api/fcm/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify(payload),
         });
-        if (!response.ok) {
-          console.error('useFcm: Failed to register token:', response.status);
+
+        if (response.ok) {
+          console.log('useFcm: Token successfully registered with server');
+          toast({
+            title: 'Notifications Enabled',
+            description: 'FCM token successfully registered',
+            variant: 'default',
+          });
+        } else {
+          console.error('useFcm: Failed to register token with server:', response.status, response.statusText);
+          toast({
+            title: 'Registration Failed',
+            description: `Server returned ${response.status}: ${response.statusText}`,
+            variant: 'destructive',
+          });
         }
+      } else {
+        console.error('useFcm: getFcmToken returned null - token generation failed');
+        toast({
+          title: 'Token Generation Failed',
+          description: 'Could not generate FCM token. Check console for details.',
+          variant: 'destructive',
+        });
       }
     } catch (e) {
       console.error('useFcm: Error retrieving or registering FCM token:', e);
+      toast({
+        title: 'FCM Error',
+        description: e instanceof Error ? e.message : 'Unknown error occurred',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -61,15 +95,30 @@ export function useFcm() {
 
   const requestPermission = async () => {
     setLoading(true);
+    console.log('useFcm: Requesting browser notification permission...');
     try {
       const granted = await requestNotificationPermission();
+      console.log('useFcm: Permission result:', granted ? 'granted' : 'denied');
       setPermission(granted ? 'granted' : 'denied');
 
       if (granted) {
+        console.log('useFcm: Permission granted, proceeding with token registration...');
         await registerToken();
+      } else {
+        console.error('useFcm: Permission denied by user');
+        toast({
+          title: 'Permission Denied',
+          description: 'Notification permission was denied. Please enable it in browser settings.',
+          variant: 'destructive',
+        });
       }
     } catch (e) {
       console.error('useFcm: Error requesting notification permission:', e);
+      toast({
+        title: 'Permission Error',
+        description: e instanceof Error ? e.message : 'Failed to request permission',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
@@ -95,6 +144,7 @@ export function useFcm() {
     token,
     loading,
     requestPermission,
+    registerToken,
     unregisterToken,
   };
 }
