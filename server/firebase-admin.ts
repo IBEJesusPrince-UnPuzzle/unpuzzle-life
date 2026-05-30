@@ -65,6 +65,8 @@ export async function sendPushNotification(
     return { success: 0, failed: tokens.length, invalidTokens: [] };
   }
 
+  console.log(`[Firebase] Sending notification to ${tokens.length} token(s):`, notification.title);
+
   const message: any = {
     notification,
     data,
@@ -86,21 +88,35 @@ export async function sendPushNotification(
 
   try {
     const response = await app.messaging().sendEachForMulticast(message);
+
+    console.log(`[Firebase] Response: ${response.successCount} success, ${response.failureCount} failed`);
+
+    const invalidTokens: string[] = [];
+    response.responses.forEach((r: any, i: number) => {
+      if (!r.success) {
+        const error = r.error;
+        console.error(`[Firebase] Failed to send to token ${tokens[i].substring(0, 20)}...:`, {
+          code: error?.code,
+          message: error?.message,
+          details: error?.details,
+        });
+        invalidTokens.push(tokens[i]);
+      } else {
+        console.log(`[Firebase] Successfully sent to token ${tokens[i].substring(0, 20)}...`);
+      }
+    });
+
     return {
       success: response.successCount,
       failed: response.failureCount,
-      invalidTokens: response.responses
-        .map((r: any, i: number) => {
-          if (!r.success) {
-            console.error(`Failed to send to token ${tokens[i]}:`, r.error);
-            return tokens[i];
-          }
-          return null;
-        })
-        .filter(Boolean) as string[],
+      invalidTokens,
     };
-  } catch (e) {
-    console.error('Error sending push notification:', e);
+  } catch (e: any) {
+    console.error('[Firebase] Error sending push notification:', {
+      message: e?.message,
+      code: e?.code,
+      stack: e?.stack,
+    });
     return { success: 0, failed: tokens.length, invalidTokens: [] };
   }
 }

@@ -115,12 +115,15 @@ app.use((req, res, next) => {
   // Start notification scheduler - runs every minute
   setInterval(async () => {
     try {
+      console.log('[Scheduler] Running notification check...');
       const result = await scheduleNotifications();
       if (result.total > 0) {
         log(`Notifications sent: ${result.total} (tasks: ${result.taskReminders}, reviews: ${result.dailyReviews}, deadlines: ${result.deadlineAlerts}, stalled: ${result.stalledAlerts})`, 'scheduler');
+      } else {
+        console.log('[Scheduler] No notifications to send');
       }
     } catch (e) {
-      console.error('Notification scheduler error:', e);
+      console.error('[Scheduler] Error:', e);
     }
   }, 60000); // Run every minute
 })();
