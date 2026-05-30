@@ -9,9 +9,13 @@ let firebaseApp: admin.app.App | null = null;
 export function initializeFirebaseAdmin() {
   if (firebaseApp) return firebaseApp;
 
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY
+    ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+    : undefined;
+
   const serviceAccount = {
     projectId: process.env.FIREBASE_PROJECT_ID || 'unpuzzle-life',
-    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    privateKey,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
   };
 
