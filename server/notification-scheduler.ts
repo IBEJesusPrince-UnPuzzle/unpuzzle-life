@@ -78,7 +78,8 @@ async function scheduleTaskReminders(
     format(addDays(now, 1), 'yyyy-MM-dd')
   );
 
-  const reminderTime = addMinutes(now, minutesBefore);
+  const reminderWindowStart = now;
+  const reminderWindowEnd = addMinutes(now, minutesBefore);
   let sent = 0;
 
   for (const task of agendaWindow) {
@@ -88,8 +89,9 @@ async function scheduleTaskReminders(
       ? parseISO(`${task.startDate}T${task.time}`)
       : parseISO(task.startDate);
 
-    // Check if task is within the reminder window
-    if (isBefore(taskDateTime, reminderTime) && isAfter(taskDateTime, now)) {
+    // Check if task is within the reminder window (upcoming task within X minutes)
+    // Use range-based check: task time should be between now and now + minutesBefore
+    if (isAfter(taskDateTime, reminderWindowStart) && isBefore(taskDateTime, reminderWindowEnd)) {
       const title = task.title || 'Task';
       const response = await sendPushNotificationIndividual(tokens, {
         title: 'Upcoming Task',
@@ -121,9 +123,11 @@ async function scheduleDailyReviewReminder(
   const reminderTime = new Date(now);
   reminderTime.setHours(hours, minutes, 0, 0);
 
-  // Only send if we're within 1 minute of the scheduled time
-  const diff = Math.abs(now.getTime() - reminderTime.getTime());
-  if (diff > 60000) return 0;
+  // Use 5-minute window instead of strict 1-minute match to handle scheduler timing variations
+  const windowStart = new Date(reminderTime.getTime() - 2 * 60 * 1000); // 2 minutes before
+  const windowEnd = new Date(reminderTime.getTime() + 3 * 60 * 1000); // 3 minutes after
+
+  if (now < windowStart || now > windowEnd) return 0;
 
   // Check if daily review was already completed today
   const today = format(now, 'yyyy-MM-dd');
@@ -164,7 +168,12 @@ async function scheduleDeadlineAlerts(
   for (const project of projects) {
     if (!project.targetDate || project.status === 'done' || project.status === 'cancelled') continue;
 
-    if (project.targetDate === alertDateStr) {
+    // Use date comparison instead of strict string match for robustness
+    const projectTargetDate = parseISO(project.targetDate);
+    const alertDateObj = parseISO(alertDateStr);
+
+    // Check if project deadline is on the alert date (within same day)
+    if (format(projectTargetDate, 'yyyy-MM-dd') === format(alertDateObj, 'yyyy-MM-dd')) {
       const response = await sendPushNotificationIndividual(tokens, {
         title: 'Project Deadline',
         body: `"${project.title}" is due in ${daysBefore} day${daysBefore > 1 ? 's' : ''}`,
@@ -199,11 +208,12 @@ async function scheduleStalledAlerts(
   for (const project of projects) {
     if (project.status !== 'stalled' || !project.stalledAt) continue;
 
-    // Check if project has been stalled for exactly the threshold days
+    // Use date comparison instead of strict string match for robustness
     const stalledDate = parseISO(project.stalledAt);
-    const stalledDateStr = format(stalledDate, 'yyyy-MM-dd');
+    const thresholdDateObj = parseISO(thresholdDateStr);
 
-    if (stalledDateStr === thresholdDateStr) {
+    // Check if project has been stalled for exactly the threshold days (within same day)
+    if (format(stalledDate, 'yyyy-MM-dd') === format(thresholdDateObj, 'yyyy-MM-dd')) {
       const response = await sendPushNotificationIndividual(tokens, {
         title: 'Stalled Project',
         body: `"${project.title}" has been stalled for ${daysThreshold} days`,
