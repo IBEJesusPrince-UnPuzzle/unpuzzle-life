@@ -54,15 +54,22 @@ export async function scheduleNotifications(): Promise<NotificationScheduleResul
 
   for (const notification of pendingNotifications) {
     const fcmTokens = storage.getFcmTokens(notification.userId);
+    console.log(`[Scheduler] Processing notification ${notification.id} for user ${notification.userId}, found ${fcmTokens.length} FCM token(s)`);
+
     if (fcmTokens.length === 0) {
+      console.log(`[Scheduler] No FCM tokens found for user ${notification.userId}, marking notification ${notification.id} as failed`);
       storage.markNotificationFailed(notification.id, 'no_tokens');
       continue;
     }
 
     const tokens = fcmTokens.map(t => t.token);
+    console.log(`[Scheduler] Sending to ${tokens.length} token(s) for notification ${notification.id}:`, tokens.map(t => t.substring(0, 20) + '...'));
+
     const payload = buildNotificationPayload(notification);
 
     const response = await sendPushNotificationIndividual(tokens, payload.notification, payload.data, payload.options);
+
+    console.log(`[Scheduler] Notification ${notification.id} send result: ${response.success} success, ${response.failed} failed`);
 
     if (response.success > 0) {
       storage.markNotificationSent(notification.id, nowIso);
