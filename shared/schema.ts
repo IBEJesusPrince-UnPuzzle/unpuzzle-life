@@ -56,6 +56,19 @@ export const fcmTokens = sqliteTable("fcm_tokens", {
   lastUsedAt: text("last_used_at"),
 });
 
+// Notification queue for deduplication and state tracking
+export const notificationQueue = sqliteTable("notification_queue", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  notificationType: text("notification_type").notNull(), // 'task_reminder' | 'daily_review' | 'deadline' | 'stalled'
+  entityId: integer("entity_id").notNull(), // task_id | project_id | 0 for daily_review
+  scheduledFor: text("scheduled_for").notNull(), // ISO timestamp when to send
+  sentAt: text("sent_at"), // ISO timestamp when actually sent
+  status: text("status").notNull().default("pending"), // 'pending' | 'sent' | 'failed'
+  failureReason: text("failure_reason"), // Optional reason for failure
+  createdAt: text("created_at").notNull(),
+});
+
 // ============================================================
 // PROJECTS (Phase 0: identity/area/puzzle_piece columns dropped)
 // ============================================================
@@ -661,6 +674,7 @@ export const preferences = sqliteTable("preferences", {
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertInvitationSchema = createInsertSchema(invitations).omit({ id: true });
 export const insertFcmTokenSchema = createInsertSchema(fcmTokens).omit({ id: true });
+export const insertNotificationQueueSchema = createInsertSchema(notificationQueue).omit({ id: true, createdAt: true });
 
 export const insertProjectSchema = createInsertSchema(projects).omit({ id: true });
 export const insertInboxItemSchema = createInsertSchema(inboxItems).omit({ id: true });
@@ -778,6 +792,8 @@ export type Invitation = typeof invitations.$inferSelect;
 export type InsertInvitation = z.infer<typeof insertInvitationSchema>;
 export type FcmToken = typeof fcmTokens.$inferSelect;
 export type InsertFcmToken = z.infer<typeof insertFcmTokenSchema>;
+export type NotificationQueue = typeof notificationQueue.$inferSelect;
+export type InsertNotificationQueue = z.infer<typeof insertNotificationQueueSchema>;
 
 export type Project = typeof projects.$inferSelect;
 export type InsertProject = z.infer<typeof insertProjectSchema>;

@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, and, desc, asc, isNull, gte, lte, or, inArray } from "drizzle-orm";
+import { eq, and, desc, asc, isNull, gte, lte, or, inArray, like, lt } from "drizzle-orm";
 import {
   users, invitations,
   projects, inboxItems, weeklyReviews,
@@ -28,6 +28,7 @@ import {
   taskCompletions,
   // Push notifications
   fcmTokens,
+  notificationQueue,
   type User, type InsertUser,
   type Invitation, type InsertInvitation,
   type Project, type InsertProject,
@@ -50,6 +51,7 @@ import {
   type ResponsibilityProvider, type InsertResponsibilityProvider,
   type ResponsibilityCondition, type InsertResponsibilityCondition,
   type FcmToken, type InsertFcmToken,
+  type NotificationQueue, type InsertNotificationQueue,
   // PR #23 project↔support types
   type ProjectPeople, type InsertProjectPeople,
   type ProjectPlace, type InsertProjectPlace,
@@ -268,6 +270,19 @@ tryMigration("fcm_tokens.create", `CREATE TABLE IF NOT EXISTS fcm_tokens (
   user_agent TEXT,
   created_at TEXT NOT NULL,
   last_used_at TEXT
+)`);
+
+// Notification queue table for deduplication and state tracking
+tryMigration("notification_queue.create", `CREATE TABLE IF NOT EXISTS notification_queue (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  notification_type TEXT NOT NULL,
+  entity_id INTEGER NOT NULL,
+  scheduled_for TEXT NOT NULL,
+  sent_at TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  failure_reason TEXT,
+  created_at TEXT NOT NULL
 )`);
 
 // PR #24 — Rename agenda_tasks.date → start_date.
@@ -935,8 +950,18 @@ export interface IStorage {
   deleteFcmTokenByToken(token: string): void;
   updateFcmTokenLastUsed(userId: number, token: string): void;
 
+  // Notification Queue
+  queueNotification(data: InsertNotificationQueue): NotificationQueue;
+  getPendingNotifications(nowIso: string): NotificationQueue[];
+  getPendingNotification(userId: number, type: string, entityId: number): NotificationQueue | undefined;
+  getPendingNotificationForDate(userId: number, type: string, dateStr: string): NotificationQueue | undefined;
+  markNotificationSent(id: number, sentAt: string): void;
+  markNotificationFailed(id: number, reason: string): void;
+  cleanupOldNotifications(daysToKeep: number): void;
+
   // Projects
   getProjects(userId: number): Project[];
+  getProject(userId: number, id: number): Project | undefined;
   createProject(userId: number, data: InsertProject): Project;
   updateProject(userId: number, id: number, data: Partial<InsertProject>): Project | undefined;
   // PR #29h — deleteProject now cascades. mode='delete' hard-deletes linked
@@ -1282,9 +1307,77 @@ export class DatabaseStorage implements IStorage {
       .run();
   }
 
+  // Notification Queue
+  queueNotification(data: InsertNotificationQueue): NotificationQueue {
+    const now = new Date().toISOString();
+    return db.insert(notificationQueue).values({ ...data, createdAt: now }).returning().get();
+  }
+
+  getPendingNotifications(nowIso: string): NotificationQueue[] {
+    return db.select().from(notificationQueue)
+      .where(and(
+        eq(notificationQueue.status, 'pending'),
+        lte(notificationQueue.scheduledFor, nowIso)
+      ))
+      .orderBy(asc(notificationQueue.scheduledFor))
+      .all();
+  }
+
+  getPendingNotification(userId: number, type: string, entityId: number): NotificationQueue | undefined {
+    return db.select().from(notificationQueue)
+      .where(and(
+        eq(notificationQueue.userId, userId),
+        eq(notificationQueue.notificationType, type),
+        eq(notificationQueue.entityId, entityId),
+        eq(notificationQueue.status, 'pending')
+      ))
+      .get();
+  }
+
+  getPendingNotificationForDate(userId: number, type: string, dateStr: string): NotificationQueue | undefined {
+    return db.select().from(notificationQueue)
+      .where(and(
+        eq(notificationQueue.userId, userId),
+        eq(notificationQueue.notificationType, type),
+        like(notificationQueue.scheduledFor, `${dateStr}%`),
+        eq(notificationQueue.status, 'pending')
+      ))
+      .get();
+  }
+
+  markNotificationSent(id: number, sentAt: string): void {
+    db.update(notificationQueue)
+      .set({ status: 'sent', sentAt })
+      .where(eq(notificationQueue.id, id))
+      .run();
+  }
+
+  markNotificationFailed(id: number, reason: string): void {
+    db.update(notificationQueue)
+      .set({ status: 'failed', failureReason: reason, sentAt: new Date().toISOString() })
+      .where(eq(notificationQueue.id, id))
+      .run();
+  }
+
+  cleanupOldNotifications(daysToKeep: number): void {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+    const cutoffIso = cutoffDate.toISOString();
+
+    db.delete(notificationQueue)
+      .where(and(
+        or(eq(notificationQueue.status, 'sent'), eq(notificationQueue.status, 'failed')),
+        lt(notificationQueue.createdAt, cutoffIso)
+      ))
+      .run();
+  }
+
   // Projects
   getProjects(userId: number): Project[] {
     return db.select().from(projects).where(and(eq(projects.userId, userId), or(eq(projects.archived, 0), isNull(projects.archived)))).orderBy(desc(projects.createdAt)).all();
+  }
+  getProject(userId: number, id: number): Project | undefined {
+    return db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, userId))).get();
   }
   createProject(userId: number, data: InsertProject): Project {
     return db.insert(projects).values({ ...data, userId }).returning().get();
