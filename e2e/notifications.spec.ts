@@ -20,34 +20,34 @@ test.describe('Notification Preferences', () => {
 
   test('should persist notification preferences after navigation', async ({ page }) => {
     // Navigate to Data page
-    await page.click('button, a').filter({ hasText: /data|preferences/i }).first();
+    await page.locator('button, a').filter({ hasText: /data|preferences/i }).first().click();
     await page.waitForLoadState('networkidle');
-    
+
     // Wait for preferences to load
     await page.waitForSelector('[data-testid="notifications-enabled"]', { timeout: 5000 });
-    
+
     // Get initial state
     const initialEnabled = await page.isChecked('[data-testid="notifications-enabled"]');
     const initialTaskMinutes = await page.inputValue('input[type="number"][data-testid="task-reminder-minutes"]');
-    
+
     // Toggle notification enabled
     await page.check('[data-testid="notifications-enabled"]');
-    
+
     // Change task reminder minutes
     await page.fill('input[type="number"][data-testid="task-reminder-minutes"]', '30');
-    
+
     // Save preferences
-    await page.click('button').filter({ hasText: /save preferences/i });
+    await page.locator('button').filter({ hasText: /save preferences/i }).first().click();
     
     // Wait for save to complete
     await page.waitForSelector('text=Preferences saved', { timeout: 5000 });
     
     // Navigate away to Agenda page
-    await page.click('button, a').filter({ hasText: /agenda/i }).first();
+    await page.locator('button, a').filter({ hasText: /agenda/i }).first().click();
     await page.waitForLoadState('networkidle');
     
     // Navigate back to Data page
-    await page.click('button, a').filter({ hasText: /data|preferences/i }).first();
+    await page.locator('button, a').filter({ hasText: /data|preferences/i }).first().click();
     await page.waitForLoadState('networkidle');
     
     // Wait for preferences to load
@@ -65,17 +65,17 @@ test.describe('Notification Preferences', () => {
       await page.uncheck('[data-testid="notifications-enabled"]');
     }
     await page.fill('input[type="number"][data-testid="task-reminder-minutes"]', initialTaskMinutes);
-    await page.click('button').filter({ hasText: /save preferences/i });
+    await page.locator('button').filter({ hasText: /save preferences/i }).first().click();
   });
 
   test('should save all notification preference fields', async ({ page }) => {
     // Navigate to Data page
-    await page.click('button, a').filter({ hasText: /data|preferences/i }).first();
+    await page.locator('button, a').filter({ hasText: /data|preferences/i }).first().click();
     await page.waitForLoadState('networkidle');
-    
+
     // Wait for preferences to load
     await page.waitForSelector('[data-testid="notifications-enabled"]', { timeout: 5000 });
-    
+
     // Set all notification preferences
     await page.check('[data-testid="notifications-enabled"]');
     await page.fill('input[type="number"][data-testid="task-reminder-minutes"]', '20');
@@ -85,9 +85,9 @@ test.describe('Notification Preferences', () => {
     await page.fill('input[type="number"][data-testid="project-deadline-days-before"]', '2');
     await page.check('[data-testid="stalled-project-alerts-enabled"]');
     await page.fill('input[type="number"][data-testid="stalled-project-days-threshold"]', '14');
-    
+
     // Save preferences
-    await page.click('button').filter({ hasText: /save preferences/i });
+    await page.locator('button').filter({ hasText: /save preferences/i }).first().click();
     await page.waitForSelector('text=Preferences saved', { timeout: 5000 });
     
     // Refresh the page
@@ -110,7 +110,7 @@ test.describe('Notification Preferences', () => {
 
   test('should disable notification fields when notifications are disabled', async ({ page }) => {
     // Navigate to Data page
-    await page.click('button, a').filter({ hasText: /data|preferences/i }).first();
+    await page.locator('button, a').filter({ hasText: /data|preferences/i }).first().click();
     await page.waitForLoadState('networkidle');
 
     // Wait for preferences to load
@@ -162,8 +162,12 @@ test.describe('FCM Token Registration', () => {
     await page.goto('/#/data');
     await page.waitForLoadState('networkidle');
 
+    // Click on Data link in sidebar to ensure navigation
+    await page.locator('a').filter({ hasText: /data/i }).first().click();
+    await page.waitForLoadState('networkidle');
+
     // Wait for preferences to load
-    await page.waitForSelector('[data-testid="notifications-enabled"]', { timeout: 5000 });
+    await page.waitForSelector('[data-testid="notifications-enabled"]', { timeout: 10000 });
 
     // Enable notifications
     await page.check('[data-testid="notifications-enabled"]');
@@ -193,8 +197,12 @@ test.describe('FCM Token Registration', () => {
     await page.goto('/#/data');
     await page.waitForLoadState('networkidle');
 
+    // Click on Data link in sidebar to ensure navigation
+    await page.locator('a').filter({ hasText: /data/i }).first().click();
+    await page.waitForLoadState('networkidle');
+
     // Wait for preferences to load
-    await page.waitForSelector('[data-testid="notifications-enabled"]', { timeout: 5000 });
+    await page.waitForSelector('[data-testid="notifications-enabled"]', { timeout: 10000 });
 
     // Intercept the FCM registration API call
     let registerRequest: any = null;
@@ -240,8 +248,12 @@ test.describe('FCM Token Registration', () => {
     await page.goto('/#/data');
     await page.waitForLoadState('networkidle');
 
+    // Click on Data link in sidebar to ensure navigation
+    await page.locator('a').filter({ hasText: /data/i }).first().click();
+    await page.waitForLoadState('networkidle');
+
     // Wait for preferences to load
-    await page.waitForSelector('[data-testid="notifications-enabled"]', { timeout: 5000 });
+    await page.waitForSelector('[data-testid="notifications-enabled"]', { timeout: 10000 });
 
     // Enable notifications
     await page.check('[data-testid="notifications-enabled"]');

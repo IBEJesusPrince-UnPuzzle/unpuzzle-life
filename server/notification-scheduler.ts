@@ -1,5 +1,5 @@
 import { storage } from './storage';
-import { sendPushNotification } from './firebase-admin';
+import { sendPushNotification, sendPushNotificationIndividual } from './firebase-admin';
 import { addMinutes, addDays, parseISO, isBefore, isAfter, format } from 'date-fns';
 
 interface NotificationScheduleResult {
@@ -91,7 +91,7 @@ async function scheduleTaskReminders(
     // Check if task is within the reminder window
     if (isBefore(taskDateTime, reminderTime) && isAfter(taskDateTime, now)) {
       const title = task.title || 'Task';
-      const response = await sendPushNotification(tokens, {
+      const response = await sendPushNotificationIndividual(tokens, {
         title: 'Upcoming Task',
         body: `${title} starts in ${minutesBefore} minutes`,
         tag: `task-${task.id}`,
@@ -134,7 +134,7 @@ async function scheduleDailyReviewReminder(
     return 0; // Already completed today
   }
 
-  const response = await sendPushNotification(tokens, {
+  const response = await sendPushNotificationIndividual(tokens, {
     title: 'Daily Review',
     body: 'Time for your daily review',
     tag: 'daily-review',
@@ -165,7 +165,7 @@ async function scheduleDeadlineAlerts(
     if (!project.targetDate || project.status === 'done' || project.status === 'cancelled') continue;
 
     if (project.targetDate === alertDateStr) {
-      const response = await sendPushNotification(tokens, {
+      const response = await sendPushNotificationIndividual(tokens, {
         title: 'Project Deadline',
         body: `"${project.title}" is due in ${daysBefore} day${daysBefore > 1 ? 's' : ''}`,
         tag: `deadline-${project.id}`,
@@ -204,7 +204,7 @@ async function scheduleStalledAlerts(
     const stalledDateStr = format(stalledDate, 'yyyy-MM-dd');
 
     if (stalledDateStr === thresholdDateStr) {
-      const response = await sendPushNotification(tokens, {
+      const response = await sendPushNotificationIndividual(tokens, {
         title: 'Stalled Project',
         body: `"${project.title}" has been stalled for ${daysThreshold} days`,
         tag: `stalled-${project.id}`,
