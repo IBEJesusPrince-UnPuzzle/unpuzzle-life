@@ -932,6 +932,7 @@ export interface IStorage {
   getAllFcmTokens(): FcmToken[];
   createFcmToken(data: InsertFcmToken): FcmToken;
   deleteFcmToken(userId: number, token: string): void;
+  deleteFcmTokenByToken(token: string): void;
   updateFcmTokenLastUsed(userId: number, token: string): void;
 
   // Projects
@@ -1271,6 +1272,9 @@ export class DatabaseStorage implements IStorage {
   }
   deleteFcmToken(userId: number, token: string): void {
     db.delete(fcmTokens).where(and(eq(fcmTokens.userId, userId), eq(fcmTokens.token, token))).run();
+  }
+  deleteFcmTokenByToken(token: string): void {
+    db.delete(fcmTokens).where(eq(fcmTokens.token, token)).run();
   }
   updateFcmTokenLastUsed(userId: number, token: string): void {
     db.update(fcmTokens).set({ lastUsedAt: new Date().toISOString() })

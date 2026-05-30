@@ -21,6 +21,7 @@ export async function scheduleNotifications(): Promise<NotificationScheduleResul
 
   const users = storage.getAllUsers();
   const now = new Date();
+  const allInvalidTokens: string[] = [];
 
   for (const user of users) {
     // Skip users who have notifications disabled globally
@@ -33,27 +34,32 @@ export async function scheduleNotifications(): Promise<NotificationScheduleResul
 
     // 1. Upcoming task reminders
     if (user.taskReminderMinutes && Number(user.taskReminderMinutes) > 0) {
-      const taskResult = await scheduleTaskReminders(user.id, tokens, Number(user.taskReminderMinutes), now);
+      const taskResult = await scheduleTaskReminders(user.id, tokens, Number(user.taskReminderMinutes), now, allInvalidTokens);
       result.taskReminders += taskResult;
     }
 
     // 2. Daily review reminders
     if (user.dailyReviewEnabled && user.dailyReviewTime) {
-      const reviewResult = await scheduleDailyReviewReminder(user.id, tokens, user.dailyReviewTime, now);
+      const reviewResult = await scheduleDailyReviewReminder(user.id, tokens, user.dailyReviewTime, now, allInvalidTokens);
       result.dailyReviews += reviewResult;
     }
 
     // 3. Project deadline alerts
     if (user.projectDeadlineAlertsEnabled && user.projectDeadlineDaysBefore) {
-      const deadlineResult = await scheduleDeadlineAlerts(user.id, tokens, Number(user.projectDeadlineDaysBefore), now);
+      const deadlineResult = await scheduleDeadlineAlerts(user.id, tokens, Number(user.projectDeadlineDaysBefore), now, allInvalidTokens);
       result.deadlineAlerts += deadlineResult;
     }
 
     // 4. Stalled project alerts
     if (user.stalledProjectAlertsEnabled && user.stalledProjectDaysThreshold) {
-      const stalledResult = await scheduleStalledAlerts(user.id, tokens, Number(user.stalledProjectDaysThreshold), now);
+      const stalledResult = await scheduleStalledAlerts(user.id, tokens, Number(user.stalledProjectDaysThreshold), now, allInvalidTokens);
       result.stalledAlerts += stalledResult;
     }
+  }
+
+  // Clean up invalid tokens from database
+  for (const token of allInvalidTokens) {
+    storage.deleteFcmTokenByToken(token);
   }
 
   result.total = result.taskReminders + result.dailyReviews + result.deadlineAlerts + result.stalledAlerts;
@@ -64,10 +70,11 @@ async function scheduleTaskReminders(
   userId: number,
   tokens: string[],
   minutesBefore: number,
-  now: Date
+  now: Date,
+  invalidTokens: string[]
 ): Promise<number> {
-  const agendaWindow = storage.getAgendaWindow(userId, 
-    format(now, 'yyyy-MM-dd'), 
+  const agendaWindow = storage.getAgendaWindow(userId,
+    format(now, 'yyyy-MM-dd'),
     format(addDays(now, 1), 'yyyy-MM-dd')
   );
 
@@ -77,7 +84,7 @@ async function scheduleTaskReminders(
   for (const task of agendaWindow) {
     if (task.status !== 'ready') continue;
 
-    const taskDateTime = task.time 
+    const taskDateTime = task.time
       ? parseISO(`${task.startDate}T${task.time}`)
       : parseISO(task.startDate);
 
@@ -95,6 +102,8 @@ async function scheduleTaskReminders(
       });
 
       if (response.success) sent++;
+      // Track invalid tokens for cleanup
+      invalidTokens.push(...response.invalidTokens);
     }
   }
 
@@ -105,7 +114,8 @@ async function scheduleDailyReviewReminder(
   userId: number,
   tokens: string[],
   timeStr: string,
-  now: Date
+  now: Date,
+  invalidTokens: string[]
 ): Promise<number> {
   const [hours, minutes] = timeStr.split(':').map(Number);
   const reminderTime = new Date(now);
@@ -134,6 +144,8 @@ async function scheduleDailyReviewReminder(
     url: '/weekly-review',
   });
 
+  // Track invalid tokens for cleanup
+  invalidTokens.push(...response.invalidTokens);
   return Number(response.success);
 }
 
@@ -141,7 +153,8 @@ async function scheduleDeadlineAlerts(
   userId: number,
   tokens: string[],
   daysBefore: number,
-  now: Date
+  now: Date,
+  invalidTokens: string[]
 ): Promise<number> {
   const projects = storage.getProjects(userId);
   const alertDate = addDays(now, daysBefore);
@@ -163,6 +176,8 @@ async function scheduleDeadlineAlerts(
       });
 
       if (response.success) sent++;
+      // Track invalid tokens for cleanup
+      invalidTokens.push(...response.invalidTokens);
     }
   }
 
@@ -173,7 +188,8 @@ async function scheduleStalledAlerts(
   userId: number,
   tokens: string[],
   daysThreshold: number,
-  now: Date
+  now: Date,
+  invalidTokens: string[]
 ): Promise<number> {
   const projects = storage.getProjects(userId);
   const thresholdDate = addDays(now, -daysThreshold);
@@ -199,6 +215,8 @@ async function scheduleStalledAlerts(
       });
 
       if (response.success) sent++;
+      // Track invalid tokens for cleanup
+      invalidTokens.push(...response.invalidTokens);
     }
   }
 
