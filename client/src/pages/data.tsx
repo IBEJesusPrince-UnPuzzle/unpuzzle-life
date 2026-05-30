@@ -21,22 +21,22 @@ export default function DataPage() {
   const updatePrefs = useUpdatePreferences();
   const { permission, requestPermission, token } = useFcm();
 
-  // Preferences state - initialize with defaults
-  const [displayName, setDisplayName] = useState("");
-  const [timeFormat, setTimeFormat] = useState<"12h" | "24h">("12h");
-  const [claritySkipRitual, setClaritySkipRitual] = useState(false);
+  // Preferences state - initialize with fetched data or defaults
+  const [displayName, setDisplayName] = useState(prefs?.displayName || "");
+  const [timeFormat, setTimeFormat] = useState<"12h" | "24h">(prefs?.timeFormat || "12h");
+  const [claritySkipRitual, setClaritySkipRitual] = useState(!!prefs?.claritySkipRitual);
 
-  // Notification preferences state - initialize with defaults
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-  const [taskReminderMinutes, setTaskReminderMinutes] = useState(15);
-  const [dailyReviewEnabled, setDailyReviewEnabled] = useState(false);
-  const [dailyReviewTime, setDailyReviewTime] = useState("09:00");
-  const [projectDeadlineAlertsEnabled, setProjectDeadlineAlertsEnabled] = useState(false);
-  const [projectDeadlineDaysBefore, setProjectDeadlineDaysBefore] = useState(1);
-  const [stalledProjectAlertsEnabled, setStalledProjectAlertsEnabled] = useState(false);
-  const [stalledProjectDaysThreshold, setStalledProjectDaysThreshold] = useState(7);
+  // Notification preferences state - initialize with fetched data or defaults
+  const [notificationsEnabled, setNotificationsEnabled] = useState(!!prefs?.notificationsEnabled);
+  const [taskReminderMinutes, setTaskReminderMinutes] = useState(prefs?.taskReminderMinutes || 15);
+  const [dailyReviewEnabled, setDailyReviewEnabled] = useState(!!prefs?.dailyReviewEnabled);
+  const [dailyReviewTime, setDailyReviewTime] = useState(prefs?.dailyReviewTime || "09:00");
+  const [projectDeadlineAlertsEnabled, setProjectDeadlineAlertsEnabled] = useState(!!prefs?.projectDeadlineAlertsEnabled);
+  const [projectDeadlineDaysBefore, setProjectDeadlineDaysBefore] = useState(prefs?.projectDeadlineDaysBefore || 1);
+  const [stalledProjectAlertsEnabled, setStalledProjectAlertsEnabled] = useState(!!prefs?.stalledProjectAlertsEnabled);
+  const [stalledProjectDaysThreshold, setStalledProjectDaysThreshold] = useState(prefs?.stalledProjectDaysThreshold || 7);
 
-  // Sync state with prefs whenever prefs changes
+  // Sync state with prefs whenever prefs changes (for updates after initial load)
   useEffect(() => {
     if (prefs) {
       setDisplayName(prefs.displayName);
