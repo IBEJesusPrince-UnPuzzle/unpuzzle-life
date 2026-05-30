@@ -1811,38 +1811,36 @@ export function registerRoutes(server: Server, app: Express) {
       const { userId } = req.query;
       const limit = Number(req.query.limit) || 20;
 
-      let queue;
+      const nowIso = new Date().toISOString();
+
+      // Get pending notifications
+      let pendingQueue = storage.getPendingNotifications(nowIso);
       if (userId) {
-        // Get queue for specific user
-        queue = storage.getPendingNotifications(new Date().toISOString()).filter(n => n.userId === Number(userId));
-      } else {
-        // Get all pending notifications
-        queue = storage.getPendingNotifications(new Date().toISOString());
+        pendingQueue = pendingQueue.filter(n => n.userId === Number(userId));
       }
 
-      // Also get recent sent/failed notifications for context
-      const allQueue = db.select().from(notificationQueue)
-        .orderBy(desc(notificationQueue.createdAt))
-        .limit(userId ? 50 : 100)
-        .all();
+      // Get recent notifications (all statuses) using raw SQL for simplicity
+      const query = userId
+        ? `SELECT * FROM notification_queue WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`
+        : `SELECT * FROM notification_queue ORDER BY created_at DESC LIMIT 100`;
 
-      const filteredQueue = userId
-        ? allQueue.filter(n => n.userId === Number(userId))
-        : allQueue;
+      const params = userId ? [Number(userId)] : [];
+      const recentQueue = sqlite.prepare(query).all(...params);
 
       res.json({
-        pending: queue.slice(0, limit),
-        recent: filteredQueue.slice(0, limit),
+        pending: pendingQueue.slice(0, limit),
+        recent: recentQueue.slice(0, limit),
         summary: {
-          pendingCount: queue.length,
-          recentCount: filteredQueue.length,
-          byStatus: filteredQueue.reduce((acc, n) => {
+          pendingCount: pendingQueue.length,
+          recentCount: recentQueue.length,
+          byStatus: recentQueue.reduce((acc: Record<string, number>, n: any) => {
             acc[n.status] = (acc[n.status] || 0) + 1;
             return acc;
-          }, {} as Record<string, number>)
+          }, {})
         }
       });
     } catch (err: any) {
+      console.error('Notification queue endpoint error:', err);
       res.status(500).json({ error: err?.message || "Internal server error" });
     }
   });
