@@ -158,8 +158,6 @@ function NotificationPermissionButton() {
 
 function AuthGuard() {
   const { user, isLoading } = useAuth();
-  // Initialize FCM hook globally for authenticated users
-  useFcm();
 
   if (isLoading) {
     return (
@@ -185,6 +183,9 @@ function AuthGuard() {
       </Switch>
     );
   }
+
+  // Initialize FCM hook only for authenticated users
+  useFcm();
 
   return (
     <>
