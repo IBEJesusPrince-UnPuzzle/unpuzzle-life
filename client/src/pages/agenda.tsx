@@ -159,14 +159,20 @@ export default function AgendaPage() {
   const goPrev = () => step(-1);
   const goNext = () => step(1);
 
-  // PR #40 — Today now also triggers a one-shot "scroll to previous full
-  // hour" effect on time-axis views (Schedule / Day / 3-Day / Week). We
-  // bump a counter every tap; child views watch this and auto-scroll.
-  // Month has no time axis so it ignores the counter.
-  const [todayScrollKey, setTodayScrollKey] = useState(0);
+  // PR #40 — Today scroll lifecycle (refactored from integer-counter hack).
+  // Each time-axis view (Schedule / Day / 3-Day / Week) registers an imperative
+  // scroll callback via onScrollToToday. goToday calls the registered fn directly
+  // — no state, no re-renders, no integer counters. Month has no time axis.
+  const scrollToTodayRef = useRef<(() => void) | null>(null);
+  const registerScrollToToday = useCallback((fn: () => void) => {
+    scrollToTodayRef.current = fn;
+  }, []);
   const goToday = () => {
     urlReplace({ d: toIsoDate(new Date()) });
-    setTodayScrollKey((n) => n + 1);
+    // Call the registered callback immediately. If the user is already on
+    // today (no URL change, no re-render), this is the only mechanism that
+    // fires the scroll — solving the parity edge case.
+    scrollToTodayRef.current?.();
   };
 
   // PR #31 — [+ Task] now navigates to the page-mode create route.
@@ -397,7 +403,7 @@ export default function AgendaPage() {
           <AgendaScheduleView
             date={date}
             onSelect={openView}
-            todayScrollKey={todayScrollKey}
+            onScrollToToday={registerScrollToToday}
             onVisibleDateChange={handleScheduleVisibleDateChange}
           />
         )}
@@ -405,21 +411,21 @@ export default function AgendaPage() {
           <AgendaDayView
             date={date}
             onSelect={openView}
-            todayScrollKey={todayScrollKey}
+            onScrollToToday={registerScrollToToday}
           />
         )}
         {view === "3day" && (
           <AgendaThreeDayView
             date={date}
             onSelect={openView}
-            todayScrollKey={todayScrollKey}
+            onScrollToToday={registerScrollToToday}
           />
         )}
         {view === "week" && (
           <AgendaWeekView
             date={date}
             onSelect={openView}
-            todayScrollKey={todayScrollKey}
+            onScrollToToday={registerScrollToToday}
           />
         )}
         {view === "month" && <AgendaMonthView date={date} onDayTap={openOverlay} onSelect={openView} />}

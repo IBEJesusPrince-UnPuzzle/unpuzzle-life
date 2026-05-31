@@ -152,98 +152,137 @@ export function usePinchZoom() {
 }
 
 /**
- * useTodayScrollToPreviousHour — PR #40 (PR #41 fix).
- *
- * Watches a `todayScrollKey` counter; on every increment, if `isToday`
- * is true, scrolls the page so the previous full hour row in the time
- * grid sits near the top of the visible area (just below the sticky
- * header). Used by Day / 3-Day / Week views; Schedule has its own list
- * implementation.
- *
- * PR #41 fix — the page's actual scroll container is the app shell's
- * `<main className="overflow-auto">` (see App.tsx), NOT `window`. The
- * original PR #40 implementation called `window.scrollTo`, which is a
- * no-op against the real scroll container so Today only changed the
- * day and never moved the time view. We now walk up from the container
- * ref to find the nearest overflow:auto/scroll ancestor and scroll
- * that element. Pattern matches `collapsible-sticky-header.tsx`.
- *
- * Also fixes the cross-day Today-tap race: when the user taps Today
- * while looking at a different day, both `isToday` (via URL change)
- * AND `todayScrollKey` flip in the same render. The scroll must wait
- * for layout to settle so the grid's bounding rect is correct — we
- * defer to requestAnimationFrame.
+ * scrollToPreviousHour — shared imperative helper. Scrolls the grid's
+ * nearest overflow ancestor so the previous full hour row sits just below
+ * the sticky header. Called both on initial data-load and on Today taps.
  */
-export function useTodayScrollToPreviousHour(
+function scrollToPreviousHour(
+  el: HTMLElement,
+  hourHeightPx: number,
+  behavior: ScrollBehavior,
+): void {
+  // Find the nearest scrolling ancestor (same walk-up as PR #41).
+  function findScrollContainer(node: HTMLElement | null): HTMLElement | Window {
+    let cur: HTMLElement | null = node?.parentElement ?? null;
+    while (cur) {
+      const cs = getComputedStyle(cur);
+      if (
+        cs.overflowY === "auto" ||
+        cs.overflowY === "scroll" ||
+        cs.overflow === "auto" ||
+        cs.overflow === "scroll"
+      ) {
+        return cur;
+      }
+      cur = cur.parentElement;
+    }
+    return window;
+  }
+
+  // Previous full hour. At 8:37 → 8. At exactly 8:00 → 7.
+  const now = new Date();
+  const prevHour = Math.max(0, now.getHours() - (now.getMinutes() === 0 ? 1 : 0));
+
+  const sticky = document.querySelector(".sticky");
+  const stickyHeight = sticky instanceof HTMLElement ? sticky.offsetHeight : 0;
+
+  const scroller = findScrollContainer(el);
+  if (scroller === window) {
+    const gridTopAbs = el.getBoundingClientRect().top + window.scrollY;
+    const targetY = gridTopAbs + prevHour * hourHeightPx - stickyHeight;
+    window.scrollTo({ top: Math.max(0, targetY), behavior });
+  } else {
+    const container = scroller as HTMLElement;
+    const containerRect = container.getBoundingClientRect();
+    const gridRect = el.getBoundingClientRect();
+    const gridTopInScroller = gridRect.top - containerRect.top + container.scrollTop;
+    const targetY = gridTopInScroller + prevHour * hourHeightPx - stickyHeight;
+    container.scrollTo({ top: Math.max(0, targetY), behavior });
+  }
+}
+
+/**
+ * useTodayScroll — data-driven Today-scroll lifecycle (replaces the
+ * `todayScrollKey` integer-counter hack from PR #40).
+ *
+ * Two distinct triggers:
+ *
+ * 1. **Initial auto-scroll** (data-driven): fires once, after the grid's
+ *    query resolves (`isSuccess` transitions to true) AND `isToday` is
+ *    true. Uses "auto" (instant) so the user never sees a jump from the
+ *    top of the page.
+ *
+ * 2. **Today-tap scroll** (imperative callback): the parent passes an
+ *    `onScrollToToday` registration function. This hook registers a
+ *    scroll-to-previous-hour callback into it once the grid is mounted.
+ *    When the user taps Today, the parent calls that function directly —
+ *    no integer counters, no re-renders, no state. Uses "smooth" so the
+ *    re-anchor is visually apparent.
+ *
+ * Handles the parity edge case: if the user is already on today's date
+ * but has scrolled away, tapping Today calls the registered callback
+ * which runs independently of any state change (the date hasn't changed,
+ * so no re-render fires, but the callback executes).
+ *
+ * @param containerRef  Ref to the outermost grid div.
+ * @param isToday       Whether this grid is currently showing today.
+ * @param isSuccess     TanStack Query `isSuccess` — true once data lands.
+ * @param onScrollToToday  Registration slot: caller stores the provided fn
+ *                         and calls it when the user taps Today.
+ * @param hourHeightPx  Current zoom-adjusted pixel height per hour row.
+ */
+export function useTodayScroll(
   containerRef: RefObject<HTMLDivElement | null>,
   isToday: boolean,
-  todayScrollKey: number,
+  isSuccess: boolean,
+  onScrollToToday: ((fn: () => void) => void) | undefined,
   hourHeightPx: number,
-) {
+): void {
+  const didInitialScroll = useRef(false);
+  const hourHeightRef = useRef(hourHeightPx);
+  hourHeightRef.current = hourHeightPx;
+
+  // 1. Data-driven initial scroll: fires once when isSuccess becomes true.
   useEffect(() => {
     if (!isToday) return;
-    if (todayScrollKey === 0) return; // initial render, not a Today tap
+    if (!isSuccess) return;
+    if (didInitialScroll.current) return;
     const el = containerRef.current;
     if (!el) return;
 
-    // Find the nearest scrolling ancestor. Falls back to window when
-    // no element ancestor has overflow:auto/scroll.
-    function findScrollContainer(node: HTMLElement | null): HTMLElement | Window {
-      let cur: HTMLElement | null = node?.parentElement ?? null;
-      while (cur) {
-        const cs = getComputedStyle(cur);
-        if (
-          cs.overflowY === "auto" ||
-          cs.overflowY === "scroll" ||
-          cs.overflow === "auto" ||
-          cs.overflow === "scroll"
-        ) {
-          return cur;
-        }
-        cur = cur.parentElement;
-      }
-      return window;
-    }
-
-    // Defer until layout settles — when the user taps Today on a
-    // different day, the URL change kicks a re-render and the grid's
-    // bounding rect on the previous frame is wrong. rAF gives the
-    // browser one paint to lay out the new day.
+    // Defer one rAF so the grid has finished layout before we measure it.
     const id = requestAnimationFrame(() => {
-      // Previous full hour. At 8:37 -> 8. At exactly 8:00 -> 7 (so the
-      // 7–8 row sits at the top, matching Google's behavior of giving
-      // the user a hint of what's just before now).
-      const now = new Date();
-      const prevHour = Math.max(
-        0,
-        now.getHours() - (now.getMinutes() === 0 ? 1 : 0),
-      );
-      const scroller = findScrollContainer(el);
-
-      // Sticky header offset — read from the topmost `position: sticky`
-      // element currently in the page. If none, default to 0.
-      const sticky = document.querySelector(".sticky");
-      const stickyHeight =
-        sticky instanceof HTMLElement ? sticky.offsetHeight : 0;
-
-      if (scroller === window) {
-        const gridTopAbs = el.getBoundingClientRect().top + window.scrollY;
-        const targetY = gridTopAbs + prevHour * hourHeightPx - stickyHeight;
-        window.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
-      } else {
-        const container = scroller as HTMLElement;
-        // Grid top relative to the scroller's content (= current scrollTop
-        // + delta between their viewport tops).
-        const containerRect = container.getBoundingClientRect();
-        const gridRect = el.getBoundingClientRect();
-        const gridTopInScroller =
-          gridRect.top - containerRect.top + container.scrollTop;
-        const targetY = gridTopInScroller + prevHour * hourHeightPx - stickyHeight;
-        container.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
-      }
+      const gridEl = containerRef.current;
+      if (!gridEl) return;
+      scrollToPreviousHour(gridEl, hourHeightRef.current, "auto");
+      didInitialScroll.current = true;
     });
     return () => cancelAnimationFrame(id);
-  }, [todayScrollKey, isToday, hourHeightPx, containerRef]);
+  // isSuccess is the data-driven trigger; containerRef and isToday are stable.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess, isToday]);
+
+  // 2. Register the Today-tap callback with the parent once the grid mounts.
+  //    The callback itself is stable (closes over the ref, not the value).
+  useEffect(() => {
+    if (!onScrollToToday) return;
+    if (!isToday) return;
+
+    onScrollToToday(() => {
+      // Defer one rAF in case the Today tap also changed the date URL and
+      // a re-render is in flight — same rationale as the original PR #41 fix.
+      const id = requestAnimationFrame(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        scrollToPreviousHour(el, hourHeightRef.current, "smooth");
+      });
+      // rAF IDs are fire-and-forget here; cancellation on unmount is
+      // handled by the cleanup below.
+      return id;
+    });
+  // Re-register when isToday flips (cross-day Today-tap changes the date).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isToday, onScrollToToday]);
 }
 
 /**

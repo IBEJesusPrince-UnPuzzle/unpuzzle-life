@@ -45,7 +45,7 @@ import { findColor, pickContrastingText } from "@/lib/agenda-colors";
 import {
   useAgendaZoom,
   usePinchZoom,
-  useTodayScrollToPreviousHour,
+  useTodayScroll,
 } from "@/components/agenda-time-grid-shared";
 import { AgendaChipContent } from "@/components/agenda-chip-content";
 import { ExternalEventDetailSheet } from "@/components/external-event-detail-sheet";
@@ -57,7 +57,8 @@ const GUTTER_WIDTH_PX = 60;
 type Props = {
   date: string; // YYYY-MM-DD
   onSelect: (item: AgendaWindowItem) => void;
-  todayScrollKey?: number;
+  /** Registration slot: parent stores the provided fn and calls it on Today tap. */
+  onScrollToToday?: (fn: () => void) => void;
 };
 
 function slotTime(offsetY: number, hourHeightPx: number): string {
@@ -67,7 +68,7 @@ function slotTime(offsetY: number, hourHeightPx: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-export function AgendaDayView({ date, onSelect, todayScrollKey = 0 }: Props) {
+export function AgendaDayView({ date, onSelect, onScrollToToday }: Props) {
   const [extViewing, setExtViewing] = useState<AgendaWindowItem | null>(null);
   const [, navigate] = useLocation();
   const qc = useQueryClient();
@@ -90,7 +91,7 @@ export function AgendaDayView({ date, onSelect, todayScrollKey = 0 }: Props) {
     },
   });
 
-  const { data: items = [] } = useQuery<AgendaWindowItem[]>({
+  const { data: items = [], isSuccess } = useQuery<AgendaWindowItem[]>({
     queryKey: ["/api/agenda", "v2", { from: date, to: date }],
     queryFn: async () => {
       const r = await fetch(`/api/agenda?from=${date}&to=${date}`, {
@@ -151,10 +152,8 @@ export function AgendaDayView({ date, onSelect, todayScrollKey = 0 }: Props) {
   const hours = Array.from({ length: 24 }, (_, h) => h);
   const halfHours = Array.from({ length: 24 }, (_, h) => h);
 
-  // PR #40 — Today button time-scroll. Only fires when this view's date
-  // is today AND the Today key has been bumped by a Today tap.
   const gridRef = useRef<HTMLDivElement | null>(null);
-  useTodayScrollToPreviousHour(gridRef, isToday, todayScrollKey, hourHeightPx);
+  useTodayScroll(gridRef, isToday, isSuccess, onScrollToToday, hourHeightPx);
 
   return (
     <>

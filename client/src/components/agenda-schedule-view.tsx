@@ -145,10 +145,8 @@ type Props = {
    *  but we honor whatever the URL state hands us). */
   date: string;
   onSelect: (item: AgendaWindowItem) => void;
-  /** PR #40 — incremented when the user taps Today. We mirror the grid
-   *  views' contract: on bump we re-anchor scroll to the hour-before-now
-   *  position of today's group. */
-  todayScrollKey?: number;
+  /** Registration slot: parent stores the provided fn and calls it on Today tap. */
+  onScrollToToday?: (fn: () => void) => void;
   /** Publishes the iso date of the day-group currently pinned at the top
    *  of the viewport so the page header can display the right month label. */
   onVisibleDateChange?: (iso: string | null) => void;
@@ -385,7 +383,7 @@ function nowLineIndex(group: DayGroup, todayIso: string, nowMin: number): number
 export function AgendaScheduleView({
   date,
   onSelect,
-  todayScrollKey = 0,
+  onScrollToToday,
   onVisibleDateChange,
 }: Props) {
   const queryClient = useQueryClient();
@@ -498,56 +496,50 @@ export function AgendaScheduleView({
     return () => cancelAnimationFrame(id);
   }, [groups, todayIso, findFirstTimedChipKey]);
 
-  // On Today-key bump: re-anchor to today. Schedule has no time grid, so
-  // "hour-before-now" doesn't translate literally — we scroll today's
-  // first timed event after (or at) the current hour into view. If all of
-  // today's events are in the past, we scroll today's last chip. If today
-  // has no events, we scroll today's day-header (or the closest one).
+  // Register the Today-tap callback with the parent.
+  // When onScrollToToday is provided and today's group is in the loaded range,
+  // we register a function that scrolls today's first relevant chip into view.
+  // No state, no re-renders — purely imperative, fires only when the user taps Today.
   useEffect(() => {
-    if (todayScrollKey === 0) return; // initial render only
-    if (groups.length === 0) return;
+    if (!onScrollToToday) return;
 
-    // Defer until after layout settles. Today-tap from a different day
-    // also re-anchors the page's `date` prop — the schedule range hasn't
-    // necessarily re-centered yet, and chip DOM nodes may still be moving.
-    const id = requestAnimationFrame(() => {
-      const group = groups.find((g) => g.day === todayIso);
-      let targetEl: HTMLElement | null = null;
+    onScrollToToday(() => {
+      if (groups.length === 0) return;
+      const id = requestAnimationFrame(() => {
+        const group = groups.find((g) => g.day === todayIso);
+        let targetEl: HTMLElement | null = null;
 
-      if (group) {
-        // Look for the first chip whose start time is >= (now hour). At
-        // exactly :00 we use the hour-1 bound to give context, matching
-        // useTodayScrollToPreviousHour's behavior.
-        const nowDate = new Date();
-        const nowH = nowDate.getHours();
-        const nowM = nowDate.getMinutes();
-        const refH = nowM === 0 ? Math.max(0, nowH - 1) : nowH;
-        const refMin = refH * 60;
-        const found = group.chips.find((c) => {
-          if (c.item.isAllDay === 1) return false;
-          const s = timeToMinutes(c.item.time) ?? 0;
-          return s >= refMin;
-        });
-        const lastTimed = [...group.chips]
-          .reverse()
-          .find((c) => c.item.isAllDay !== 1);
-        const chipKey = (found ?? lastTimed)?.key ?? null;
-        if (chipKey) targetEl = chipRefs.current.get(chipKey) ?? null;
-        if (!targetEl) targetEl = dayHeaderRefs.current.get(todayIso) ?? null;
-      } else {
-        // Today has no group → header of closest future group, or first.
-        const after = groups.find((g) => g.day >= todayIso);
-        const fallbackDay = (after ?? groups[0]).day;
-        targetEl = dayHeaderRefs.current.get(fallbackDay) ?? null;
-      }
-      if (!targetEl) return;
-      const scroller = findScrollContainer(containerRef.current);
-      const offset = getStickyOffset() + 8;
-      scrollElementToTop(scroller, targetEl, offset, "smooth");
+        if (group) {
+          const nowDate = new Date();
+          const nowH = nowDate.getHours();
+          const nowM = nowDate.getMinutes();
+          const refH = nowM === 0 ? Math.max(0, nowH - 1) : nowH;
+          const refMin = refH * 60;
+          const found = group.chips.find((c) => {
+            if (c.item.isAllDay === 1) return false;
+            const s = timeToMinutes(c.item.time) ?? 0;
+            return s >= refMin;
+          });
+          const lastTimed = [...group.chips]
+            .reverse()
+            .find((c) => c.item.isAllDay !== 1);
+          const chipKey = (found ?? lastTimed)?.key ?? null;
+          if (chipKey) targetEl = chipRefs.current.get(chipKey) ?? null;
+          if (!targetEl) targetEl = dayHeaderRefs.current.get(todayIso) ?? null;
+        } else {
+          const after = groups.find((g) => g.day >= todayIso);
+          const fallbackDay = (after ?? groups[0]).day;
+          targetEl = dayHeaderRefs.current.get(fallbackDay) ?? null;
+        }
+        if (!targetEl) return;
+        const scroller = findScrollContainer(containerRef.current);
+        const offset = getStickyOffset() + 8;
+        scrollElementToTop(scroller, targetEl, offset, "smooth");
+      });
     });
-    return () => cancelAnimationFrame(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todayScrollKey]);
+  // Re-register when groups or onScrollToToday changes (groups captures todayIso via closure).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups, onScrollToToday]);
 
   // -------------------------------------------------------------------------
   // Visible-day tracking — publishes the day whose header is currently the
