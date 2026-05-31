@@ -286,6 +286,31 @@ export function useTodayScroll(
 }
 
 /**
+ * isEventPast — returns true when an event is entirely in the past.
+ *
+ * Uses the same startMin value that drives the chip's `top` pixel position
+ * so the dimming threshold is pixel-consistent with the current-time line.
+ *
+ * @param startDate      YYYY-MM-DD string of the event's date.
+ * @param startMin       Minutes since midnight (already parsed from `time`).
+ * @param durationMinutes  Duration; falls back to 30 min when null/0.
+ */
+export function isEventPast(
+  startDate: string,
+  startMin: number,
+  durationMinutes: number | null | undefined,
+): boolean {
+  const dur = durationMinutes && durationMinutes > 0 ? durationMinutes : 30;
+  const endMin = startMin + dur;
+  // Construct a local-time Date: parse the date components, then offset by
+  // endMin minutes. Avoids UTC-shift issues that Date.parse("YYYY-MM-DDT…")
+  // would introduce in environments where the timezone offset is non-zero.
+  const [y, mo, d] = startDate.split("-").map(Number);
+  const endDate = new Date(y, mo - 1, d, 0, endMin, 0, 0);
+  return endDate.getTime() < Date.now();
+}
+
+/**
  * Red horizontal line + dot positioned at the current minute. Caller is
  * responsible for only mounting this on a "today" column. The line spans
  * the column's full width because it lives inside a relative-positioned

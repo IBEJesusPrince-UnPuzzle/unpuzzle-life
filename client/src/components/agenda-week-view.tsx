@@ -42,6 +42,7 @@ import {
   useAgendaZoom,
   usePinchZoom,
   useTodayScroll,
+  isEventPast,
 } from "@/components/agenda-time-grid-shared";
 import { AgendaChipContent } from "@/components/agenda-chip-content";
 import { AgendaAllDayStrip } from "@/components/agenda-all-day-strip";
@@ -306,6 +307,7 @@ function WeekColumn({
         const widthPct = 100 / p.laneCount;
         const leftPct = p.lane * widthPct;
         const isExt = !!(it as any).isExternal;
+        const isPast = isEventPast(it.startDate, p.startMin, it.durationMinutes);
         return (
           <button
             key={`${it.id}-${it.startDate}-${p.startMin}`}
@@ -317,7 +319,7 @@ function WeekColumn({
               left: `calc(${leftPct}% + 1px)`,
               width: `calc(${widthPct}% - 2px)`,
               backgroundColor: c.hex,
-              opacity: isExt ? 0.82 : (dragState.draggingId === it.id ? 0.35 : 1),
+              opacity: dragState.draggingId === it.id ? 0.35 : isExt ? 0.82 : isPast ? 0.38 : 1,
               cursor: isExt ? "default" : "grab",
               backgroundImage: isExt ? "repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,0.15) 4px,rgba(255,255,255,0.15) 6px)" : undefined,
             }}

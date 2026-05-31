@@ -46,6 +46,7 @@ import {
   useAgendaZoom,
   usePinchZoom,
   useTodayScroll,
+  isEventPast,
 } from "@/components/agenda-time-grid-shared";
 import { AgendaChipContent } from "@/components/agenda-chip-content";
 import { ExternalEventDetailSheet } from "@/components/external-event-detail-sheet";
@@ -222,6 +223,7 @@ export function AgendaDayView({ date, onSelect, onScrollToToday }: Props) {
             const widthPct = 100 / p.laneCount;
             const leftPct = p.lane * widthPct;
             const isExt = !!(it as any).isExternal;
+            const isPast = isEventPast(it.startDate, p.startMin, it.durationMinutes);
             return (
               <button
                 key={`${it.id}-${it.startDate}-${p.startMin}`}
@@ -233,7 +235,7 @@ export function AgendaDayView({ date, onSelect, onScrollToToday }: Props) {
                   left: `calc(${leftPct}% + 2px)`,
                   width: `calc(${widthPct}% - 4px)`,
                   backgroundColor: c.hex,
-                  opacity: isExt ? 0.82 : (dragState.draggingId === it.id ? 0.35 : 1),
+                  opacity: dragState.draggingId === it.id ? 0.35 : isExt ? 0.82 : isPast ? 0.38 : 1,
                   cursor: isExt ? "default" : "grab",
                   borderColor: isExt ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.4)",
                   backgroundImage: isExt ? "repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,0.15) 4px,rgba(255,255,255,0.15) 6px)" : undefined,
