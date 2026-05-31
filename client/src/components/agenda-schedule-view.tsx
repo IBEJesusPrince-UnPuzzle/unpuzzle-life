@@ -47,7 +47,7 @@
 // existing view popup; Schedule introduces no new tap interactions.
 // =============================================================================
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   toIsoDate,
@@ -401,7 +401,7 @@ export function AgendaScheduleView({
 
   // Fetch items for the current window. Whenever the range expands we
   // re-query the whole window (TanStack's cache keys this off the dates).
-  const { data: items = [] } = useQuery<AgendaWindowItem[]>({
+  const { data: items = [], isFetching } = useQuery<AgendaWindowItem[]>({
     queryKey: ["/api/agenda", "v2", { from: range.from, to: range.to }],
     queryFn: async () => {
       const r = await fetch(`/api/agenda?from=${range.from}&to=${range.to}`, {
@@ -599,6 +599,9 @@ export function AgendaScheduleView({
   const topSentinelRef = useRef<HTMLDivElement | null>(null);
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
   const expandingRef = useRef(false);
+  const previousRangeRef = useRef<{ from: string; to: string } | null>(null);
+  const scrollHeightBeforeRef = useRef<number | null>(null);
+  const expansionDirectionRef = useRef<'forward' | 'backward' | null>(null);
 
   useEffect(() => {
     const topEl = topSentinelRef.current;
@@ -610,51 +613,21 @@ export function AgendaScheduleView({
         for (const e of entries) {
           if (!e.isIntersecting) continue;
           if (expandingRef.current) continue;
+
           if (e.target === topEl) {
+            // Backward expansion: capture state before range change
             expandingRef.current = true;
-            // Preserve scroll position: capture current scrollHeight on
-            // the resolved container, then after the next render adjust
-            // scrollTop by the delta. The resolved container is the
-            // app's <main>, not window.
+            previousRangeRef.current = range;
+            expansionDirectionRef.current = 'backward';
             const scroller = findScrollContainer(containerRef.current);
-            const before = containerScrollHeight(scroller);
+            scrollHeightBeforeRef.current = containerScrollHeight(scroller);
             setRange((r) => ({ from: addDays(r.from, -WINDOW_DAYS), to: r.to }));
-            // Defer adjustment until layout is updated. The data fetch
-            // is async, so we re-check on next frame in a loop until
-            // scrollHeight grows — bounded by a few frames.
-            let frames = 0;
-            const tick = () => {
-              const after = containerScrollHeight(scroller);
-              if (after > before) {
-                scrollContainerBy(scroller, after - before);
-                expandingRef.current = false;
-                return;
-              }
-              if (frames++ < 30) requestAnimationFrame(tick);
-              else expandingRef.current = false;
-            };
-            requestAnimationFrame(tick);
           } else if (e.target === bottomEl) {
+            // Forward expansion: capture state before range change
             expandingRef.current = true;
-            // Preserve scroll position during forward expansion too.
-            // When new content is added to the bottom, React re-renders
-            // and can lose scroll position. We need to restore it.
-            const scroller = findScrollContainer(containerRef.current);
-            const beforeScrollTop = containerScrollTop(scroller);
+            previousRangeRef.current = range;
+            expansionDirectionRef.current = 'forward';
             setRange((r) => ({ from: r.from, to: addDays(r.to, WINDOW_DAYS) }));
-            // Wait for data to load and DOM to update, then restore scroll position
-            setTimeout(() => {
-              const afterScrollTop = containerScrollTop(scroller);
-              // If scroll position changed (likely due to React re-render), restore it
-              if (Math.abs(afterScrollTop - beforeScrollTop) > 10) {
-                if (scroller === window) {
-                  window.scrollTo(0, beforeScrollTop);
-                } else {
-                  (scroller as HTMLElement).scrollTop = beforeScrollTop;
-                }
-              }
-              expandingRef.current = false;
-            }, 500);
           }
         }
       },
@@ -664,14 +637,58 @@ export function AgendaScheduleView({
     obs.observe(topEl);
     obs.observe(bottomEl);
     return () => obs.disconnect();
-  }, []);
+  }, [range]);
 
-  // Cache invalidation on range change so the new (wider) query refetches.
-  // (TanStack auto-fetches on key change; this is a no-op safety net for
-  // intermediate cached entries the user might have hit.)
+  // Synchronous scroll adjustment for backward expansion.
+  // This runs before the browser paints, ensuring zero visual jump when
+  // content is prepended to the top of the list.
+  useLayoutEffect(() => {
+    if (expansionDirectionRef.current !== 'backward') return;
+    if (!scrollHeightBeforeRef.current) return;
+    if (!previousRangeRef.current) return;
+
+    const rangeChanged =
+      previousRangeRef.current.from !== range.from ||
+      previousRangeRef.current.to !== range.to;
+
+    if (rangeChanged && items.length > 0) {
+      const scroller = findScrollContainer(containerRef.current);
+      const after = containerScrollHeight(scroller);
+      const delta = after - scrollHeightBeforeRef.current;
+
+      if (delta > 0) {
+        // Adjust scrollTop by the exact delta to keep user's view stable
+        scrollContainerBy(scroller, delta);
+      }
+
+      // Clear expansion state
+      scrollHeightBeforeRef.current = null;
+      expansionDirectionRef.current = null;
+    }
+  }, [items, range, items.length]);
+
+  // Release expansion lock when data loading completes.
+  // Tied directly to TanStack Query's isFetching lifecycle.
+  // Prevents deadlock by releasing on fetch completion even if data is empty or errored.
   useEffect(() => {
-    void queryClient; // no-op — kept for symmetry with other views' patterns
-  }, [queryClient]);
+    if (!expandingRef.current) return;
+    if (!previousRangeRef.current) return;
+
+    const rangeChanged =
+      previousRangeRef.current.from !== range.from ||
+      previousRangeRef.current.to !== range.to;
+
+    // Release lock when query finishes fetching (handles success, error, or empty data)
+    if (rangeChanged && !isFetching) {
+      expandingRef.current = false;
+      previousRangeRef.current = null;
+
+      // For forward expansion, clear direction immediately (no scroll adjustment needed)
+      if (expansionDirectionRef.current === 'forward') {
+        expansionDirectionRef.current = null;
+      }
+    }
+  }, [isFetching, range]);
 
   // -------------------------------------------------------------------------
   // Render
