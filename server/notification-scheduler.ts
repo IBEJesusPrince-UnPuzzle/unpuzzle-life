@@ -1,7 +1,6 @@
 import { storage } from './storage';
-import { sendPushNotificationIndividual } from './firebase-admin';
-import { addMinutes, addDays, parseISO, isBefore, isAfter, format, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
-import { toZonedTime, fromZonedTime } from 'date-fns-tz';
+import { sendPushNotification } from './firebase-admin';
+import { addMinutes, addDays, parseISO, isBefore, isAfter, format } from 'date-fns';
 
 interface NotificationScheduleResult {
   taskReminders: number;
@@ -20,331 +19,188 @@ export async function scheduleNotifications(): Promise<NotificationScheduleResul
     total: 0,
   };
 
-  const now = new Date();
-  const nowIso = now.toISOString();
-
-  // Phase 1: Queue upcoming notifications (deterministic scheduling)
   const users = storage.getAllUsers();
+  const now = new Date();
+
   for (const user of users) {
+    // Skip users who have notifications disabled globally
     if (!user.notificationsEnabled) continue;
 
-    // Queue task reminders
-    if (user.taskReminderMinutes && Number(user.taskReminderMinutes) > 0) {
-      await queueTaskReminders(user.id, Number(user.taskReminderMinutes), now);
-    }
-
-    // Queue daily review (timezone-aware)
-    if (user.dailyReviewEnabled && user.dailyReviewTime) {
-      await queueDailyReview(user.id, user.dailyReviewTime, now);
-    }
-
-    // Queue deadline alerts
-    if (user.projectDeadlineAlertsEnabled && user.projectDeadlineDaysBefore) {
-      await queueDeadlineAlerts(user.id, Number(user.projectDeadlineDaysBefore), now);
-    }
-
-    // Queue stalled alerts
-    if (user.stalledProjectAlertsEnabled && user.stalledProjectDaysThreshold) {
-      await queueStalledAlerts(user.id, Number(user.stalledProjectDaysThreshold), now);
-    }
-  }
-
-  // Phase 2: Send pending notifications (idempotent dispatch)
-  const pendingNotifications = storage.getPendingNotifications(nowIso);
-  const allInvalidTokens: string[] = [];
-
-  for (const notification of pendingNotifications) {
-    const fcmTokens = storage.getFcmTokens(notification.userId);
-    console.log(`[Scheduler] Processing notification ${notification.id} for user ${notification.userId}, found ${fcmTokens.length} FCM token(s)`);
-
-    if (fcmTokens.length === 0) {
-      console.log(`[Scheduler] No FCM tokens found for user ${notification.userId}, marking notification ${notification.id} as failed`);
-      storage.markNotificationFailed(notification.id, 'no_tokens');
-      continue;
-    }
+    const fcmTokens = storage.getFcmTokens(user.id);
+    if (fcmTokens.length === 0) continue;
 
     const tokens = fcmTokens.map(t => t.token);
-    console.log(`[Scheduler] Sending to ${tokens.length} token(s) for notification ${notification.id}:`, tokens.map(t => t.substring(0, 20) + '...'));
 
-    const payload = buildNotificationPayload(notification);
+    // 1. Upcoming task reminders
+    if (user.taskReminderMinutes && Number(user.taskReminderMinutes) > 0) {
+      const taskResult = await scheduleTaskReminders(user.id, tokens, Number(user.taskReminderMinutes), now);
+      result.taskReminders += taskResult;
+    }
 
-    const response = await sendPushNotificationIndividual(tokens, payload.notification, payload.data, payload.options);
+    // 2. Daily review reminders
+    if (user.dailyReviewEnabled && user.dailyReviewTime) {
+      const reviewResult = await scheduleDailyReviewReminder(user.id, tokens, user.dailyReviewTime, now);
+      result.dailyReviews += reviewResult;
+    }
 
-    console.log(`[Scheduler] Notification ${notification.id} send result: ${response.success} success, ${response.failed} failed`);
+    // 3. Project deadline alerts
+    if (user.projectDeadlineAlertsEnabled && user.projectDeadlineDaysBefore) {
+      const deadlineResult = await scheduleDeadlineAlerts(user.id, tokens, Number(user.projectDeadlineDaysBefore), now);
+      result.deadlineAlerts += deadlineResult;
+    }
 
-    if (response.success > 0) {
-      storage.markNotificationSent(notification.id, nowIso);
-      result[getNotificationTypeKey(notification.notificationType)] += response.success;
-    } else {
-      storage.markNotificationFailed(notification.id, 'send_failed');
-      allInvalidTokens.push(...response.invalidTokens);
+    // 4. Stalled project alerts
+    if (user.stalledProjectAlertsEnabled && user.stalledProjectDaysThreshold) {
+      const stalledResult = await scheduleStalledAlerts(user.id, tokens, Number(user.stalledProjectDaysThreshold), now);
+      result.stalledAlerts += stalledResult;
     }
   }
-
-  // Clean up invalid tokens
-  for (const token of allInvalidTokens) {
-    storage.deleteFcmTokenByToken(token);
-  }
-
-  // Cleanup old notifications (keep 7 days)
-  storage.cleanupOldNotifications(7);
 
   result.total = result.taskReminders + result.dailyReviews + result.deadlineAlerts + result.stalledAlerts;
   return result;
 }
 
-// Queue task reminders with deduplication
-async function queueTaskReminders(userId: number, minutesBefore: number, now: Date) {
-  const agendaWindow = storage.getAgendaWindow(userId,
-    format(now, 'yyyy-MM-dd'),
+async function scheduleTaskReminders(
+  userId: number,
+  tokens: string[],
+  minutesBefore: number,
+  now: Date
+): Promise<number> {
+  const agendaWindow = storage.getAgendaWindow(userId, 
+    format(now, 'yyyy-MM-dd'), 
     format(addDays(now, 1), 'yyyy-MM-dd')
   );
 
-  // Get user's timezone from FCM tokens (fallback to America/New_York for safety)
-  const fcmTokens = storage.getFcmTokens(userId);
-  const userTimezone = fcmTokens[0]?.timezone || 'America/New_York';
+  const reminderTime = addMinutes(now, minutesBefore);
+  let sent = 0;
 
   for (const task of agendaWindow) {
     if (task.status !== 'ready') continue;
 
-    // Parse task time in user's timezone, then convert to UTC
-    let taskDateTime;
-    if (task.time) {
-      // Parse the local time string in user's timezone
-      const localDateTime = parseISO(`${task.startDate}T${task.time}`);
-      taskDateTime = fromZonedTime(localDateTime, userTimezone);
-    } else {
-      // All-day event: use start of day in user's timezone
-      const localDateTime = parseISO(task.startDate);
-      taskDateTime = fromZonedTime(localDateTime, userTimezone);
-    }
+    const taskDateTime = task.time 
+      ? parseISO(`${task.startDate}T${task.time}`)
+      : parseISO(task.startDate);
 
-    // Check if task is within reminder window
-    const reminderWindowEnd = addMinutes(now, minutesBefore);
-    if (isAfter(taskDateTime, now) && isBefore(taskDateTime, reminderWindowEnd)) {
-      // Deduplication: check if already queued
-      const existing = storage.getPendingNotification(userId, 'task_reminder', task.id);
-      if (!existing) {
-        storage.queueNotification({
-          userId,
-          notificationType: 'task_reminder',
-          entityId: task.id,
-          scheduledFor: taskDateTime.toISOString(),
-          status: 'pending',
-        });
-      }
+    // Check if task is within the reminder window
+    if (isBefore(taskDateTime, reminderTime) && isAfter(taskDateTime, now)) {
+      const title = task.title || 'Task';
+      const response = await sendPushNotification(tokens, {
+        title: 'Upcoming Task',
+        body: `${title} starts in ${minutesBefore} minutes`,
+        tag: `task-${task.id}`,
+      }, {
+        type: 'task',
+        taskId: task.id.toString(),
+        url: '/',
+      });
+
+      if (response.success) sent++;
     }
   }
+
+  return sent;
 }
 
-// Queue daily review with timezone-aware scheduling
-async function queueDailyReview(userId: number, timeStr: string, now: Date) {
+async function scheduleDailyReviewReminder(
+  userId: number,
+  tokens: string[],
+  timeStr: string,
+  now: Date
+): Promise<number> {
   const [hours, minutes] = timeStr.split(':').map(Number);
+  const reminderTime = new Date(now);
+  reminderTime.setHours(hours, minutes, 0, 0);
 
-  // Get user's timezone from FCM tokens (fallback to America/New_York for safety)
-  const fcmTokens = storage.getFcmTokens(userId);
-  const userTimezone = fcmTokens[0]?.timezone || 'America/New_York';
+  // Only send if we're within 1 minute of the scheduled time
+  const diff = Math.abs(now.getTime() - reminderTime.getTime());
+  if (diff > 60000) return 0;
 
-  // Calculate next occurrence in user's timezone
-  const scheduledTime = getNextDailyReviewTime(hours, minutes, userTimezone, now);
-  const scheduledTimeIso = scheduledTime.toISOString();
+  // Check if daily review was already completed today
+  const today = format(now, 'yyyy-MM-dd');
+  const weeklyReviews = storage.getWeeklyReviews(userId);
+  const todayReview = weeklyReviews.find(r => r.weekOf === today);
 
-  // Deduplication: check if already queued for today
-  const todayStr = format(scheduledTime, 'yyyy-MM-dd');
-  const existing = storage.getPendingNotificationForDate(userId, 'daily_review', todayStr);
-
-  if (existing) {
-    // Check if the existing pending row has the correct scheduled time
-    // If not, delete it so we can queue the correct time
-    if (existing.scheduledFor !== scheduledTimeIso) {
-      console.log(`[scheduler] Daily review time changed for user ${userId}: ${existing.scheduledFor} -> ${scheduledTimeIso}, re-queuing`);
-      // Delete the stale pending row (we'll queue a new one below)
-      storage.deleteNotification(existing.id);
-    } else {
-      // Existing row is correct, skip
-      return;
-    }
+  if (todayReview && todayReview.inboxCleared && todayReview.projectsReviewed) {
+    return 0; // Already completed today
   }
 
-  // Queue the daily review (either no existing row, or we just deleted a stale one)
-  storage.queueNotification({
-    userId,
-    notificationType: 'daily_review',
-    entityId: 0, // No entity ID for daily review
-    scheduledFor: scheduledTimeIso,
-    status: 'pending',
+  const response = await sendPushNotification(tokens, {
+    title: 'Daily Review',
+    body: 'Time for your daily review',
+    tag: 'daily-review',
+    requireInteraction: true,
+  }, {
+    type: 'daily-review',
+    url: '/weekly-review',
   });
+
+  return Number(response.success);
 }
 
-// Queue deadline alerts
-async function queueDeadlineAlerts(userId: number, daysBefore: number, now: Date) {
+async function scheduleDeadlineAlerts(
+  userId: number,
+  tokens: string[],
+  daysBefore: number,
+  now: Date
+): Promise<number> {
   const projects = storage.getProjects(userId);
   const alertDate = addDays(now, daysBefore);
   const alertDateStr = format(alertDate, 'yyyy-MM-dd');
+  let sent = 0;
 
   for (const project of projects) {
     if (!project.targetDate || project.status === 'done' || project.status === 'cancelled') continue;
 
-    const projectTargetDate = parseISO(project.targetDate);
-    const alertDateObj = parseISO(alertDateStr);
+    if (project.targetDate === alertDateStr) {
+      const response = await sendPushNotification(tokens, {
+        title: 'Project Deadline',
+        body: `"${project.title}" is due in ${daysBefore} day${daysBefore > 1 ? 's' : ''}`,
+        tag: `deadline-${project.id}`,
+      }, {
+        type: 'project-deadline',
+        projectId: project.id.toString(),
+        url: `/projects/${project.id}`,
+      });
 
-    // Check if project deadline is on the alert date
-    if (format(projectTargetDate, 'yyyy-MM-dd') === format(alertDateObj, 'yyyy-MM-dd')) {
-      // Deduplication: check if already queued
-      const existing = storage.getPendingNotification(userId, 'deadline', project.id);
-      if (!existing) {
-        storage.queueNotification({
-          userId,
-          notificationType: 'deadline',
-          entityId: project.id,
-          scheduledFor: alertDateObj.toISOString(),
-          status: 'pending',
-        });
-      }
+      if (response.success) sent++;
     }
   }
+
+  return sent;
 }
 
-// Queue stalled alerts
-async function queueStalledAlerts(userId: number, daysThreshold: number, now: Date) {
+async function scheduleStalledAlerts(
+  userId: number,
+  tokens: string[],
+  daysThreshold: number,
+  now: Date
+): Promise<number> {
   const projects = storage.getProjects(userId);
   const thresholdDate = addDays(now, -daysThreshold);
   const thresholdDateStr = format(thresholdDate, 'yyyy-MM-dd');
+  let sent = 0;
 
   for (const project of projects) {
     if (project.status !== 'stalled' || !project.stalledAt) continue;
 
-    const stalledDate = parseISO(project.stalledAt);
-    const thresholdDateObj = parseISO(thresholdDateStr);
-
     // Check if project has been stalled for exactly the threshold days
-    if (format(stalledDate, 'yyyy-MM-dd') === format(thresholdDateObj, 'yyyy-MM-dd')) {
-      // Deduplication: check if already queued
-      const existing = storage.getPendingNotification(userId, 'stalled', project.id);
-      if (!existing) {
-        storage.queueNotification({
-          userId,
-          notificationType: 'stalled',
-          entityId: project.id,
-          scheduledFor: thresholdDateObj.toISOString(),
-          status: 'pending',
-        });
-      }
+    const stalledDate = parseISO(project.stalledAt);
+    const stalledDateStr = format(stalledDate, 'yyyy-MM-dd');
+
+    if (stalledDateStr === thresholdDateStr) {
+      const response = await sendPushNotification(tokens, {
+        title: 'Stalled Project',
+        body: `"${project.title}" has been stalled for ${daysThreshold} days`,
+        tag: `stalled-${project.id}`,
+      }, {
+        type: 'stalled-project',
+        projectId: project.id.toString(),
+        url: `/projects/${project.id}`,
+      });
+
+      if (response.success) sent++;
     }
   }
-}
 
-// Helper: Calculate next daily review time in user's timezone
-function getNextDailyReviewTime(hours: number, minutes: number, timezone: string, now: Date): Date {
-  // Step 1: Convert the server's current UTC 'now' time into the user's local timezone context
-  const userNow = toZonedTime(now, timezone);
-
-  // Step 2: Set the exact target hour and minute on that local user date object
-  let targetLocal = setMilliseconds(setSeconds(setMinutes(setHours(userNow, hours), minutes), 0), 0);
-
-  // Step 3: If the target local time has already passed for the user today, advance it to tomorrow
-  if (targetLocal < userNow) {
-    targetLocal = new Date(targetLocal.getTime() + 24 * 60 * 60 * 1000);
-  }
-
-  // Step 4: Convert the local target time back into a true absolute UTC Date object for database storage
-  return fromZonedTime(targetLocal, timezone);
-}
-
-// Helper: Build notification payload from queue record
-function buildNotificationPayload(notification: any): any {
-  const type = notification.notificationType;
-  const entityId = notification.entityId;
-  const userId = notification.userId;
-
-  switch (type) {
-    case 'task_reminder':
-      const task = storage.getAgendaTask(userId, entityId);
-      const title = task?.title || 'Task';
-      return {
-        notification: {
-          title: 'Upcoming Task',
-          body: `${title} starts soon`,
-          tag: `task-${entityId}`,
-        },
-        data: {
-          type: 'task',
-          taskId: entityId.toString(),
-          url: '/',
-        },
-        options: {
-          iconUrl: '/assets/logo.png',
-        },
-      };
-
-    case 'daily_review':
-      return {
-        notification: {
-          title: 'Daily Review',
-          body: 'Time for your daily review',
-          tag: 'daily-review',
-          requireInteraction: true,
-        },
-        data: {
-          type: 'daily-review',
-          url: '/weekly-review',
-        },
-        options: {
-          iconUrl: '/assets/logo.png',
-        },
-      };
-
-    case 'deadline':
-      const project = storage.getProject(userId, entityId);
-      return {
-        notification: {
-          title: 'Project Deadline',
-          body: `"${project?.title}" is due soon`,
-          tag: `deadline-${entityId}`,
-        },
-        data: {
-          type: 'project-deadline',
-          projectId: entityId.toString(),
-          url: `/projects/${entityId}`,
-        },
-        options: {
-          iconUrl: '/assets/logo.png',
-        },
-      };
-
-    case 'stalled':
-      const stalledProject = storage.getProject(userId, entityId);
-      return {
-        notification: {
-          title: 'Stalled Project',
-          body: `"${stalledProject?.title}" has been stalled`,
-          tag: `stalled-${entityId}`,
-        },
-        data: {
-          type: 'stalled-project',
-          projectId: entityId.toString(),
-          url: `/projects/${entityId}`,
-        },
-        options: {
-          iconUrl: '/assets/logo.png',
-        },
-      };
-
-    default:
-      return {
-        notification: { title: 'Notification', body: 'You have a notification' },
-        data: { url: '/' },
-      };
-  }
-}
-
-// Helper: Map notification type to result key
-function getNotificationTypeKey(type: string): keyof NotificationScheduleResult {
-  switch (type) {
-    case 'task_reminder': return 'taskReminders';
-    case 'daily_review': return 'dailyReviews';
-    case 'deadline': return 'deadlineAlerts';
-    case 'stalled': return 'stalledAlerts';
-    default: return 'total';
-  }
+  return sent;
 }
