@@ -636,12 +636,25 @@ export function AgendaScheduleView({
             requestAnimationFrame(tick);
           } else if (e.target === bottomEl) {
             expandingRef.current = true;
+            // Preserve scroll position during forward expansion too.
+            // When new content is added to the bottom, React re-renders
+            // and can lose scroll position. We need to restore it.
+            const scroller = findScrollContainer(containerRef.current);
+            const beforeScrollTop = containerScrollTop(scroller);
             setRange((r) => ({ from: r.from, to: addDays(r.to, WINDOW_DAYS) }));
-            // Bottom expansion doesn't shift visible content — just
-            // release the lock once data arrives.
+            // Wait for data to load and DOM to update, then restore scroll position
             setTimeout(() => {
+              const afterScrollTop = containerScrollTop(scroller);
+              // If scroll position changed (likely due to React re-render), restore it
+              if (Math.abs(afterScrollTop - beforeScrollTop) > 10) {
+                if (scroller === window) {
+                  window.scrollTo(0, beforeScrollTop);
+                } else {
+                  (scroller as HTMLElement).scrollTop = beforeScrollTop;
+                }
+              }
               expandingRef.current = false;
-            }, 300);
+            }, 500);
           }
         }
       },
