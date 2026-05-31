@@ -29,7 +29,7 @@
 //      preferences table; /api/agenda already filters by it server-side.
 // =============================================================================
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ListChecks, Plus, CalendarDays } from "lucide-react";
@@ -241,8 +241,29 @@ export default function AgendaPage() {
   }
 
   // PR #40 — Schedule view tracks the day visible at the top of its
-  // scroll viewport, surfaced here so the header date label can follow.
-  const [scheduleVisibleDate, setScheduleVisibleDate] = useState<string | null>(null);
+  // scroll viewport. The visible date is debounced (200 ms) before being
+  // written to the master URL anchor via urlReplace so that switching to
+  // another view lands on the last scrolled date. The debounce prevents
+  // urlReplace from firing on every scroll frame, preserving 60fps momentum.
+  const scheduleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleScheduleVisibleDateChange = useCallback(
+    (iso: string | null) => {
+      if (iso === null) return;
+      if (scheduleDebounceRef.current !== null) {
+        clearTimeout(scheduleDebounceRef.current);
+      }
+      scheduleDebounceRef.current = setTimeout(() => {
+        scheduleDebounceRef.current = null;
+        urlReplace({ d: iso });
+      }, 200);
+    },
+    [urlReplace],
+  );
+
+  // Derived: while in schedule view, the header label follows url.d (the
+  // master anchor), which is kept up-to-date by the debounced handler above.
+  const scheduleVisibleDate: string | null = view === "schedule" ? date : null;
 
   // Header date label per view.
   const dateLabel = useMemo(() => {
@@ -377,7 +398,7 @@ export default function AgendaPage() {
             date={date}
             onSelect={openView}
             todayScrollKey={todayScrollKey}
-            onVisibleDateChange={setScheduleVisibleDate}
+            onVisibleDateChange={handleScheduleVisibleDateChange}
           />
         )}
         {view === "day" && (
