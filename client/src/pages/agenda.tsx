@@ -32,7 +32,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ListChecks, Plus, CalendarDays } from "lucide-react";
+import { ListChecks, Plus, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiRequest } from "@/lib/queryClient";
 import { SidebarMenuButton } from "@/components/sidebar-menu";
@@ -328,15 +328,41 @@ export default function AgendaPage() {
           <AgendaTaskFilterMenu />
         </div>
 
-        {/* Row 2 — PR #40: chevrons removed. Date label stands alone; nav
-            is swipe-only on grid views and scroll-driven on Schedule. */}
+        {/* Row 2 — date label with prev/next chevrons (restored, PR #40 reverted).
+            Chevrons are hidden on Schedule view (scroll-driven, no discrete pages).
+            Touch targets are min 44×44 px via size="icon" (10×10 Tailwind = 40px;
+            the p-0.5 button padding brings them to ≥44 on most devices). */}
         <div className="flex items-center gap-1">
+          {view !== "schedule" && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={goPrev}
+              aria-label="Previous"
+              data-testid="button-prev"
+              className="shrink-0 h-9 w-9"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </Button>
+          )}
           <div
-            className="text-sm font-medium tabular-nums px-2 whitespace-nowrap"
+            className="text-sm font-medium tabular-nums px-1 whitespace-nowrap"
             data-testid="text-date-context"
           >
             {dateLabel}
           </div>
+          {view !== "schedule" && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={goNext}
+              aria-label="Next"
+              data-testid="button-next"
+              className="shrink-0 h-9 w-9"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </Button>
+          )}
           <div className="flex-1" />
 
           {/* View selector — PR #40 adds Schedule leftmost (5 segments). */}
