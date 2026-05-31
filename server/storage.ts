@@ -1720,6 +1720,9 @@ tryMigration("task_completions.idx_task", `
 
 
 
+// Travel Mode Sync — device-reported IANA timezone, updated on every app open.
+tryMigration("users.timezone", `ALTER TABLE users ADD COLUMN timezone TEXT`);
+
 // Schema migration complete — re-enable foreign key enforcement for runtime queries.
 
 sqlite.pragma("foreign_keys = ON");

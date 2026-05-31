@@ -530,16 +530,6 @@ function isSupportType(s: string): s is SupportTypeParam {
 
 export function registerRoutes(server: Server, app: Express) {
 
-  // Travel Mode Sync migration — check column existence first so no error is
-  // ever thrown. pragma table_info returns one row per column; if 'timezone'
-  // is absent the ALTER TABLE runs exactly once, otherwise it is skipped.
-  const hasTimezoneCol = (
-    sqlite.prepare(`PRAGMA table_info(users)`).all() as Array<{ name: string }>
-  ).some((col) => col.name === "timezone");
-  if (!hasTimezoneCol) {
-    sqlite.exec(`ALTER TABLE users ADD COLUMN timezone TEXT`);
-  }
-
   // Apply requireAuth to all /api/* routes EXCEPT auth endpoints
 
   // Auth endpoints are registered in auth.ts and handled before this middleware
